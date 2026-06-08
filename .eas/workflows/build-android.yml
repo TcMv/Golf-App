@@ -1,0 +1,13 @@
+build:
+  name: Android Preview APK
+  on:
+    push:
+      branches:
+        - 'claude/top-golf-app-design-ut5ly'
+  jobs:
+    build_android:
+      name: Build Android APK
+      type: build
+      params:
+        platform: android
+        profile: preview
