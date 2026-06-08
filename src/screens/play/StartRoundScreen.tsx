@@ -68,16 +68,18 @@ export default function StartRoundScreen() {
   const holesPlayed = roundType === '18' ? 18 : 9;
 
   const handleStart = useCallback(async () => {
+    if (!selectedTeeSet) {
+      Alert.alert('Error', 'Tees not loaded yet. Please wait a moment and try again.');
+      return;
+    }
     setLoading(true);
     try {
-      // Fetch course + tee set + holes
-      const [{ data: course }, { data: teeSet }, { data: holes }] = await Promise.all([
+      const [{ data: course }, { data: holes }] = await Promise.all([
         supabase.from('courses').select('*').eq('id', COURSE_ID).single(),
-        supabase.from('tee_sets').select('*').eq('id', selectedTeeSet?.id ?? '').single(),
         supabase.from('holes').select('*').eq('course_id', COURSE_ID).order('number'),
       ]);
 
-      if (!course || !teeSet || !holes) {
+      if (!course || !holes) {
         Alert.alert('Error', 'Failed to load course data. Check Supabase connection.');
         return;
       }
@@ -86,7 +88,7 @@ export default function StartRoundScreen() {
         .from('rounds')
         .insert({
           course_id: COURSE_ID,
-          tee_set_id: selectedTeeSet?.id ?? '',
+          tee_set_id: selectedTeeSet.id,
           date: new Date().toISOString().split('T')[0],
           holes_played: holesPlayed,
           starting_hole: startingHole,
@@ -105,7 +107,7 @@ export default function StartRoundScreen() {
       startRound(
         roundData as Round,
         course as Course,
-        teeSet as TeeSet,
+        selectedTeeSet,
         holes as Hole[],
       );
 
@@ -115,7 +117,7 @@ export default function StartRoundScreen() {
     } finally {
       setLoading(false);
     }
-  }, [roundType, startingHole, excludeHandicap, holesPlayed, startRound, navigation]);
+  }, [selectedTeeSet, roundType, startingHole, excludeHandicap, holesPlayed, startRound, navigation]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
