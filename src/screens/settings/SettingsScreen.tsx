@@ -20,6 +20,7 @@ type RootStackParamList = {
   PlayHome: undefined;
   MyBag: undefined;
   Settings: undefined;
+  AdminMap: undefined;
 };
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -119,10 +120,11 @@ export default function SettingsScreen() {
             <Text style={styles.rowValue}>18 holes</Text>
           </View>
           <View style={styles.rowDivider} />
+          <View style={styles.rowDivider} />
           <SettingsRow
-            label="GPS Walk"
-            value="Not completed"
-            onPress={() => Alert.alert('GPS Walk', 'Start a round to record GPS data for each hole. Walk to the tee and green of each hole to set accurate distances.')}
+            label="Course Editor"
+            value="Map & hazards"
+            onPress={() => navigation.navigate('AdminMap')}
           />
         </View>
 

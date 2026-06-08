@@ -136,6 +136,18 @@ export type ShotTrackingStatus =
       distance: number;
     };
 
+export type HazardType = 'bunker' | 'water' | 'trees' | 'ob' | 'red_zone';
+
+export type Hazard = {
+  id: string;
+  course_id: string;
+  hole_number: number | null;
+  type: HazardType;
+  label: string | null;
+  coordinates: { lat: number; lng: number }[];
+  created_at: string;
+};
+
 export type RoundStats = {
   totalScore: number;
   toPar: number;
