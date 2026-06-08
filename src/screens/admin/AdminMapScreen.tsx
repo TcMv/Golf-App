@@ -19,6 +19,8 @@ import type { Hazard, HazardType } from '../../types';
 
 type Mode = 'view' | 'edit' | 'draw';
 type LatLng = { latitude: number; longitude: number };
+type LayerKey = 'tees' | 'greens' | 'bunker' | 'water' | 'trees' | 'ob' | 'red_zone';
+type Layers = Record<LayerKey, boolean>;
 
 const COURSE_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -38,6 +40,20 @@ const HAZARD_LABELS: Record<HazardType, string> = {
   red_zone: 'Red Zone',
 };
 
+const DEFAULT_LAYERS: Layers = {
+  tees: true, greens: true, bunker: true, water: true, trees: true, ob: true, red_zone: true,
+};
+
+const LAYER_DEFS: { key: LayerKey; label: string; color: string }[] = [
+  { key: 'tees', label: 'Tees', color: '#FFFFFF' },
+  { key: 'greens', label: 'Greens', color: '#22c55e' },
+  { key: 'bunker', label: 'Bunkers', color: '#F5C518' },
+  { key: 'water', label: 'Water', color: '#4A90D9' },
+  { key: 'trees', label: 'Trees', color: '#2D6A2D' },
+  { key: 'ob', label: 'OB', color: '#FFFFFF' },
+  { key: 'red_zone', label: 'Red Zone', color: '#E53E3E' },
+];
+
 type HoleMarker = {
   id: string;
   number: number;
@@ -51,20 +67,33 @@ type HoleMarker = {
   green_back_lng: number | null;
 };
 
+const midpt = (a: LatLng, b: LatLng): LatLng => ({
+  latitude: (a.latitude + b.latitude) / 2,
+  longitude: (a.longitude + b.longitude) / 2,
+});
+
 export default function AdminMapScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
   const [mode, setMode] = useState<Mode>('view');
+  const [layers, setLayers] = useState<Layers>(DEFAULT_LAYERS);
   const [holes, setHoles] = useState<HoleMarker[]>([]);
   const [hazards, setHazards] = useState<Hazard[]>([]);
+
+  // Draw mode
   const [drawVertices, setDrawVertices] = useState<LatLng[]>([]);
   const [tagModalVisible, setTagModalVisible] = useState(false);
   const [hazardType, setHazardType] = useState<HazardType>('bunker');
   const [hazardHole, setHazardHole] = useState<number | null>(null);
   const [hazardLabel, setHazardLabel] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Vertex edit mode
+  const [editingHazardId, setEditingHazardId] = useState<string | null>(null);
+  const [editingVertices, setEditingVertices] = useState<LatLng[]>([]);
+  const [selectedVertexIdx, setSelectedVertexIdx] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
     const [{ data: holesData }, { data: hazardsData }] = await Promise.all([
@@ -80,6 +109,10 @@ export default function AdminMapScreen() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const toggleLayer = useCallback((key: LayerKey) => {
+    setLayers(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   const handleMapPress = useCallback((e: any) => {
     if (mode !== 'draw') return;
@@ -109,6 +142,66 @@ export default function AdminMapScreen() {
     setHazardType('bunker');
   }, []);
 
+  const enterVertexEdit = useCallback((hazard: Hazard) => {
+    setEditingHazardId(hazard.id);
+    setEditingVertices(hazard.coordinates.map(c => ({ latitude: c.lat, longitude: c.lng })));
+    setSelectedVertexIdx(null);
+  }, []);
+
+  const cancelVertexEdit = useCallback(() => {
+    setEditingHazardId(null);
+    setEditingVertices([]);
+    setSelectedVertexIdx(null);
+  }, []);
+
+  const saveVertexEdit = useCallback(async () => {
+    if (!editingHazardId) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('hazards')
+      .update({ coordinates: editingVertices.map(v => ({ lat: v.latitude, lng: v.longitude })) })
+      .eq('id', editingHazardId);
+    setSaving(false);
+    if (error) { Alert.alert('Save failed', error.message); return; }
+    setHazards(prev => prev.map(h =>
+      h.id === editingHazardId
+        ? { ...h, coordinates: editingVertices.map(v => ({ lat: v.latitude, lng: v.longitude })) }
+        : h
+    ));
+    cancelVertexEdit();
+  }, [editingHazardId, editingVertices, cancelVertexEdit]);
+
+  const deleteVertexEditHazard = useCallback(() => {
+    if (!editingHazardId) return;
+    Alert.alert('Delete polygon?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          await supabase.from('hazards').delete().eq('id', editingHazardId);
+          setHazards(prev => prev.filter(h => h.id !== editingHazardId));
+          cancelVertexEdit();
+        },
+      },
+    ]);
+  }, [editingHazardId, cancelVertexEdit]);
+
+  const deleteSelectedVertex = useCallback(() => {
+    if (selectedVertexIdx === null || editingVertices.length <= 3) return;
+    setEditingVertices(prev => prev.filter((_, i) => i !== selectedVertexIdx));
+    setSelectedVertexIdx(null);
+  }, [selectedVertexIdx, editingVertices.length]);
+
+  const insertVertex = useCallback((afterIdx: number) => {
+    const a = editingVertices[afterIdx];
+    const b = editingVertices[(afterIdx + 1) % editingVertices.length];
+    setEditingVertices(prev => [
+      ...prev.slice(0, afterIdx + 1),
+      midpt(a, b),
+      ...prev.slice(afterIdx + 1),
+    ]);
+  }, [editingVertices]);
+
   const saveHazard = useCallback(async () => {
     if (drawVertices.length < 3) return;
     setSaving(true);
@@ -125,18 +218,8 @@ export default function AdminMapScreen() {
     loadData();
   }, [drawVertices, hazardHole, hazardType, hazardLabel, clearDraw, loadData]);
 
-  const deleteHazard = useCallback((id: string) => {
-    Alert.alert('Delete hazard?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: async () => {
-          await supabase.from('hazards').delete().eq('id', id);
-          setHazards(prev => prev.filter(h => h.id !== id));
-        },
-      },
-    ]);
-  }, []);
+  const isVertexEditing = editingHazardId !== null;
+  const canDeleteVertex = selectedVertexIdx !== null && editingVertices.length > 3;
 
   const closingSegment: LatLng[] =
     drawVertices.length >= 3
@@ -164,41 +247,41 @@ export default function AdminMapScreen() {
         showsCompass={false}
         rotateEnabled={false}
       >
-        {/* Hole markers */}
+        {/* Hole point markers */}
         {holes.map(hole => (
           <React.Fragment key={hole.id}>
-            {hole.tee_lat != null && hole.tee_lng != null && (
+            {layers.tees && hole.tee_lat != null && hole.tee_lng != null && (
               <Marker
                 coordinate={{ latitude: hole.tee_lat, longitude: hole.tee_lng }}
                 title={`H${hole.number} Tee`}
-                draggable={mode === 'edit'}
+                draggable={mode === 'edit' && !isVertexEditing}
                 onDragEnd={e => handleMarkerDragEnd(hole.id, 'tee', e.nativeEvent.coordinate)}
                 pinColor="white"
               />
             )}
-            {hole.green_front_lat != null && hole.green_front_lng != null && (
+            {layers.greens && hole.green_front_lat != null && hole.green_front_lng != null && (
               <Marker
                 coordinate={{ latitude: hole.green_front_lat, longitude: hole.green_front_lng }}
                 title={`H${hole.number} Front`}
-                draggable={mode === 'edit'}
+                draggable={mode === 'edit' && !isVertexEditing}
                 onDragEnd={e => handleMarkerDragEnd(hole.id, 'green_front', e.nativeEvent.coordinate)}
                 pinColor="#22c55e"
               />
             )}
-            {hole.green_mid_lat != null && hole.green_mid_lng != null && (
+            {layers.greens && hole.green_mid_lat != null && hole.green_mid_lng != null && (
               <Marker
                 coordinate={{ latitude: hole.green_mid_lat, longitude: hole.green_mid_lng }}
                 title={`H${hole.number} Mid`}
-                draggable={mode === 'edit'}
+                draggable={mode === 'edit' && !isVertexEditing}
                 onDragEnd={e => handleMarkerDragEnd(hole.id, 'green_mid', e.nativeEvent.coordinate)}
                 pinColor="#16a34a"
               />
             )}
-            {hole.green_back_lat != null && hole.green_back_lng != null && (
+            {layers.greens && hole.green_back_lat != null && hole.green_back_lng != null && (
               <Marker
                 coordinate={{ latitude: hole.green_back_lat, longitude: hole.green_back_lng }}
                 title={`H${hole.number} Back`}
-                draggable={mode === 'edit'}
+                draggable={mode === 'edit' && !isVertexEditing}
                 onDragEnd={e => handleMarkerDragEnd(hole.id, 'green_back', e.nativeEvent.coordinate)}
                 pinColor="#15803d"
               />
@@ -207,26 +290,67 @@ export default function AdminMapScreen() {
         ))}
 
         {/* Hazard polygons */}
-        {hazards.map(hazard => (
-          <Polygon
-            key={hazard.id}
-            coordinates={hazard.coordinates.map(c => ({ latitude: c.lat, longitude: c.lng }))}
-            fillColor={HAZARD_COLORS[hazard.type] + '55'}
-            strokeColor={HAZARD_COLORS[hazard.type]}
-            strokeWidth={2}
-            tappable={mode === 'edit'}
-            onPress={() => mode === 'edit' && deleteHazard(hazard.id)}
-          />
+        {hazards.map(hazard => {
+          if (!layers[hazard.type as LayerKey]) return null;
+          const isBeingEdited = editingHazardId === hazard.id;
+          const verts = isBeingEdited
+            ? editingVertices
+            : hazard.coordinates.map(c => ({ latitude: c.lat, longitude: c.lng }));
+          return (
+            <Polygon
+              key={hazard.id}
+              coordinates={verts}
+              fillColor={HAZARD_COLORS[hazard.type] + (isBeingEdited ? '33' : '55')}
+              strokeColor={isBeingEdited ? '#fff' : HAZARD_COLORS[hazard.type]}
+              strokeWidth={isBeingEdited ? 2.5 : 2}
+              tappable={mode === 'edit' && !isVertexEditing}
+              onPress={() => {
+                if (mode === 'edit' && !isVertexEditing) enterVertexEdit(hazard);
+              }}
+            />
+          );
+        })}
+
+        {/* Vertex edit handles */}
+        {isVertexEditing && editingVertices.map((v, i) => (
+          <Marker
+            key={`ev${i}`}
+            coordinate={v}
+            anchor={{ x: 0.5, y: 0.5 }}
+            draggable
+            onDragEnd={e => {
+              const coord = e.nativeEvent.coordinate;
+              setEditingVertices(prev => prev.map((pt, idx) => idx === i ? coord : pt));
+            }}
+            onPress={() => setSelectedVertexIdx(selectedVertexIdx === i ? null : i)}
+          >
+            <View style={[styles.vertexHandle, selectedVertexIdx === i && styles.vertexHandleSelected]}>
+              <Text style={styles.vertexHandleLabel}>{i + 1}</Text>
+            </View>
+          </Marker>
         ))}
 
-        {/* Drawing in progress */}
+        {/* Midpoint insert handles */}
+        {isVertexEditing && editingVertices.map((v, i) => {
+          const nextIdx = (i + 1) % editingVertices.length;
+          return (
+            <Marker
+              key={`mp${i}`}
+              coordinate={midpt(v, editingVertices[nextIdx])}
+              anchor={{ x: 0.5, y: 0.5 }}
+              onPress={() => insertVertex(i)}
+            >
+              <View style={styles.midpointHandle}>
+                <Text style={styles.midpointLabel}>+</Text>
+              </View>
+            </Marker>
+          );
+        })}
+
+        {/* Draw-in-progress */}
         {drawVertices.length > 0 && (
           <>
-            <Polyline
-              coordinates={drawVertices}
-              strokeColor="#F5C518"
-              strokeWidth={2}
-            />
+            <Polyline coordinates={drawVertices} strokeColor="#F5C518" strokeWidth={2} />
             {closingSegment.length === 2 && (
               <Polyline
                 coordinates={closingSegment}
@@ -236,9 +360,9 @@ export default function AdminMapScreen() {
               />
             )}
             {drawVertices.map((v, i) => (
-              <Marker key={`v${i}`} coordinate={v} anchor={{ x: 0.5, y: 0.5 }}>
-                <View style={styles.vertex}>
-                  <Text style={styles.vertexLabel}>{i + 1}</Text>
+              <Marker key={`dv${i}`} coordinate={v} anchor={{ x: 0.5, y: 0.5 }}>
+                <View style={styles.drawVertex}>
+                  <Text style={styles.drawVertexLabel}>{i + 1}</Text>
                 </View>
               </Marker>
             ))}
@@ -246,7 +370,7 @@ export default function AdminMapScreen() {
         )}
       </MapView>
 
-      {/* Header + mode bar */}
+      {/* Overlay: header + mode bar + layer toggles */}
       <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.overlay}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -255,39 +379,89 @@ export default function AdminMapScreen() {
           <Text style={styles.title}>Course Editor</Text>
           <View style={{ width: 36 }} />
         </View>
+
         <View style={styles.modeBar}>
           {(['view', 'edit', 'draw'] as Mode[]).map(m => (
             <TouchableOpacity
               key={m}
               style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
-              onPress={() => { setMode(m); clearDraw(); }}
+              onPress={() => { setMode(m); clearDraw(); cancelVertexEdit(); }}
             >
               <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
-                {m === 'view' ? 'View' : m === 'edit' ? 'Edit Points' : 'Draw'}
+                {m === 'view' ? 'View' : m === 'edit' ? 'Edit' : 'Draw'}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.layerScroll}
+          contentContainerStyle={styles.layerScrollContent}
+        >
+          {LAYER_DEFS.map(def => (
+            <TouchableOpacity
+              key={def.key}
+              style={[styles.layerChip, layers[def.key] && styles.layerChipActive]}
+              onPress={() => toggleLayer(def.key)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.layerDot, { backgroundColor: def.color }]} />
+              <Text style={[styles.layerChipText, layers[def.key] && styles.layerChipTextActive]}>
+                {def.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </SafeAreaView>
 
-      {/* Bottom contextual bar */}
+      {/* Bottom bar */}
       <View style={[styles.bottomBar, { bottom: 20 + insets.bottom }]} pointerEvents="box-none">
-        {mode === 'view' && (
-          <View style={styles.hint}>
-            <Text style={styles.hintText}>White = tees  ·  Green = greens  ·  Tap polygon in Edit to delete</Text>
+        {isVertexEditing && (
+          <View style={styles.vertexBar}>
+            <Text style={styles.vertexCount}>
+              {editingVertices.length} vertices{selectedVertexIdx !== null ? `  ·  vertex ${selectedVertexIdx + 1} selected` : '  ·  tap to select'}
+            </Text>
+            <View style={styles.vertexBtns}>
+              {canDeleteVertex && (
+                <TouchableOpacity style={styles.dangerBtn} onPress={deleteSelectedVertex}>
+                  <Text style={styles.dangerBtnText}>Del vertex</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.dangerBtn} onPress={deleteVertexEditHazard}>
+                <Text style={styles.dangerBtnText}>Del polygon</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.ghostBtn} onPress={cancelVertexEdit}>
+                <Text style={styles.ghostBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.greenBtn, saving && { opacity: 0.5 }]}
+                onPress={saveVertexEdit}
+                disabled={saving}
+              >
+                <Text style={styles.greenBtnText}>{saving ? '…' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
-        {mode === 'edit' && (
+
+        {!isVertexEditing && mode === 'view' && (
           <View style={styles.hint}>
-            <Text style={styles.hintText}>Drag markers to reposition · auto-saves  ·  Tap polygon to delete</Text>
+            <Text style={styles.hintText}>Tap layers above to show/hide  ·  Switch to Edit to modify</Text>
           </View>
         )}
-        {mode === 'draw' && drawVertices.length === 0 && (
+        {!isVertexEditing && mode === 'edit' && (
+          <View style={styles.hint}>
+            <Text style={styles.hintText}>Drag markers to move  ·  Tap a polygon to edit vertices</Text>
+          </View>
+        )}
+        {!isVertexEditing && mode === 'draw' && drawVertices.length === 0 && (
           <View style={styles.hint}>
             <Text style={styles.hintText}>Tap the map to start drawing a polygon</Text>
           </View>
         )}
-        {mode === 'draw' && drawVertices.length > 0 && (
+        {!isVertexEditing && mode === 'draw' && drawVertices.length > 0 && (
           <View style={styles.drawRow}>
             {drawVertices.length < 3 && (
               <View style={styles.hint}>
@@ -329,10 +503,7 @@ export default function AdminMapScreen() {
                   key={t}
                   style={[
                     styles.typeBtn,
-                    hazardType === t && {
-                      backgroundColor: HAZARD_COLORS[t],
-                      borderColor: HAZARD_COLORS[t],
-                    },
+                    hazardType === t && { backgroundColor: HAZARD_COLORS[t], borderColor: HAZARD_COLORS[t] },
                   ]}
                   onPress={() => setHazardType(t)}
                 >
@@ -430,9 +601,47 @@ const styles = StyleSheet.create({
   modeBtnActive: { backgroundColor: Colors.surface3 },
   modeBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: 'rgba(255,255,255,0.5)' },
   modeBtnTextActive: { color: '#fff', fontWeight: FontWeight.semibold },
+  layerScroll: { marginTop: Spacing.xs },
+  layerScrollContent: {
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  layerChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: Spacing.sm, paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  layerChipActive: {
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
+  },
+  layerDot: {
+    width: 8, height: 8, borderRadius: 4,
+    borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.4)',
+  },
+  layerChipText: { fontSize: 11, fontWeight: FontWeight.medium, color: 'rgba(255,255,255,0.35)' },
+  layerChipTextActive: { color: '#fff' },
   bottomBar: {
     position: 'absolute', left: Spacing.base, right: Spacing.base,
     alignItems: 'center', gap: Spacing.sm,
+  },
+  vertexBar: {
+    width: '100%',
+    backgroundColor: 'rgba(0,0,0,0.88)',
+    borderRadius: Radius.lg,
+    padding: Spacing.base,
+    gap: Spacing.sm,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  vertexCount: {
+    fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)', textAlign: 'center',
+  },
+  vertexBtns: {
+    flexDirection: 'row', gap: Spacing.sm,
+    flexWrap: 'wrap', justifyContent: 'center',
   },
   hint: {
     backgroundColor: 'rgba(0,0,0,0.75)',
@@ -450,19 +659,43 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
   ghostBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: '#fff' },
+  dangerBtn: {
+    paddingHorizontal: Spacing.base, paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
+    backgroundColor: 'rgba(229,62,62,0.15)',
+    borderWidth: 1, borderColor: '#E53E3E',
+  },
+  dangerBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: '#E53E3E' },
   greenBtn: {
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm,
     borderRadius: Radius.md, backgroundColor: Colors.green,
   },
   greenBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#000' },
-  vertex: {
+  vertexHandle: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#F5C518',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#000',
+  },
+  vertexHandleSelected: {
+    backgroundColor: '#fff',
+    borderColor: '#E53E3E',
+  },
+  vertexHandleLabel: { fontSize: 10, fontWeight: FontWeight.bold, color: '#000' },
+  midpointHandle: {
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: '#999',
+  },
+  midpointLabel: { fontSize: 12, fontWeight: FontWeight.bold, color: '#333', lineHeight: 14 },
+  drawVertex: {
     width: 24, height: 24, borderRadius: 12,
     backgroundColor: '#F5C518',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#000',
   },
-  vertexLabel: { fontSize: 10, fontWeight: FontWeight.bold, color: '#000' },
-  // Modal
+  drawVertexLabel: { fontSize: 10, fontWeight: FontWeight.bold, color: '#000' },
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
