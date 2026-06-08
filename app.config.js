@@ -53,5 +53,10 @@ module.exports = {
     web: {
       favicon: './assets/favicon.png',
     },
+    extra: {
+      eas: {
+        projectId: 'b9f1d832-dfbb-4c55-a4f0-94f7edc7aa77',
+      },
+    },
   },
 };

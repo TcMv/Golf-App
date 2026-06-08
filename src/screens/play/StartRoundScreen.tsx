@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,7 +30,14 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type RoundType = '18' | 'front9' | 'back9';
 
 const COURSE_ID = '00000000-0000-0000-0000-000000000001';
-const TEE_SET_ID = '00000000-0000-0000-0000-000000000010';
+
+const TEE_DOT_COLORS: Record<string, string> = {
+  white: '#FFFFFF',
+  blue: '#4A90D9',
+  red: '#E53E3E',
+  yellow: '#F5C518',
+  black: '#222222',
+};
 
 export default function StartRoundScreen() {
   const navigation = useNavigation<Nav>();
@@ -40,20 +47,39 @@ export default function StartRoundScreen() {
   const [startingHole, setStartingHole] = useState(1);
   const [excludeHandicap, setExcludeHandicap] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [teeSets, setTeeSets] = useState<TeeSet[]>([]);
+  const [selectedTeeSet, setSelectedTeeSet] = useState<TeeSet | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('tee_sets')
+      .select('*')
+      .eq('course_id', COURSE_ID)
+      .order('total_metres', { ascending: false })
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const sets = data as TeeSet[];
+          setTeeSets(sets);
+          setSelectedTeeSet(sets.find(t => t.colour === 'white') ?? sets[0]);
+        }
+      });
+  }, []);
 
   const holesPlayed = roundType === '18' ? 18 : 9;
 
   const handleStart = useCallback(async () => {
+    if (!selectedTeeSet) {
+      Alert.alert('Error', 'Tees not loaded yet. Please wait a moment and try again.');
+      return;
+    }
     setLoading(true);
     try {
-      // Fetch course + tee set + holes
-      const [{ data: course }, { data: teeSet }, { data: holes }] = await Promise.all([
+      const [{ data: course }, { data: holes }] = await Promise.all([
         supabase.from('courses').select('*').eq('id', COURSE_ID).single(),
-        supabase.from('tee_sets').select('*').eq('id', TEE_SET_ID).single(),
         supabase.from('holes').select('*').eq('course_id', COURSE_ID).order('number'),
       ]);
 
-      if (!course || !teeSet || !holes) {
+      if (!course || !holes) {
         Alert.alert('Error', 'Failed to load course data. Check Supabase connection.');
         return;
       }
@@ -62,7 +88,7 @@ export default function StartRoundScreen() {
         .from('rounds')
         .insert({
           course_id: COURSE_ID,
-          tee_set_id: TEE_SET_ID,
+          tee_set_id: selectedTeeSet.id,
           date: new Date().toISOString().split('T')[0],
           holes_played: holesPlayed,
           starting_hole: startingHole,
@@ -81,7 +107,7 @@ export default function StartRoundScreen() {
       startRound(
         roundData as Round,
         course as Course,
-        teeSet as TeeSet,
+        selectedTeeSet,
         holes as Hole[],
       );
 
@@ -91,7 +117,7 @@ export default function StartRoundScreen() {
     } finally {
       setLoading(false);
     }
-  }, [roundType, startingHole, excludeHandicap, holesPlayed, startRound, navigation]);
+  }, [selectedTeeSet, roundType, startingHole, excludeHandicap, holesPlayed, startRound, navigation]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -163,16 +189,28 @@ export default function StartRoundScreen() {
 
         {/* Tee Selection */}
         <Text style={styles.sectionLabel}>Tees</Text>
-        <View style={styles.teeCard}>
-          <View style={styles.teeColorDot} />
-          <View style={styles.teeInfo}>
-            <Text style={styles.teeName}>White</Text>
-            <Text style={styles.teeDetails}>4910m  ·  Slope 113  ·  Rating 66.0</Text>
-          </View>
-          <View style={styles.teeCheck}>
-            <Text style={styles.teeCheckText}>✓</Text>
-          </View>
-        </View>
+        {teeSets.map(tee => {
+          const isSelected = selectedTeeSet?.id === tee.id;
+          return (
+            <TouchableOpacity
+              key={tee.id}
+              style={[styles.teeCard, isSelected && styles.teeCardActive]}
+              onPress={() => setSelectedTeeSet(tee)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.teeColorDot, { backgroundColor: TEE_DOT_COLORS[tee.colour] ?? '#fff' }]} />
+              <View style={styles.teeInfo}>
+                <Text style={styles.teeName}>{tee.name}</Text>
+                <Text style={styles.teeDetails}>{tee.total_metres}m  ·  Slope {tee.slope_rating}  ·  Rating {tee.course_rating}</Text>
+              </View>
+              {isSelected && (
+                <View style={styles.teeCheck}>
+                  <Text style={styles.teeCheckText}>✓</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
 
         {/* Exclude from handicap */}
         <View style={styles.toggleRow}>
@@ -301,10 +339,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface1,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: Colors.green,
+    borderColor: Colors.border,
     padding: Spacing.base,
     gap: Spacing.md,
+    marginBottom: Spacing.sm,
   },
+  teeCardActive: { borderColor: Colors.green },
   teeColorDot: {
     width: 16,
     height: 16,

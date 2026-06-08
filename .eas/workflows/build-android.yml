@@ -4,6 +4,7 @@ build:
     push:
       branches:
         - 'claude/top-golf-app-design-ut5ly'
+        - 'main'
   jobs:
     build_android:
       name: Build Android APK

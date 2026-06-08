@@ -24,6 +24,7 @@ import StatsScreen from '../screens/stats/StatsScreen';
 
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import MyBagScreen from '../screens/settings/MyBagScreen';
+import AdminMapScreen from '../screens/admin/AdminMapScreen';
 
 const ONBOARDING_KEY = '@golf_onboarding_done';
 
@@ -120,6 +121,11 @@ export default function RootNavigator() {
       />
       <Stack.Screen name="RoundDetail" component={RoundDetailScreen} />
       <Stack.Screen name="MyBag" component={MyBagScreen} />
+      <Stack.Screen
+        name="AdminMap"
+        component={AdminMapScreen}
+        options={{ presentation: 'fullScreenModal' }}
+      />
     </Stack.Navigator>
   );
 }
