@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polygon, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,7 +20,15 @@ import { useLocation } from '../../hooks/useLocation';
 import { haversineMetres } from '../../utils/distance';
 import HoleScoringSheet from '../../components/scoring/HoleScoringSheet';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
-import type { Club, Coordinate, Hole, HoleScore, Shot } from '../../types';
+import type { Club, Coordinate, Hazard, HazardType, Hole, HoleScore, Shot } from '../../types';
+
+const HAZARD_COLORS: Record<HazardType, string> = {
+  bunker: '#F5C518',
+  water: '#4A90D9',
+  trees: '#2D6A2D',
+  ob: '#FFFFFF',
+  red_zone: '#E53E3E',
+};
 
 type RootStackParamList = {
   PlayHome: undefined;
@@ -119,10 +127,14 @@ export default function ActiveRoundScreen() {
   const [pendingShotEnd, setPendingShotEnd] = useState<Coordinate | null>(null);
   const [clubs, setClubs] = useState<Club[]>([]);
   const [clubModalVisible, setClubModalVisible] = useState(false);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
 
   useEffect(() => {
     supabase.from('clubs').select('*').order('sort_order').then(({ data }) => {
       if (data) setClubs(data as Club[]);
+    });
+    supabase.from('hazards').select('*').eq('course_id', '00000000-0000-0000-0000-000000000001').then(({ data }) => {
+      if (data) setHazards(data as Hazard[]);
     });
   }, []);
 
@@ -355,6 +367,20 @@ export default function ActiveRoundScreen() {
             <View style={styles.startPin} />
           </Marker>
         )}
+
+        {/* Hazard polygons — course-wide (OB) + current hole */}
+        {hazards
+          .filter(h => h.hole_number == null || h.hole_number === activeRound.currentHoleNumber)
+          .map(hazard => (
+            <Polygon
+              key={hazard.id}
+              coordinates={hazard.coordinates.map(c => ({ latitude: c.lat, longitude: c.lng }))}
+              fillColor={HAZARD_COLORS[hazard.type] + (hazard.type === 'ob' ? '00' : '44')}
+              strokeColor={HAZARD_COLORS[hazard.type]}
+              strokeWidth={hazard.type === 'ob' ? 2 : 1.5}
+              lineDashPattern={hazard.type === 'ob' ? [8, 5] : undefined}
+            />
+          ))}
 
         {/* Shot markers */}
         {holeShots.map((shot, idx) => (
