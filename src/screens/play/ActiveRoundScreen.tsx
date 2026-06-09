@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
+import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../hooks/useLocation';
 import { haversineMetres } from '../../utils/distance';
 import { fetchWind, fetchElevation } from '../../utils/wind';
@@ -24,8 +25,9 @@ import type { WindData } from '../../utils/wind';
 import { buildCaddieAdvice } from '../../utils/caddie';
 import type { CaddieAdvice } from '../../utils/caddie';
 import CaddiePanel from '../../components/caddie/CaddiePanel';
+import { fetchHoleHistory, historyToContext } from '../../utils/holeHistory';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
-import type { Club, Coordinate, Hazard, HazardType, Hole, HoleScore } from '../../types';
+import type { Club, ClubType, Coordinate, Hazard, HazardType, Hole, HoleScore } from '../../types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -77,6 +79,7 @@ export default function ActiveRoundScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { activeRound, updateScore, setCurrentHole, endRound } = useRound();
+  const { user } = useAuth();
   const { location } = useLocation();
   const mapRef = useRef<MapView>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,15 +157,38 @@ export default function ActiveRoundScreen() {
     });
   }, [hazards, activeRound]);
 
-  // ── Load clubs + hazards once ───────────────────────────────────────────
+  // ── Load clubs (user_clubs preferred, fallback global) + hazards ───────
   useEffect(() => {
-    supabase.from('clubs').select('*').order('sort_order').then(({ data }) => {
+    const loadClubs = async () => {
+      if (user?.id) {
+        const { data: uc } = await supabase
+          .from('user_clubs')
+          .select('*')
+          .eq('user_id', user.id)
+          .not('carry_distance_metres', 'is', null)
+          .order('carry_distance_metres', { ascending: false });
+        if (uc && uc.length > 0) {
+          setClubs(uc.map((c: any) => ({
+            id: c.id as string,
+            name: c.club_name as string,
+            type: 'iron' as ClubType,
+            loft: null,
+            custom_name: null,
+            sort_order: 0,
+            carry_metres: c.carry_distance_metres as number,
+            carry_stddev_metres: null,
+          })));
+          return;
+        }
+      }
+      const { data } = await supabase.from('clubs').select('*').order('sort_order');
       if (data) setClubs(data as Club[]);
-    });
+    };
+    loadClubs();
     supabase.from('hazards').select('*').eq('course_id', '00000000-0000-0000-0000-000000000001').then(({ data }) => {
       if (data) setHazards(data as Hazard[]);
     });
-  }, []);
+  }, [user?.id]);
 
   // ── Fetch wind once when location first becomes available ───────────────
   useEffect(() => {
@@ -337,12 +363,14 @@ export default function ActiveRoundScreen() {
   useEffect(() => { goToNextHoleRef.current = goToNextHole; }, [goToNextHole]);
   useEffect(() => { goToPrevHoleRef.current = goToPrevHole; }, [goToPrevHole]);
 
-  // ── More Info caddie (with elevation fetch) ─────────────────────────────
+  // ── More Info caddie (with elevation + history) ─────────────────────────
   const handleCaddieMoreInfo = useCallback(async () => {
-    if (!location || !greenMid) return;
-    const [wind, greenElev] = await Promise.all([
+    if (!location || !greenMid || !activeRound || !hole) return;
+    const courseId = activeRound.round.course_id;
+    const [wind, greenElev, history] = await Promise.all([
       fetchWind(location.latitude, location.longitude),
       fetchElevation(greenMid.latitude, greenMid.longitude),
+      user?.id ? fetchHoleHistory(user.id, courseId, hole.number) : Promise.resolve(null),
     ]);
     const advice = buildCaddieAdvice({
       playerPos: location,
@@ -356,10 +384,14 @@ export default function ActiveRoundScreen() {
       greenElevation: greenElev ?? wind?.elevation_metres ?? 0,
     });
     if (advice) {
-      setCaddieAdvice(advice);
+      const historyLine = history ? historyToContext(history, hole.number) : '';
+      const enrichedAdvice = historyLine
+        ? { ...advice, context: advice.context + '\n' + historyLine }
+        : advice;
+      setCaddieAdvice(enrichedAdvice);
       setCaddieModalOpen(true);
     }
-  }, [location, greenMid, holeHazards, clubs]);
+  }, [location, greenMid, holeHazards, clubs, activeRound, hole, user?.id]);
 
   // ── Guard ───────────────────────────────────────────────────────────────
   if (!activeRound || !hole) {

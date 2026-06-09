@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StatusBar,
@@ -14,8 +15,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
+import { useAuth } from '../../context/AuthContext';
 import { calcDifferential } from '../../lib/handicap';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { callClaudeHaiku, buildDebriefPrompt } from '../../utils/anthropic';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type RootStackParamList = {
   PlayHome: undefined;
@@ -46,6 +49,12 @@ function ScoreCell({ score, par }: { score: number | null; par: number }) {
 export default function EndRoundScreen() {
   const navigation = useNavigation<Nav>();
   const { activeRound, endRound } = useRound();
+  const { profile } = useAuth();
+
+  const [roundSaved, setRoundSaved] = useState(false);
+  const [finishLoading, setFinishLoading] = useState(false);
+  const [debriefLoading, setDebriefLoading] = useState(false);
+  const [debriefTips, setDebriefTips] = useState<string | null>(null);
 
   const holes = activeRound?.holes ?? [];
   const scores = activeRound?.scores ?? {};
@@ -97,39 +106,71 @@ export default function EndRoundScreen() {
     : stats.toPar > 0 ? `+${stats.toPar}`
     : `${stats.toPar}`;
 
-  const handleFinish = useCallback(async () => {
-    if (!activeRound) return;
-    const { error } = await supabase
-      .from('rounds')
-      .update({
-        completed: true,
-        gross_total: stats.totalScore || null,
-        handicap_differential: differential != null ? Math.round(differential * 10) / 10 : null,
-      })
-      .eq('id', activeRound.round.id);
-
-    if (error) {
-      Alert.alert('Error', 'Failed to save round: ' + error.message);
-      return;
-    }
-
-    // Save hole scores
-    const scoreRows = holes
-      .filter((h) => scores[h.number]?.gross_score != null)
-      .map((h) => ({
-        round_id: activeRound.round.id,
-        hole_id: h.id,
-        hole_number: h.number,
-        ...scores[h.number],
-      }));
-
-    if (scoreRows.length > 0) {
-      await supabase.from('hole_scores').insert(scoreRows);
-    }
-
+  const handleGoHome = useCallback(() => {
     endRound();
     navigation.reset({ index: 0, routes: [{ name: 'PlayHome' }] });
-  }, [activeRound, stats, differential, holes, scores, endRound, navigation]);
+  }, [endRound, navigation]);
+
+  const handleFinish = useCallback(async () => {
+    if (!activeRound) return;
+    setFinishLoading(true);
+    try {
+      const { error } = await supabase
+        .from('rounds')
+        .update({
+          completed: true,
+          gross_total: stats.totalScore || null,
+          handicap_differential: differential != null ? Math.round(differential * 10) / 10 : null,
+        })
+        .eq('id', activeRound.round.id);
+
+      if (error) {
+        Alert.alert('Error', 'Failed to save round: ' + error.message);
+        return;
+      }
+
+      // Upsert hole scores (safe even if auto-saved during active round)
+      const scoreRows = holes
+        .filter((h) => scores[h.number]?.gross_score != null)
+        .map((h) => ({
+          round_id: activeRound.round.id,
+          hole_id: h.id,
+          hole_number: h.number,
+          ...scores[h.number],
+        }));
+
+      if (scoreRows.length > 0) {
+        await supabase.from('hole_scores').upsert(scoreRows, { onConflict: 'round_id,hole_number' });
+      }
+
+      setRoundSaved(true);
+
+      // Fetch AI debrief tips
+      setDebriefLoading(true);
+      try {
+        const girPct = stats.girTotal > 0 ? Math.round((stats.gir / stats.girTotal) * 100) : 0;
+        const firPct = stats.firTotal > 0 ? Math.round((stats.fir / stats.firTotal) * 100) : 0;
+        const { system, user: userMsg } = buildDebriefPrompt({
+          totalScore: stats.totalScore,
+          toPar: stats.toPar,
+          girPct,
+          firPct,
+          totalPutts: stats.totalPutts,
+          handicapIndex: profile?.handicap_index ?? null,
+          courseName: activeRound.course.name,
+          differential,
+        });
+        const tips = await callClaudeHaiku(system, userMsg);
+        setDebriefTips(tips);
+      } catch {
+        setDebriefTips('Could not load tips. Check EXPO_PUBLIC_ANTHROPIC_API_KEY.');
+      } finally {
+        setDebriefLoading(false);
+      }
+    } finally {
+      setFinishLoading(false);
+    }
+  }, [activeRound, stats, differential, holes, scores, profile]);
 
   const handleDiscard = useCallback(() => {
     Alert.alert(
@@ -284,17 +325,47 @@ export default function EndRoundScreen() {
           </View>
         )}
 
+        {/* AI Debrief */}
+        {roundSaved && (
+          <View style={styles.debriefCard}>
+            <View style={styles.debriefHeader}>
+              <Text style={styles.debriefIcon}>🤖</Text>
+              <Text style={styles.debriefTitle}>AI COACH TIPS</Text>
+            </View>
+            {debriefLoading ? (
+              <ActivityIndicator color={Colors.green} style={styles.debriefSpinner} />
+            ) : debriefTips ? (
+              <Text style={styles.debriefTips}>{debriefTips}</Text>
+            ) : null}
+          </View>
+        )}
+
         <View style={{ height: Spacing.xxl }} />
       </ScrollView>
 
       {/* Footer buttons */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.discardBtn} onPress={handleDiscard} activeOpacity={0.8}>
-          <Text style={styles.discardBtnText}>Discard</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.finishBtn} onPress={handleFinish} activeOpacity={0.8}>
-          <Text style={styles.finishBtnText}>Finish Round</Text>
-        </TouchableOpacity>
+        {roundSaved ? (
+          <TouchableOpacity style={styles.finishBtn} onPress={handleGoHome} activeOpacity={0.8}>
+            <Text style={styles.finishBtnText}>Back to Home</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+            <TouchableOpacity style={styles.discardBtn} onPress={handleDiscard} activeOpacity={0.8}>
+              <Text style={styles.discardBtnText}>Discard</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.finishBtn, finishLoading && { opacity: 0.7 }]}
+              onPress={handleFinish}
+              activeOpacity={0.8}
+              disabled={finishLoading}
+            >
+              {finishLoading
+                ? <ActivityIndicator color="#000" />
+                : <Text style={styles.finishBtnText}>Finish Round</Text>}
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -310,8 +381,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text },
-  headerDate: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2 },
+  headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, fontFamily: Font.bold },
+  headerDate: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2, fontFamily: Font.regular },
   scroll: { flex: 1 },
   scrollContent: { padding: Spacing.base },
 
@@ -325,14 +396,14 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.base,
     gap: Spacing.sm,
   },
-  heroScore: { fontSize: 72, fontWeight: FontWeight.black, color: Colors.text, lineHeight: 80 },
+  heroScore: { fontSize: 72, fontWeight: FontWeight.black, fontFamily: Font.black, color: Colors.text, lineHeight: 80 },
   toParBadge: {
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
   },
-  toParText: { fontSize: FontSize.md, fontWeight: FontWeight.bold },
-  heroLabel: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: Spacing.sm },
+  toParText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, fontFamily: Font.bold },
+  heroLabel: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: Spacing.sm, fontFamily: Font.regular },
 
   tableCard: {
     backgroundColor: Colors.surface1,
@@ -350,6 +421,7 @@ const styles = StyleSheet.create({
   tableHeaderText: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.textMuted,
     letterSpacing: 0.6,
   },
@@ -363,11 +435,11 @@ const styles = StyleSheet.create({
   },
   tableSubtotal: { backgroundColor: Colors.surface2 },
   tableFinalTotal: { backgroundColor: Colors.surface3 },
-  tableHole: { width: 44, fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text },
-  tablePar: { flex: 1, fontSize: FontSize.sm, color: Colors.textSecondary },
+  tableHole: { width: 44, fontSize: FontSize.sm, fontWeight: FontWeight.semibold, fontFamily: Font.semibold, color: Colors.text },
+  tablePar: { flex: 1, fontSize: FontSize.sm, color: Colors.textSecondary, fontFamily: Font.regular },
   tableScoreCell: { width: 64, alignItems: 'flex-end' },
-  tableTotal: { width: 64, textAlign: 'right', fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.text },
-  tableTotalFinal: { width: 64, textAlign: 'right', fontSize: FontSize.lg, fontWeight: FontWeight.black, color: Colors.text },
+  tableTotal: { width: 64, textAlign: 'right', fontSize: FontSize.base, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.text },
+  tableTotalFinal: { width: 64, textAlign: 'right', fontSize: FontSize.lg, fontWeight: FontWeight.black, fontFamily: Font.black, color: Colors.text },
   scoreCell: {
     borderWidth: 1,
     borderRadius: Radius.sm,
@@ -375,9 +447,9 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     alignItems: 'center',
   },
-  scoreCellText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
-  scoreCellDiff: { fontSize: FontSize.xs },
-  scoreCellEmpty: { fontSize: FontSize.sm, color: Colors.textMuted },
+  scoreCellText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, fontFamily: Font.bold },
+  scoreCellDiff: { fontSize: FontSize.xs, fontFamily: Font.medium },
+  scoreCellEmpty: { fontSize: FontSize.sm, color: Colors.textMuted, fontFamily: Font.regular },
 
   statsGrid: {
     flexDirection: 'row',
@@ -395,8 +467,8 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: Colors.border,
   },
-  statValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text },
-  statLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
+  statValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.text },
+  statLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4, fontFamily: Font.medium },
 
   handicapCard: {
     backgroundColor: Colors.surface1,
@@ -407,9 +479,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.base,
   },
-  handicapTitle: { fontSize: FontSize.sm, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
-  handicapValue: { fontSize: FontSize.xxxl, fontWeight: FontWeight.black, color: Colors.green, marginTop: Spacing.xs },
-  handicapNote: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: Spacing.sm, textAlign: 'center' },
+  handicapTitle: { fontSize: FontSize.sm, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, fontFamily: Font.medium },
+  handicapValue: { fontSize: FontSize.xxxl, fontWeight: FontWeight.black, fontFamily: Font.black, color: Colors.green, marginTop: Spacing.xs },
+  handicapNote: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: Spacing.sm, textAlign: 'center', fontFamily: Font.regular },
 
   practiceNote: {
     backgroundColor: Colors.surface1,
@@ -418,7 +490,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.base,
   },
-  practiceNoteText: { fontSize: FontSize.sm, color: Colors.textMuted },
+  practiceNoteText: { fontSize: FontSize.sm, color: Colors.textMuted, fontFamily: Font.regular },
+
+  debriefCard: {
+    backgroundColor: Colors.surface2,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.green + '44',
+    padding: Spacing.base,
+    marginBottom: Spacing.base,
+    gap: Spacing.sm,
+  },
+  debriefHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  debriefIcon: { fontSize: 18 },
+  debriefTitle: {
+    fontSize: 10,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    color: Colors.green,
+    letterSpacing: 0.8,
+  },
+  debriefSpinner: { marginVertical: Spacing.base },
+  debriefTips: {
+    fontSize: FontSize.sm,
+    fontFamily: Font.regular,
+    color: Colors.text,
+    lineHeight: 20,
+  },
 
   footer: {
     flexDirection: 'row',
@@ -438,7 +540,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  discardBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.red },
+  discardBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, fontFamily: Font.semibold, color: Colors.red },
   finishBtn: {
     flex: 2,
     height: 52,
@@ -447,5 +549,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  finishBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#000' },
+  finishBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: '#000' },
 });

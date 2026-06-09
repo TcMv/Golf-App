@@ -16,7 +16,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
 import { useAuth } from '../../context/AuthContext';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { fetchWind } from '../../utils/wind';
+import { callClaudeHaiku, buildBriefingPrompt } from '../../utils/anthropic';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Course, Hole, Round, TeeSet } from '../../types';
 
 type RootStackParamList = {
@@ -43,7 +45,7 @@ const TEE_DOT_COLORS: Record<string, string> = {
 export default function StartRoundScreen() {
   const navigation = useNavigation<Nav>();
   const { startRound } = useRound();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const [roundType, setRoundType] = useState<RoundType>('18');
   const [startingHole, setStartingHole] = useState(1);
@@ -51,6 +53,8 @@ export default function StartRoundScreen() {
   const [loading, setLoading] = useState(false);
   const [teeSets, setTeeSets] = useState<TeeSet[]>([]);
   const [selectedTeeSet, setSelectedTeeSet] = useState<TeeSet | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [briefingTips, setBriefingTips] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -68,6 +72,29 @@ export default function StartRoundScreen() {
   }, []);
 
   const holesPlayed = roundType === '18' ? 18 : 9;
+
+  const handleGetBriefing = useCallback(async () => {
+    if (!selectedTeeSet) return;
+    setBriefingLoading(true);
+    setBriefingTips(null);
+    try {
+      const wind = await fetchWind(-26.6317, 152.9587);
+      const { system, user: userMsg } = buildBriefingPrompt({
+        courseName: 'Nambour Golf Club',
+        courseRating: selectedTeeSet.course_rating,
+        slopeRating: selectedTeeSet.slope_rating,
+        teeColour: selectedTeeSet.colour,
+        windLabel: wind?.label ?? 'Calm',
+        handicapIndex: profile?.handicap_index ?? null,
+      });
+      const tips = await callClaudeHaiku(system, userMsg);
+      setBriefingTips(tips);
+    } catch {
+      setBriefingTips('Could not load briefing. Check EXPO_PUBLIC_ANTHROPIC_API_KEY.');
+    } finally {
+      setBriefingLoading(false);
+    }
+  }, [selectedTeeSet, profile]);
 
   const handleStart = useCallback(async () => {
     if (!selectedTeeSet) {
@@ -214,6 +241,34 @@ export default function StartRoundScreen() {
             </TouchableOpacity>
           );
         })}
+
+        {/* AI Pre-round Briefing */}
+        <Text style={styles.sectionLabel}>AI Caddie Briefing</Text>
+        <View style={styles.briefingCard}>
+          {briefingTips ? (
+            <>
+              <View style={styles.briefingHeader}>
+                <Text style={styles.briefingIcon}>🤖</Text>
+                <Text style={styles.briefingTitle}>PRE-ROUND TIPS</Text>
+              </View>
+              <Text style={styles.briefingTips}>{briefingTips}</Text>
+              <TouchableOpacity onPress={handleGetBriefing} activeOpacity={0.7} style={styles.briefingRefreshBtn}>
+                <Text style={styles.briefingRefreshText}>Refresh</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={styles.briefingGetBtn}
+              onPress={handleGetBriefing}
+              activeOpacity={0.8}
+              disabled={briefingLoading || !selectedTeeSet}
+            >
+              {briefingLoading
+                ? <ActivityIndicator color={Colors.green} />
+                : <Text style={styles.briefingGetBtnText}>⛳  Get AI Briefing</Text>}
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Exclude from handicap */}
         <View style={styles.toggleRow}>
@@ -381,6 +436,51 @@ const styles = StyleSheet.create({
   },
   toggleLabel: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Colors.text },
   toggleSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  briefingCard: {
+    backgroundColor: Colors.surface2,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.green + '44',
+    padding: Spacing.base,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  briefingHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  briefingIcon: { fontSize: 18 },
+  briefingTitle: {
+    fontSize: 10,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    color: Colors.green,
+    letterSpacing: 0.8,
+  },
+  briefingTips: {
+    fontSize: FontSize.sm,
+    fontFamily: Font.regular,
+    color: Colors.text,
+    lineHeight: 20,
+  },
+  briefingGetBtn: {
+    height: 44,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.greenMuted,
+    borderWidth: 1,
+    borderColor: Colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  briefingGetBtnText: {
+    fontSize: FontSize.sm,
+    fontFamily: Font.semibold,
+    fontWeight: FontWeight.semibold,
+    color: Colors.green,
+  },
+  briefingRefreshBtn: { alignSelf: 'flex-end' },
+  briefingRefreshText: {
+    fontSize: FontSize.xs,
+    fontFamily: Font.medium,
+    color: Colors.textMuted,
+  },
   footer: {
     padding: Spacing.base,
     paddingBottom: Spacing.xl,
