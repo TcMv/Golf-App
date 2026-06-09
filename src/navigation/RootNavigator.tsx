@@ -84,13 +84,12 @@ function MainTabs() {
 
 function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {!onboardingDone ? (
-        <>
-          <Stack.Screen name="Welcome" component={WelcomeScreen} />
-          <Stack.Screen name="HandicapSetup" component={HandicapSetupScreen} />
-        </>
-      ) : null}
+    <Stack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName={onboardingDone ? 'Main' : 'Welcome'}
+    >
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="HandicapSetup" component={HandicapSetupScreen} />
       <Stack.Screen name="MyBagSetup" component={MyBagSetupScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="StartRound" component={StartRoundScreen} options={{ presentation: 'modal' }} />
