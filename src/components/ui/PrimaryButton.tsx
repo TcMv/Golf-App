@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   ViewStyle,
 } from 'react-native';
-import { Colors, FontSize, FontWeight, Radius } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius } from '../../constants/theme';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +65,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
   },
   disabled: {
     opacity: 0.4,

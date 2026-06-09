@@ -4,7 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, FontSize, FontWeight } from '../constants/theme';
+import { Colors, Font, FontSize, FontWeight } from '../constants/theme';
 
 // Onboarding
 import WelcomeScreen from '../screens/onboarding/WelcomeScreen';
@@ -46,6 +46,7 @@ function MainTabs() {
         tabBarLabelStyle: {
           fontSize: FontSize.xs,
           fontWeight: FontWeight.medium,
+          fontFamily: Font.medium,
         },
         tabBarIcon: ({ focused, color, size }) => {
           const icons: Record<string, [string, string]> = {

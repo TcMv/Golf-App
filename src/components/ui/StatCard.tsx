@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,12 +49,14 @@ const styles = StyleSheet.create({
   value: {
     fontSize: FontSize.xxl,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
     lineHeight: FontSize.xxl * 1.15,
   },
   label: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
     color: Colors.textMuted,
     marginTop: Spacing.xs,
     textTransform: 'uppercase',
@@ -63,6 +65,7 @@ const styles = StyleSheet.create({
   },
   subLabel: {
     fontSize: FontSize.xs,
+    fontFamily: Font.regular,
     color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',

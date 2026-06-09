@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { FairwayResult, GIRMissDirection, Hole, HoleScore } from '../../types';
 
 const { height: SCREEN_H } = Dimensions.get('window');
@@ -299,10 +299,12 @@ const styles = StyleSheet.create({
   holeTitle: {
     fontSize: FontSize.xl,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
   },
   holeMeta: {
     fontSize: FontSize.sm,
+    fontFamily: Font.regular,
     color: Colors.textMuted,
     marginTop: 2,
   },
@@ -325,6 +327,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
@@ -349,11 +352,13 @@ const styles = StyleSheet.create({
   scoreBtnText: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: Colors.textSecondary,
   },
   scoreBtnTextSelected: {
     color: '#000000',
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -389,6 +394,7 @@ const styles = StyleSheet.create({
   choiceBtnText: {
     fontSize: FontSize.sm,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
     color: Colors.textSecondary,
   },
   choiceBtnTextActive: {
@@ -416,6 +422,7 @@ const styles = StyleSheet.create({
   missBtnText: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
     color: Colors.textSecondary,
   },
   missBtnTextActive: {
@@ -444,6 +451,7 @@ const styles = StyleSheet.create({
   stepperLabel: {
     fontSize: FontSize.base,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
     color: Colors.text,
   },
   stepperControls: {
@@ -467,12 +475,14 @@ const styles = StyleSheet.create({
   stepBtnText: {
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
     lineHeight: FontSize.lg + 2,
   },
   stepValue: {
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
     width: 28,
     textAlign: 'center',
@@ -496,6 +506,7 @@ const styles = StyleSheet.create({
   backBtnText: {
     fontSize: FontSize.base,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: Colors.textSecondary,
   },
   saveNextBtn: {
@@ -512,6 +523,7 @@ const styles = StyleSheet.create({
   saveNextBtnText: {
     fontSize: FontSize.base,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: '#000000',
   },
 });

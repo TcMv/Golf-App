@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Colors, FontSize, FontWeight } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight } from '../../constants/theme';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -119,9 +119,11 @@ const styles = StyleSheet.create({
   },
   scoreText: {
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
   },
   noScoreText: {
     color: Colors.textMuted,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
   },
 });

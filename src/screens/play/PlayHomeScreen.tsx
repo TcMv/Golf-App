@@ -14,7 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Round } from '../../types';
 
 // ---------------------------------------------------------------------------
@@ -301,6 +301,7 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: FontSize.base,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.green,
     letterSpacing: 0.5,
   },
@@ -349,22 +350,26 @@ const styles = StyleSheet.create({
   courseTagText: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.green,
   },
   courseTagLabel: {
     fontSize: FontSize.xs,
     color: Colors.textMuted,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
   },
   courseName: {
     fontSize: FontSize.xl,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
     marginBottom: Spacing.xs,
     lineHeight: FontSize.xl * 1.2,
   },
   courseLocation: {
     fontSize: FontSize.sm,
+    fontFamily: Font.regular,
     color: Colors.textSecondary,
     marginBottom: Spacing.lg,
   },
@@ -383,6 +388,7 @@ const styles = StyleSheet.create({
   startBtnLabel: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: '#000000',
   },
 
@@ -398,6 +404,7 @@ const styles = StyleSheet.create({
   statsTitle: {
     fontSize: FontSize.sm,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: Colors.textSecondary,
     marginBottom: Spacing.base,
     textTransform: 'uppercase',
@@ -419,10 +426,12 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: FontSize.xxl,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
   },
   statLabel: {
     fontSize: FontSize.xs,
+    fontFamily: Font.regular,
     color: Colors.textMuted,
     marginTop: 2,
     textTransform: 'uppercase',
@@ -439,12 +448,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: Colors.text,
   },
   viewAllBtn: {
     fontSize: FontSize.sm,
     color: Colors.green,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
   },
 
   // Rounds card
@@ -473,10 +484,12 @@ const styles = StyleSheet.create({
   roundDate: {
     fontSize: FontSize.base,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
     color: Colors.text,
   },
   roundDiff: {
     fontSize: FontSize.xs,
+    fontFamily: Font.regular,
     color: Colors.textMuted,
   },
   roundRight: {
@@ -487,6 +500,7 @@ const styles = StyleSheet.create({
   roundScore: {
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
   },
   toParRow: {
@@ -502,6 +516,7 @@ const styles = StyleSheet.create({
   toParText: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
   },
   chevron: {
     fontSize: FontSize.xl,
@@ -524,5 +539,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.base,
     color: Colors.textSecondary,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
   },
 });
