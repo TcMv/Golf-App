@@ -24,8 +24,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
     return this.props.children;
   }
 }
+
 import {
-  DrawingManager,
   GoogleMap,
   LoadScript,
   Marker,
@@ -34,7 +34,6 @@ import {
 import { supabase } from './lib/supabase';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
-const LIBS: ('drawing')[] = ['drawing'];
 
 type LatLng = { lat: number; lng: number };
 type ZoneType = 'green' | 'fairway';
@@ -65,6 +64,7 @@ const MAP_OPTIONS: google.maps.MapOptions = {
   rotateControl: false,
   tilt: 0,
   clickableIcons: false,
+  disableDoubleClickZoom: true,
 };
 
 export default function ZoneEditor() {
@@ -74,8 +74,8 @@ export default function ZoneEditor() {
   const [holeNumber, setHoleNumber] = useState<number | null>(null);
   const [allZones, setAllZones] = useState<HoleZone[]>([]);
   const [drawing, setDrawing] = useState<ZoneType | null>(null);
+  const [draftCoords, setDraftCoords] = useState<LatLng[]>([]);
   const [saving, setSaving] = useState(false);
-  const [mapsReady, setMapsReady] = useState(false);
 
   const mapRef = useRef<google.maps.Map | null>(null);
   // Always-current ref so polygon edit listeners never capture stale saveZone
@@ -134,15 +134,24 @@ export default function ZoneEditor() {
       mapRef.current.setZoom(19);
     }
     setDrawing(null);
+    setDraftCoords([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hole?.id]);
 
   // Esc cancels drawing
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawing(null); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setDrawing(null); setDraftCoords([]); }
+    };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Cursor crosshair while drawing
+  useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.setOptions({ draggableCursor: drawing ? 'crosshair' : '' });
+  }, [drawing]);
 
   // ── Persistence ─────────────────────────────────────────────────
 
@@ -174,18 +183,23 @@ export default function ZoneEditor() {
 
   // ── Drawing ──────────────────────────────────────────────────────
 
-  const onPolygonComplete = useCallback((polygon: google.maps.Polygon) => {
-    const path = polygon.getPath();
-    const coords: LatLng[] = Array.from({ length: path.getLength() }, (_, i) => ({
-      lat: path.getAt(i).lat(),
-      lng: path.getAt(i).lng(),
-    }));
-    polygon.setMap(null); // remove the draw overlay; we render our own Polygon
-    if (drawing) void saveZoneRef.current(drawing, coords);
+  const onMapClick = useCallback((e: google.maps.MapMouseEvent) => {
+    if (!drawing || !e.latLng) return;
+    setDraftCoords(prev => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
+  }, [drawing]);
+
+  // dblclick fires a click event immediately before it, so slice off that last point
+  const onMapDblClick = useCallback((_e: google.maps.MapMouseEvent) => {
+    if (!drawing) return;
+    setDraftCoords(prev => {
+      const coords = prev.length > 1 ? prev.slice(0, -1) : prev;
+      if (coords.length >= 3) void saveZoneRef.current(drawing, coords);
+      return [];
+    });
     setDrawing(null);
   }, [drawing]);
 
-  // After drawing, polygons are editable — attach listeners to capture vertex drags
+  // After saving, polygons are editable — attach listeners to capture vertex drags
   const attachEditListeners = useCallback((polygon: google.maps.Polygon, type: ZoneType) => {
     const sync = () => {
       const path = polygon.getPath();
@@ -231,7 +245,7 @@ export default function ZoneEditor() {
 
   return (
     <ErrorBoundary>
-    <LoadScript googleMapsApiKey={API_KEY} libraries={LIBS} onLoad={() => setMapsReady(true)}>
+    <LoadScript googleMapsApiKey={API_KEY}>
       <div style={S.root}>
 
         {/* ── Sidebar ──────────────────────────────────────────── */}
@@ -297,9 +311,10 @@ export default function ZoneEditor() {
                   borderColor: drawing === 'green' || greenZone ? '#4caf50' : '#333',
                   color: drawing === 'green' ? '#000' : greenZone ? '#4caf50' : '#888',
                 }}
-                onClick={() => setDrawing(d => d === 'green' ? null : 'green')}
+                onClick={() => { setDrawing(d => d === 'green' ? null : 'green'); setDraftCoords([]); }}
               >
-                {drawing === 'green' ? '✏ Drawing…'
+                {drawing === 'green'
+                  ? `✏ Drawing… (${draftCoords.length} pts)`
                   : greenZone ? `✓ Green  (${greenZone.coordinates.length} pts)`
                   : '＋ Draw Green'}
               </button>
@@ -318,9 +333,10 @@ export default function ZoneEditor() {
                   borderColor: drawing === 'fairway' || fairwayZone ? '#ffc107' : '#333',
                   color: drawing === 'fairway' ? '#000' : fairwayZone ? '#ffc107' : '#888',
                 }}
-                onClick={() => setDrawing(d => d === 'fairway' ? null : 'fairway')}
+                onClick={() => { setDrawing(d => d === 'fairway' ? null : 'fairway'); setDraftCoords([]); }}
               >
-                {drawing === 'fairway' ? '✏ Drawing…'
+                {drawing === 'fairway'
+                  ? `✏ Drawing… (${draftCoords.length} pts)`
                   : fairwayZone ? `✓ Fairway  (${fairwayZone.coordinates.length} pts)`
                   : '＋ Draw Fairway'}
               </button>
@@ -334,7 +350,7 @@ export default function ZoneEditor() {
 
           {drawing && (
             <div style={S.drawHint}>
-              Click to place vertices · Double-click or click the first point to close the polygon · <kbd>Esc</kbd> to cancel
+              Click to place vertices · <strong>Double-click</strong> to close &amp; save · <kbd>Esc</kbd> to cancel
             </div>
           )}
 
@@ -344,6 +360,8 @@ export default function ZoneEditor() {
             zoom={19}
             options={MAP_OPTIONS}
             onLoad={map => { mapRef.current = map; }}
+            onClick={onMapClick}
+            onDblClick={onMapDblClick}
           >
             {greenZone && (
               <Polygon
@@ -399,23 +417,37 @@ export default function ZoneEditor() {
                 }}
               />
             )}
-            {mapsReady && drawing && (
-              <DrawingManager
-                drawingMode={'polygon' as google.maps.drawing.OverlayType}
+
+            {/* Draft polygon while drawing */}
+            {drawing && draftCoords.length >= 2 && (
+              <Polygon
+                paths={draftCoords}
                 options={{
-                  drawingControl: false,
-                  polygonOptions: {
-                    fillColor: drawing === 'green' ? '#4caf50' : '#ffc107',
-                    fillOpacity: 0.25,
-                    strokeColor: drawing === 'green' ? '#4caf50' : '#ffc107',
-                    strokeWeight: 2,
-                    editable: false,
-                    clickable: false,
-                  },
+                  fillColor: drawing === 'green' ? '#4caf50' : '#ffc107',
+                  fillOpacity: 0.18,
+                  strokeColor: drawing === 'green' ? '#4caf50' : '#ffc107',
+                  strokeWeight: 2,
+                  strokeOpacity: 0.7,
+                  clickable: false,
+                  editable: false,
                 }}
-                onPolygonComplete={onPolygonComplete}
               />
             )}
+            {/* Draft vertex dots */}
+            {drawing && draftCoords.map((pt, i) => (
+              <Marker
+                key={`draft-${i}`}
+                position={pt}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: i === 0 ? 6 : 4,
+                  fillColor: drawing === 'green' ? '#4caf50' : '#ffc107',
+                  fillOpacity: 1,
+                  strokeColor: '#fff',
+                  strokeWeight: 2,
+                }}
+              />
+            ))}
           </GoogleMap>
         </div>
       </div>
