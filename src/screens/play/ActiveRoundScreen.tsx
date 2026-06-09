@@ -41,6 +41,16 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
+function bearingTo(fromLat: number, fromLng: number, toLat: number, toLng: number): number {
+  const r = Math.PI / 180;
+  const dLon = (toLng - fromLng) * r;
+  const lat1 = fromLat * r;
+  const lat2 = toLat * r;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
 type ShotStatus = 'idle' | 'tracking' | 'selecting_club';
 
 function DistancePill({ front, mid, back }: { front: number | null; mid: number | null; back: number | null }) {
@@ -178,25 +188,34 @@ export default function ActiveRoundScreen() {
 
   const staticDist = hole?.white_metres ?? null;
 
-  const mapRegion = useMemo(() => {
-    if (greenMid) {
-      return {
-        latitude: greenMid.latitude,
-        longitude: greenMid.longitude,
-        latitudeDelta: 0.003,
-        longitudeDelta: 0.003,
-      };
-    }
-    if (activeRound?.course) {
-      return {
-        latitude: activeRound.course.lat,
-        longitude: activeRound.course.lng,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
-    }
-    return undefined;
-  }, [greenMid, activeRound]);
+  // Fly to tee oriented toward green whenever the hole changes
+  useEffect(() => {
+    if (!hole || !mapRef.current) return;
+    const hasTee = hole.tee_lat != null && hole.tee_lng != null;
+    const hasGreen = hole.green_mid_lat != null && hole.green_mid_lng != null;
+    if (!hasTee && !hasGreen) return;
+
+    const teeLat = hasTee ? hole.tee_lat! : hole.green_mid_lat!;
+    const teeLng = hasTee ? hole.tee_lng! : hole.green_mid_lng!;
+    const greenLat = hasGreen ? hole.green_mid_lat! : teeLat;
+    const greenLng = hasGreen ? hole.green_mid_lng! : teeLng;
+
+    const heading = hasTee && hasGreen ? bearingTo(teeLat, teeLng, greenLat, greenLng) : 0;
+
+    // Place camera 35% of the way from tee toward green so tee is near bottom
+    const centerLat = teeLat + (greenLat - teeLat) * 0.35;
+    const centerLng = teeLng + (greenLng - teeLng) * 0.35;
+
+    const distM = hasTee && hasGreen
+      ? haversineMetres({ latitude: teeLat, longitude: teeLng }, { latitude: greenLat, longitude: greenLng })
+      : 300;
+    const zoom = distM < 200 ? 18 : distM < 350 ? 17.5 : distM < 500 ? 17 : 16.5;
+
+    mapRef.current.animateCamera(
+      { center: { latitude: centerLat, longitude: centerLng }, heading, zoom, pitch: 0 },
+      { duration: 800 },
+    );
+  }, [hole?.number]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const goToPrevHole = useCallback(() => {
     if (!activeRound || activeRound.currentHoleNumber <= 1) return;
@@ -330,7 +349,6 @@ export default function ActiveRoundScreen() {
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_GOOGLE}
         mapType="satellite"
-        region={mapRegion}
         initialRegion={{
           latitude: -26.6317,
           longitude: 152.9587,
@@ -339,8 +357,8 @@ export default function ActiveRoundScreen() {
         }}
         showsUserLocation
         showsMyLocationButton={false}
-        showsCompass={false}
-        rotateEnabled={false}
+        showsCompass
+        rotateEnabled
       >
         {/* Green mid marker */}
         {greenMid && (
