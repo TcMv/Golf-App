@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
-import type { FairwayResult, GIRMissDirection, Hole, HoleScore } from '../../types';
+import type { FairwayResult, GIRMissDirection, Hole, HoleScore, Shot } from '../../types';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_H * 0.88;
@@ -20,6 +20,7 @@ interface Props {
   onClose: () => void;
   hole: Hole;
   initialScore?: Partial<HoleScore>;
+  shots?: Shot[];
   onSave: (score: Partial<HoleScore>) => void;
   onSaveAndNext: (score: Partial<HoleScore>) => void;
 }
@@ -66,6 +67,7 @@ export default function HoleScoringSheet({
   onClose,
   hole,
   initialScore,
+  shots,
   onSave,
   onSaveAndNext,
 }: Props) {
@@ -79,17 +81,65 @@ export default function HoleScoringSheet({
   const [chips, setChips] = useState(0);
   const [sandShots, setSandShots] = useState(0);
   const [penalties, setPenalties] = useState(0);
+  const [firFromShots, setFirFromShots] = useState(false);
+  const [girFromShots, setGirFromShots] = useState(false);
+
+  // Dynamic stepper maxes — prevents impossible totals
+  const maxPutts = grossScore != null ? Math.max(0, grossScore - chips - sandShots - penalties) : 6;
+  const maxChips = grossScore != null ? Math.max(0, grossScore - putts - sandShots - penalties) : 5;
+  const maxSandShots = grossScore != null ? Math.max(0, grossScore - putts - chips - penalties) : 4;
+  const maxPenalties = grossScore != null ? Math.max(0, grossScore - putts - chips - sandShots) : 4;
+  const unaccountedStrokes = grossScore != null ? grossScore - putts - chips - sandShots - penalties : null;
 
   useEffect(() => {
     if (visible) {
+      const existingFir = initialScore?.fairway_hit ?? 'na';
+      const existingGir = initialScore?.gir ?? null;
+
       setGrossScore(initialScore?.gross_score ?? null);
-      setFairwayHit(initialScore?.fairway_hit ?? 'na');
-      setGir(initialScore?.gir ?? null);
-      setGirMiss(initialScore?.gir_miss_direction ?? 'na');
       setPutts(initialScore?.putts ?? 2);
       setChips(initialScore?.chips ?? 0);
       setSandShots(initialScore?.sand_shots ?? 0);
       setPenalties(initialScore?.penalties ?? 0);
+
+      // Auto-populate FIR from tracked shots (only when not already manually set)
+      let fir: FairwayResult = existingFir;
+      let fFromShots = false;
+      if (existingFir === 'na' && shots && shots.length > 0 && hole.par >= 4) {
+        const teeShot = shots.find(s => s.shot_number === 1);
+        if (teeShot?.target_type === 'fairway') {
+          if (teeShot.outcome === 'hit') { fir = 'hit'; fFromShots = true; }
+          else if (teeShot.miss_direction === 'left') { fir = 'left'; fFromShots = true; }
+          else if (teeShot.miss_direction === 'right') { fir = 'right'; fFromShots = true; }
+        }
+      }
+      setFairwayHit(fir);
+      setFirFromShots(fFromShots);
+
+      // Auto-populate GIR from tracked shots (only when not already manually set)
+      let girVal: boolean | null = existingGir;
+      let girMissVal: GIRMissDirection = initialScore?.gir_miss_direction ?? 'na';
+      let gFromShots = false;
+      if (existingGir === null && shots && shots.length > 0) {
+        // A shot ending on the green tells us GIR status directly
+        const greenShot = shots.find(s => s.end_lie === 'green');
+        if (greenShot) {
+          girVal = greenShot.shot_number <= hole.par - 2;
+          girMissVal = 'na';
+          gFromShots = true;
+        } else {
+          // No green reached — use the approach shot miss direction
+          const approachShot = [...shots].reverse().find(s => s.target_type === 'green');
+          if (approachShot) {
+            girVal = false;
+            girMissVal = (approachShot.miss_direction ?? 'na') as GIRMissDirection;
+            gFromShots = true;
+          }
+        }
+      }
+      setGir(girVal);
+      setGirMiss(girMissVal);
+      setGirFromShots(gFromShots);
 
       Animated.spring(slideAnim, {
         toValue: 0,
@@ -104,12 +154,28 @@ export default function HoleScoringSheet({
         useNativeDriver: true,
       }).start();
     }
-  }, [visible, initialScore, slideAnim]);
+  }, [visible, initialScore, shots, hole, slideAnim]);
+
+  // Selecting a score clamps steppers so the total never exceeds it
+  const handleScoreSelect = useCallback((n: number) => {
+    setGrossScore(n);
+    const total = putts + chips + sandShots + penalties;
+    if (total <= n) return;
+    let rem = total - n;
+    const reducePen = Math.min(penalties, rem); rem -= reducePen;
+    const reduceSand = Math.min(sandShots, rem); rem -= reduceSand;
+    const reduceChips = Math.min(chips, rem); rem -= reduceChips;
+    const reducePutts = Math.min(putts, rem);
+    if (reducePen > 0) setPenalties(p => p - reducePen);
+    if (reduceSand > 0) setSandShots(s => s - reduceSand);
+    if (reduceChips > 0) setChips(c => c - reduceChips);
+    if (reducePutts > 0) setPutts(p => p - reducePutts);
+  }, [putts, chips, sandShots, penalties]);
 
   const buildScore = useCallback((): Partial<HoleScore> => ({
     gross_score: grossScore,
     fairway_hit: fairwayHit,
-    gir: gir,
+    gir,
     gir_miss_direction: girMiss,
     putts,
     chips,
@@ -118,16 +184,23 @@ export default function HoleScoringSheet({
   }), [grossScore, fairwayHit, gir, girMiss, putts, chips, sandShots, penalties]);
 
   const isPar4or5 = hole.par >= 4;
-  const scoreNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+  // Live tally
+  const tallyParts: string[] = [];
+  if (unaccountedStrokes != null && unaccountedStrokes > 0) {
+    tallyParts.push(`${unaccountedStrokes} ${unaccountedStrokes === 1 ? 'approach' : 'approach/tee'}`);
+  }
+  if (putts > 0) tallyParts.push(`${putts} ${putts === 1 ? 'putt' : 'putts'}`);
+  if (chips > 0) tallyParts.push(`${chips} ${chips === 1 ? 'chip' : 'chips'}`);
+  if (sandShots > 0) tallyParts.push(`${sandShots} sand`);
+  if (penalties > 0) tallyParts.push(`${penalties} ${penalties === 1 ? 'penalty' : 'penalties'}`);
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
       <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
-        {/* Handle */}
         <View style={styles.handle} />
 
-        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.holeTitle}>Hole {hole.number}</Text>
@@ -142,7 +215,7 @@ export default function HoleScoringSheet({
           {/* Score picker */}
           <Text style={styles.sectionLabel}>Score</Text>
           <View style={styles.scoreRow}>
-            {scoreNumbers.map((n) => {
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
               const selected = grossScore === n;
               const diff = n - hole.par;
               let bg = Colors.surface3;
@@ -157,7 +230,7 @@ export default function HoleScoringSheet({
                 <TouchableOpacity
                   key={n}
                   style={[styles.scoreBtn, selected && { backgroundColor: bg }]}
-                  onPress={() => setGrossScore(n)}
+                  onPress={() => handleScoreSelect(n)}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.scoreBtnText, selected && styles.scoreBtnTextSelected]}>
@@ -168,16 +241,19 @@ export default function HoleScoringSheet({
             })}
           </View>
 
-          {/* Fairway hit (par 4 and par 5 only) */}
+          {/* Fairway hit — par 4/5 only */}
           {isPar4or5 && (
             <>
-              <Text style={styles.sectionLabel}>Fairway</Text>
+              <View style={styles.sectionRow}>
+                <Text style={styles.sectionLabelInline}>Fairway</Text>
+                {firFromShots && <Text style={styles.autoTag}>· from tracking</Text>}
+              </View>
               <View style={styles.buttonRow}>
                 {(['left', 'hit', 'right'] as FairwayResult[]).map((val) => (
                   <TouchableOpacity
                     key={val}
                     style={[styles.choiceBtn, fairwayHit === val && styles.choiceBtnActive]}
-                    onPress={() => setFairwayHit(val)}
+                    onPress={() => { setFairwayHit(val); setFirFromShots(false); }}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.choiceBtnIcon}>
@@ -193,11 +269,14 @@ export default function HoleScoringSheet({
           )}
 
           {/* GIR */}
-          <Text style={styles.sectionLabel}>Green in Regulation</Text>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionLabelInline}>Green in Regulation</Text>
+            {girFromShots && <Text style={styles.autoTag}>· from tracking</Text>}
+          </View>
           <View style={styles.buttonRow}>
             <TouchableOpacity
               style={[styles.choiceBtn, styles.choiceBtnWide, gir === true && styles.choiceBtnActive]}
-              onPress={() => { setGir(true); setGirMiss('na'); }}
+              onPress={() => { setGir(true); setGirMiss('na'); setGirFromShots(false); }}
               activeOpacity={0.7}
             >
               <Text style={styles.choiceBtnIcon}>✓</Text>
@@ -205,7 +284,7 @@ export default function HoleScoringSheet({
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.choiceBtn, styles.choiceBtnWide, gir === false && styles.choiceBtnActiveDanger]}
-              onPress={() => setGir(false)}
+              onPress={() => { setGir(false); setGirFromShots(false); }}
               activeOpacity={0.7}
             >
               <Text style={styles.choiceBtnIcon}>✕</Text>
@@ -230,21 +309,30 @@ export default function HoleScoringSheet({
             </View>
           )}
 
-          {/* Steppers */}
+          {/* Steppers with score-aware maxes */}
           <View style={styles.steppersCard}>
-            <Stepper label="Putts" value={putts} min={0} max={6} onChange={setPutts} />
+            <Stepper label="Putts" value={putts} min={0} max={maxPutts} onChange={setPutts} />
             <View style={styles.stepDivider} />
-            <Stepper label="Chips" value={chips} min={0} max={5} onChange={setChips} />
+            <Stepper label="Chips / pitches" value={chips} min={0} max={maxChips} onChange={setChips} />
             <View style={styles.stepDivider} />
-            <Stepper label="Sand shots" value={sandShots} min={0} max={4} onChange={setSandShots} />
+            <Stepper label="Sand shots" value={sandShots} min={0} max={maxSandShots} onChange={setSandShots} />
             <View style={styles.stepDivider} />
-            <Stepper label="Penalties" value={penalties} min={0} max={4} onChange={setPenalties} />
+            <Stepper label="Penalties" value={penalties} min={0} max={maxPenalties} onChange={setPenalties} />
           </View>
+
+          {/* Live tally */}
+          {grossScore != null && tallyParts.length > 0 && (
+            <View style={styles.tallyCard}>
+              <Text style={styles.tallyText}>
+                {tallyParts.join(' · ')}{'  =  '}
+                <Text style={styles.tallyScore}>{grossScore}</Text>
+              </Text>
+            </View>
+          )}
 
           <View style={{ height: Spacing.xxl }} />
         </ScrollView>
 
-        {/* Footer */}
         <View style={styles.footer}>
           <TouchableOpacity style={styles.backBtn} onPress={onClose} activeOpacity={0.7}>
             <Text style={styles.backBtnText}>Back</Text>
@@ -340,6 +428,26 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginTop: Spacing.base,
     marginBottom: Spacing.sm,
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.base,
+    marginBottom: Spacing.sm,
+  },
+  sectionLabelInline: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  autoTag: {
+    fontSize: FontSize.xs,
+    fontFamily: Font.semibold,
+    color: Colors.green,
   },
   scoreRow: {
     flexDirection: 'row',
@@ -493,6 +601,24 @@ const styles = StyleSheet.create({
     color: Colors.text,
     width: 28,
     textAlign: 'center',
+  },
+  tallyCard: {
+    marginTop: Spacing.base,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.surface2,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tallyText: {
+    fontSize: FontSize.sm,
+    fontFamily: Font.medium,
+    color: Colors.textSecondary,
+  },
+  tallyScore: {
+    fontFamily: Font.bold,
+    color: Colors.text,
   },
   footer: {
     flexDirection: 'row',

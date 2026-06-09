@@ -742,6 +742,7 @@ export default function ActiveRoundScreen() {
         onClose={() => setScoringOpen(false)}
         hole={hole}
         initialScore={currentScore}
+        shots={holeShots}
         onSave={score => {
           void persistScore(score);
           setScoringOpen(false);
