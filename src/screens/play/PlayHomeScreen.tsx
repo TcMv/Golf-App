@@ -23,7 +23,7 @@ import { useRound } from '../../context/RoundContext';
 import { useUserStats, xpProgress } from '../../hooks/useUserStats';
 import { loadWeeklyChallenge, processPracticeActivity } from '../../utils/gamification';
 import { calcHandicapIndex } from '../../lib/handicap';
-import { calculateRoundPar, monthStartString } from '../../utils/homeDashboard';
+import { calculateRoundPar, groupHolesByCourse, monthStartString } from '../../utils/homeDashboard';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,7 @@ export default function PlayHomeScreen() {
   // Loading States
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Data States
   const [recentRound, setRecentRound] = useState<RecentRound | null>(null);
@@ -103,8 +104,10 @@ export default function PlayHomeScreen() {
       setLoading(false);
       return;
     }
+    setLoadError(null);
     try {
-      // 1. Fetch completed rounds with holes to calculate scorecard totals
+      // 1. Fetch completed rounds. Course holes are loaded separately because
+      // rounds and holes do not have a direct PostgREST relationship.
       const { data: roundsData, error: roundsError } = await supabase
         .from('rounds')
         .select(`
@@ -117,8 +120,7 @@ export default function PlayHomeScreen() {
           course_id,
           holes_played,
           starting_hole,
-          courses:course_id ( name ),
-          holes:course_id ( number, par )
+          courses:course_id ( name )
         `)
         .eq('user_id', user.id)
         .eq('completed', true)
@@ -126,9 +128,20 @@ export default function PlayHomeScreen() {
 
       if (roundsError) throw roundsError;
 
+      const courseIds = [...new Set((roundsData ?? []).map(round => round.course_id))];
+      const { data: holesData, error: holesError } = courseIds.length > 0
+        ? await supabase
+            .from('holes')
+            .select('course_id, number, par')
+            .in('course_id', courseIds)
+            .order('number')
+        : { data: [], error: null };
+      if (holesError) throw holesError;
+      const holesByCourse = groupHolesByCourse(holesData ?? []);
+
       const rounds = (roundsData ?? []).map((r: any) => {
         const parTotal = calculateRoundPar(
-          r.holes ?? [],
+          holesByCourse[r.course_id] ?? [],
           r.starting_hole ?? 1,
           r.holes_played ?? 18,
         );
@@ -228,7 +241,7 @@ export default function PlayHomeScreen() {
       }
 
     } catch {
-      Alert.alert('Load Error', 'Failed to retrieve home dashboard statistics.');
+      setLoadError('Could not load your dashboard. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -350,6 +363,14 @@ export default function PlayHomeScreen() {
       >
         {(loading || statsLoading) && !refreshing && (
           <ActivityIndicator color={Colors.green} style={styles.loadingIndicator} />
+        )}
+        {loadError && (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchData}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
         )}
         {/* ── Streak & XP Card ── */}
         <View style={styles.streakCard}>
@@ -604,6 +625,33 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { padding: Spacing.base, gap: Spacing.base, paddingBottom: Spacing.xxl },
   loadingIndicator: { paddingVertical: Spacing.sm },
+  errorCard: {
+    padding: Spacing.base,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.red,
+    backgroundColor: Colors.redMuted,
+  },
+  errorText: {
+    color: Colors.text,
+    fontFamily: Font.medium,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+  },
+  retryButton: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.green,
+  },
+  retryText: {
+    color: Colors.bg,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.sm,
+  },
 
   // Streak & XP Progress Card
   streakCard: {

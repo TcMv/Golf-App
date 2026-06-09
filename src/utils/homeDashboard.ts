@@ -1,4 +1,5 @@
 export type HomeRoundHole = { number: number; par: number };
+export type CourseHole = HomeRoundHole & { course_id: string };
 
 export function localDateString(date = new Date()): string {
   const year = date.getFullYear();
@@ -28,4 +29,14 @@ export function calculateRoundPar(
   const sequence = new Set(roundHoleSequence(startingHole, holesPlayed));
   const played = holes.filter(hole => sequence.has(hole.number));
   return played.length > 0 ? played.reduce((sum, hole) => sum + hole.par, 0) : null;
+}
+
+export function groupHolesByCourse(holes: CourseHole[]): Record<string, HomeRoundHole[]> {
+  return holes.reduce<Record<string, HomeRoundHole[]>>((grouped, hole) => {
+    grouped[hole.course_id] = [
+      ...(grouped[hole.course_id] ?? []),
+      { number: hole.number, par: hole.par },
+    ];
+    return grouped;
+  }, {});
 }
