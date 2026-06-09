@@ -13,6 +13,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { HoleScore, Round } from '../../types';
 
@@ -27,6 +28,7 @@ function scoreColor(diff: number): string {
 
 export default function RoundDetailScreen() {
   const navigation = useNavigation();
+  const { user } = useAuth();
   const route = useRoute<RouteProp<{ RoundDetail: RouteParams }, 'RoundDetail'>>();
   const { roundId } = route.params;
 
@@ -37,12 +39,17 @@ export default function RoundDetailScreen() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const { data: roundData } = await supabase
         .from('rounds')
-        .select('*, courses(name)')
+        .select('id, course_id, tee_set_id, date, holes_played, scoring_mode, starting_hole, exclude_from_handicap, gross_total, net_total, handicap_differential, completed, courses(name)')
         .eq('id', roundId)
+        .eq('user_id', user.id)
         .single();
 
       if (!roundData) return;
@@ -51,15 +58,27 @@ export default function RoundDetailScreen() {
 
       const [{ data: holesData }, { data: scoresData }] = await Promise.all([
         supabase.from('holes').select('number, par').eq('course_id', roundData.course_id).order('number'),
-        supabase.from('hole_scores').select('*').eq('round_id', roundId).order('hole_number'),
+        supabase
+          .from('hole_scores')
+          .select('id, round_id, hole_id, hole_number, gross_score, net_score, fairway_hit, gir, gir_miss_direction, putts, chips, sand_shots, penalties')
+          .eq('round_id', roundId)
+          .order('hole_number'),
       ]);
 
-      setHoles((holesData ?? []) as { number: number; par: number }[]);
+      const startingHole = roundData.starting_hole ?? 1;
+      const endingHole = startingHole + 8;
+      setHoles(
+        roundData.holes_played === 9
+          ? ((holesData ?? []) as { number: number; par: number }[]).filter(
+              hole => hole.number >= startingHole && hole.number <= endingHole,
+            )
+          : (holesData ?? []) as { number: number; par: number }[],
+      );
       setScores((scoresData ?? []) as HoleScore[]);
     } finally {
       setLoading(false);
     }
-  }, [roundId]);
+  }, [roundId, user?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -201,7 +220,7 @@ export default function RoundDetailScreen() {
             <Text style={styles.colDiff}>+/-</Text>
             <Text style={styles.colFir}>FIR</Text>
             <Text style={styles.colGir}>GIR</Text>
-            <Text style={styles.colPutts}>Pts</Text>
+            <Text style={styles.colPutts}>Putts</Text>
           </View>
           {renderHoleRows(front9Holes)}
           {renderSubtotal(front9Holes, 'OUT')}

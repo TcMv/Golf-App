@@ -43,6 +43,8 @@ export function DarkPill({
 const styles = StyleSheet.create({
   base: {
     backgroundColor: Colors.mapOverlay,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
 });
 

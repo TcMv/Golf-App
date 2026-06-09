@@ -2,23 +2,26 @@ export const Colors = {
   bg: '#0b1810',
   surface1: '#121f16',
   surface2: '#1c2e22',
-  surface3: '#243828',
+  // Backwards-compatible aliases. New UI should use surface1/surface2.
+  surface3: '#1c2e22',
   border: 'rgba(255,255,255,0.08)',
-  borderStrong: 'rgba(255,255,255,0.15)',
+  borderStrong: 'rgba(255,255,255,0.08)',
 
   green: '#00e062',
   greenDark: '#00a847',
   greenMuted: 'rgba(0,224,98,0.12)',
 
   text: '#ffffff',
-  textSecondary: '#8aab96',
+  textSecondary: '#6a8a72',
   textMuted: '#6a8a72',
 
   red: '#ff5c5c',
   redMuted: 'rgba(255,92,92,0.15)',
   yellow: '#ffc940',
-  blue: '#3b82f6',
+  yellowMuted: 'rgba(255,201,64,0.15)',
+  blue: '#6a8a72',
   orange: '#ff9940',
+  orangeMuted: 'rgba(255,153,64,0.15)',
 
   // score colours — golf convention
   eagle: '#ffc940',
@@ -29,6 +32,8 @@ export const Colors = {
 
   mapOverlay: 'rgba(11,24,16,0.85)',
   mapOverlayLight: 'rgba(18,31,22,0.92)',
+  backdrop: 'rgba(0,0,0,0.70)',
+  subtle: 'rgba(255,255,255,0.04)',
 };
 
 // Strict 8pt grid
@@ -44,19 +49,19 @@ export const Spacing = {
 } as const;
 
 export const Radius = {
-  sm: 6,
+  sm: 8,
   md: 12,   // buttons
   lg: 16,   // cards
-  xl: 24,   // modals / sheets
+  xl: 16,   // elevated cards / sheets
   full: 999,
 } as const;
 
 export const FontSize = {
   xs: 11,
-  sm: 13,
+  sm: 12,
   base: 15,
-  md: 17,
-  lg: 20,
+  md: 18,
+  lg: 24,
   xl: 24,
   xxl: 32,
   xxxl: 48,
@@ -77,4 +82,56 @@ export const Font = {
   semibold: 'Inter_600SemiBold',
   bold: 'Inter_700Bold',
   black: 'Inter_900Black',
+} as const;
+
+export const Typography = {
+  display: {
+    fontSize: FontSize.xxxl,
+    fontWeight: FontWeight.black,
+    fontFamily: Font.black,
+    letterSpacing: -0.96,
+  },
+  h1: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.black,
+    fontFamily: Font.black,
+    letterSpacing: -0.32,
+  },
+  h2: {
+    fontSize: FontSize.xl,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
+  },
+  h3: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
+  },
+  body: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.regular,
+    fontFamily: Font.regular,
+  },
+  caption: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.regular,
+    fontFamily: Font.regular,
+  },
+  label: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase' as const,
+  },
+} as const;
+
+export const Shadow = {
+  card: {
+    shadowColor: '#000000',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
 } as const;

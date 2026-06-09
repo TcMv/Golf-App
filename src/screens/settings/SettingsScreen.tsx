@@ -15,7 +15,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { useUserStats } from '../../hooks/useUserStats';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type RootStackParamList = {
   PlayHome: undefined;
@@ -54,6 +55,7 @@ function SettingsRow({
 export default function SettingsScreen() {
   const navigation = useNavigation<Nav>();
   const { user, profile, signOut } = useAuth();
+  const { badges } = useUserStats();
   const [handicapIndex, setHandicapIndex] = useState<string>('');
   const [handicapModalVisible, setHandicapModalVisible] = useState(false);
   const [handicapInput, setHandicapInput] = useState('');
@@ -99,6 +101,19 @@ export default function SettingsScreen() {
               setHandicapModalVisible(true);
             }}
           />
+        </View>
+
+        <Text style={styles.sectionLabel}>Achievements</Text>
+        <View style={styles.achievementGrid}>
+          {badges.length === 0 ? (
+            <Text style={styles.achievementEmpty}>Complete rounds and log practice to earn badges.</Text>
+          ) : badges.map(badge => (
+            <View key={badge.badge_key} style={styles.achievementCard}>
+              <Text style={styles.achievementIcon}>{badge.icon}</Text>
+              <Text style={styles.achievementName}>{badge.name}</Text>
+              <Text style={styles.achievementDescription}>{badge.description}</Text>
+            </View>
+          ))}
         </View>
 
         {/* Bag */}
@@ -242,9 +257,35 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: Colors.green,
   },
+  achievementGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  achievementCard: {
+    width: '48%',
+    minHeight: 132,
+    padding: Spacing.md,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface1,
+  },
+  achievementIcon: { color: Colors.green, fontFamily: Font.black, fontSize: FontSize.xl },
+  achievementName: {
+    color: Colors.text,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.sm,
+    marginTop: Spacing.sm,
+  },
+  achievementDescription: {
+    color: Colors.textMuted,
+    fontFamily: Font.regular,
+    fontSize: FontSize.xs,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  achievementEmpty: { color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.sm },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: Colors.backdrop,
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.xxl,
@@ -275,7 +316,7 @@ const styles = StyleSheet.create({
   modalCancelBtn: {
     flex: 1,
     height: 48,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.surface3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -284,10 +325,15 @@ const styles = StyleSheet.create({
   modalSaveBtn: {
     flex: 1,
     height: 48,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalSaveText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#000' },
+  modalSaveText: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
+    color: Colors.bg,
+  },
 });

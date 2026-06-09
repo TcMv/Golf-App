@@ -265,7 +265,7 @@ export default function HoleScoringSheet({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: Colors.backdrop,
   },
   sheet: {
     position: 'absolute',
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   scoreBtnTextSelected: {
-    color: '#000000',
+    color: Colors.bg,
     fontWeight: FontWeight.bold,
     fontFamily: Font.bold,
   },
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
   backBtn: {
     flex: 1,
     height: 52,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.surface3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
   saveNextBtn: {
     flex: 2,
     height: 52,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
@@ -524,6 +524,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.base,
     fontWeight: FontWeight.bold,
     fontFamily: Font.bold,
-    color: '#000000',
+    color: Colors.bg,
   },
 });

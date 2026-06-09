@@ -41,13 +41,16 @@ function MainTabs() {
           backgroundColor: Colors.surface1,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
+          minHeight: 64,
+          paddingTop: 8,
+          paddingBottom: 8,
         },
         tabBarActiveTintColor: Colors.green,
         tabBarInactiveTintColor: Colors.textMuted,
         tabBarLabelStyle: {
           fontSize: FontSize.xs,
-          fontWeight: FontWeight.medium,
-          fontFamily: Font.medium,
+          fontWeight: FontWeight.bold,
+          fontFamily: Font.bold,
         },
         tabBarIcon: ({ focused, color, size }) => {
           const icons: Record<string, [string, string]> = {

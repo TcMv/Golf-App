@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing, Typography } from '../../constants/theme';
 
 type RootStackParamList = {
   Welcome: undefined;
@@ -68,20 +68,25 @@ const styles = StyleSheet.create({
   },
   logoArea: { alignItems: 'center', paddingTop: Spacing.xxl, gap: Spacing.md },
   logoIcon: { fontSize: 64 },
-  logoName: { fontSize: 40, fontWeight: FontWeight.black, color: Colors.text, letterSpacing: -1 },
-  tagline: { fontSize: FontSize.md, color: Colors.textSecondary, fontWeight: FontWeight.medium },
+  logoName: { ...Typography.h1, color: Colors.text },
+  tagline: { ...Typography.h3, color: Colors.textMuted },
 
   features: { gap: Spacing.base },
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
   featureIcon: { fontSize: FontSize.lg, width: 28 },
-  featureText: { flex: 1, fontSize: FontSize.base, color: Colors.textSecondary, lineHeight: FontSize.base * 1.5 },
+  featureText: { flex: 1, ...Typography.body, color: Colors.textMuted, lineHeight: 24 },
 
   startBtn: {
     height: 56,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  startBtnText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#000' },
+  startBtnText: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
+    color: Colors.bg,
+  },
 });

@@ -11,7 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, Polygon, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Haptics from 'expo-haptics';
+import MapView, { Marker, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -25,18 +26,24 @@ import type { WindData } from '../../utils/wind';
 import { buildCaddieAdvice } from '../../utils/caddie';
 import type { CaddieAdvice } from '../../utils/caddie';
 import CaddiePanel from '../../components/caddie/CaddiePanel';
-import { fetchHoleHistory, historyToContext } from '../../utils/holeHistory';
+import { fetchHoleHistory } from '../../utils/holeHistory';
+import type { HoleHistorySummary } from '../../utils/holeHistory';
+import {
+  queueHoleScore,
+  removeQueuedHoleScore,
+  syncQueuedHoleScores,
+} from '../../lib/offlineScores';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Club, ClubType, Coordinate, Hazard, HazardType, Hole, HoleScore } from '../../types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const HAZARD_COLORS: Record<HazardType, string> = {
-  bunker: '#F5C518',
-  water: '#4A90D9',
-  trees: '#2D6A2D',
-  ob: '#FFFFFF',
-  red_zone: '#E53E3E',
+  bunker: Colors.eagle,
+  water: Colors.textMuted,
+  trees: Colors.greenDark,
+  ob: Colors.text,
+  red_zone: Colors.doublePlus,
 };
 
 const MAP_HEIGHT = 240;
@@ -73,14 +80,313 @@ function toParLabel(diff: number | null): string {
   return diff > 0 ? `+${diff}` : `${diff}`;
 }
 
+function clubTypeFromName(name: string): ClubType {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('putter')) return 'putter';
+  if (normalized.includes('driver')) return 'driver';
+  if (normalized.includes('wood')) return 'wood';
+  if (normalized.includes('hybrid')) return 'hybrid';
+  if (normalized.includes('wedge')) return 'wedge';
+  return 'iron';
+}
+
+type TopBarProps = {
+  hole: Hole;
+  cumulativeDiff: number | null;
+  onExit: () => void;
+};
+
+const RoundTopBar = React.memo(function RoundTopBar({
+  hole,
+  cumulativeDiff,
+  onExit,
+}: TopBarProps) {
+  const cumulativeColor = cumulativeDiff != null ? toParColor(cumulativeDiff) : Colors.textMuted;
+  return (
+    <SafeAreaView edges={['top']} style={styles.safeTop}>
+      <View style={styles.topBar}>
+        <View style={styles.topLeft}>
+          <Text style={styles.holeLabel}>HOLE {hole.number}</Text>
+          <Text style={styles.holeMeta}>Par {hole.par}  ·  Index {hole.stroke_index}</Text>
+        </View>
+        <View style={styles.topRight}>
+          <Text style={[styles.roundScoreLabel, { color: cumulativeColor }]}>
+            {toParLabel(cumulativeDiff)}
+          </Text>
+          <Text style={styles.roundScoreSub}>Round</Text>
+        </View>
+        <TouchableOpacity style={styles.exitBtn} onPress={onExit}>
+          <Text style={styles.exitBtnText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+});
+
+type DistanceBlockProps = {
+  front: number | null;
+  mid: number | null;
+  back: number | null;
+  fallback: number | null;
+  stale: boolean;
+  error: string | null;
+};
+
+const DistanceBlock = React.memo(function DistanceBlock({
+  front,
+  mid,
+  back,
+  fallback,
+  stale,
+  error,
+}: DistanceBlockProps) {
+  return (
+    <View style={styles.distanceBlock}>
+      {mid != null ? (
+        <>
+          <Text style={styles.distBig}>{mid}</Text>
+          <Text style={styles.distUnit}>metres</Text>
+          {(stale || error) && (
+            <Text style={styles.gpsStatus}>
+              {error ? 'GPS unavailable - using last known position' : 'GPS signal stale'}
+            </Text>
+          )}
+        </>
+      ) : (
+        <>
+          <Text style={styles.distBig}>{fallback ?? '—'}</Text>
+          <Text style={styles.distUnit}>metres (hole length)</Text>
+        </>
+      )}
+      {(front != null || mid != null || back != null) && (
+        <View style={styles.distRow}>
+          <View style={styles.distRowItem}>
+            <Text style={styles.distRowVal}>{front ?? '—'}</Text>
+            <Text style={styles.distRowLabel}>FRONT</Text>
+          </View>
+          <View style={styles.distRowItem}>
+            <Text style={[styles.distRowVal, styles.distRowValMid]}>{mid ?? '—'}</Text>
+            <Text style={[styles.distRowLabel, styles.distRowLabelMid]}>MID</Text>
+          </View>
+          <View style={styles.distRowItem}>
+            <Text style={styles.distRowVal}>{back ?? '—'}</Text>
+            <Text style={styles.distRowLabel}>BACK</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+});
+
+type CaddieStripProps = {
+  advice: CaddieAdvice | null;
+  hasLocation: boolean;
+  onMore: () => void;
+};
+
+const CaddieStrip = React.memo(function CaddieStrip({
+  advice,
+  hasLocation,
+  onMore,
+}: CaddieStripProps) {
+  return (
+    <View style={styles.caddieStrip}>
+      <View style={styles.caddieStripLeft}>
+        <Text style={styles.caddieIcon}>🤖</Text>
+        <View style={styles.caddieTextBlock}>
+          <Text style={styles.caddieStripTitle}>AI CADDIE</Text>
+          <Text style={styles.caddieStripText} numberOfLines={2}>
+            {advice ? advice.shortText : (hasLocation ? 'Computing…' : 'GPS required')}
+          </Text>
+        </View>
+      </View>
+      <TouchableOpacity onPress={onMore} activeOpacity={0.7}>
+        <Text style={styles.caddieMore}>More →</Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+type RoundMapProps = {
+  mapRef: React.RefObject<MapView | null>;
+  tee: Coordinate | null;
+  green: Coordinate | null;
+  hazards: Hazard[];
+  fallback: Coordinate;
+};
+
+const RoundMap = React.memo(function RoundMap({
+  mapRef,
+  tee,
+  green,
+  hazards,
+  fallback,
+}: RoundMapProps) {
+  return (
+    <View style={styles.mapBlock}>
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        provider={PROVIDER_GOOGLE}
+        mapType="satellite"
+        initialRegion={{
+          latitude: fallback.latitude,
+          longitude: fallback.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }}
+        showsUserLocation
+        showsMyLocationButton={false}
+        showsCompass={false}
+        rotateEnabled
+        scrollEnabled
+        zoomEnabled
+      >
+        {tee && (
+          <Marker coordinate={tee} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.teeMarker}>
+              <Text style={styles.teeMarkerText}>T</Text>
+            </View>
+          </Marker>
+        )}
+        {green && (
+          <Marker coordinate={green} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.flagMarker}>
+              <Text style={styles.flagEmoji}>⛳</Text>
+            </View>
+          </Marker>
+        )}
+        {hazards.map(hazard => (
+          <Polygon
+            key={hazard.id}
+            coordinates={hazard.coordinates.map(c => ({ latitude: c.lat, longitude: c.lng }))}
+            fillColor={HAZARD_COLORS[hazard.type] + (hazard.type === 'ob' ? '00' : '44')}
+            strokeColor={HAZARD_COLORS[hazard.type]}
+            strokeWidth={hazard.type === 'ob' ? 2 : 1.5}
+            lineDashPattern={hazard.type === 'ob' ? [8, 5] : undefined}
+          />
+        ))}
+      </MapView>
+    </View>
+  );
+});
+
+type ScoreEntryProps = {
+  hole: Hole;
+  score: number | null;
+  putts: number;
+  syncPending: boolean;
+  onDecrement: () => void;
+  onIncrement: () => void;
+  onPutts: (putts: number) => void;
+};
+
+const ScoreEntry = React.memo(function ScoreEntry({
+  hole,
+  score,
+  putts,
+  syncPending,
+  onDecrement,
+  onIncrement,
+  onPutts,
+}: ScoreEntryProps) {
+  const holeDiff = score != null ? score - hole.par : null;
+  return (
+    <View style={styles.scoreSection}>
+      <View style={styles.scoreSectionHeader}>
+        <Text style={styles.scoreSectionLabel}>SCORE THIS HOLE</Text>
+        {syncPending && <Text style={styles.syncPending}>SAVED OFFLINE</Text>}
+      </View>
+      <View style={styles.scoreControls}>
+        <TouchableOpacity style={styles.scoreAdj} onPress={onDecrement} activeOpacity={0.7}>
+          <Text style={styles.scoreAdjText}>−</Text>
+        </TouchableOpacity>
+        <View style={[
+          styles.scoreValueWrapper,
+          holeDiff != null && { borderColor: toParColor(holeDiff) + '80' },
+        ]}>
+          <Text style={[
+            styles.scoreValue,
+            holeDiff != null && { color: toParColor(holeDiff) },
+          ]}>
+            {score ?? '—'}
+          </Text>
+          {holeDiff != null && (
+            <Text style={[styles.scoreDiff, { color: toParColor(holeDiff) }]}>
+              {toParLabel(holeDiff)}
+            </Text>
+          )}
+        </View>
+        <TouchableOpacity style={styles.scoreAdj} onPress={onIncrement} activeOpacity={0.7}>
+          <Text style={styles.scoreAdjText}>+</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.puttsRow}>
+        <Text style={styles.puttsLabel}>Putts</Text>
+        <View style={styles.puttsBtns}>
+          {[1, 2, 3, 4].map(value => (
+            <TouchableOpacity
+              key={value}
+              style={[styles.puttsBtn, putts === value && styles.puttsBtnActive]}
+              onPress={() => onPutts(value)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.puttsBtnText, putts === value && styles.puttsBtnTextActive]}>
+                {value}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+      {hole.notes && <Text style={styles.holeNotes} numberOfLines={2}>ℹ  {hole.notes}</Text>}
+    </View>
+  );
+});
+
+type HoleNavigationProps = {
+  canGoPrevious: boolean;
+  isLastHole: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+};
+
+const HoleNavigation = React.memo(function HoleNavigation({
+  canGoPrevious,
+  isLastHole,
+  onPrevious,
+  onNext,
+}: HoleNavigationProps) {
+  return (
+    <View style={styles.holeNav}>
+      <TouchableOpacity
+        style={[styles.holeNavBtn, !canGoPrevious && styles.holeNavBtnDisabled]}
+        onPress={onPrevious}
+        disabled={!canGoPrevious}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.holeNavText}>← PREV HOLE</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.holeNavBtn, styles.holeNavBtnNext]}
+        onPress={onNext}
+        activeOpacity={0.8}
+      >
+        <Text style={[styles.holeNavText, styles.holeNavTextNext]}>
+          {isLastHole ? 'FINISH ROUND →' : 'NEXT HOLE →'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function ActiveRoundScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { activeRound, updateScore, setCurrentHole, endRound } = useRound();
+  const { activeRound, updateScore, setCurrentHole } = useRound();
   const { user } = useAuth();
-  const { location } = useLocation();
+  const { location, stale: locationStale, error: locationError } = useLocation();
   const mapRef = useRef<MapView>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const caddieTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,12 +394,13 @@ export default function ActiveRoundScreen() {
   // ── Per-hole score state ────────────────────────────────────────────────
   const [grossScore, setGrossScore] = useState<number | null>(null);
   const [putts, setPutts] = useState<number>(2);
-  const [holeScoreId, setHoleScoreId] = useState<string | null>(null);
+  const [scoreSyncPending, setScoreSyncPending] = useState(false);
 
   // ── Caddie ─────────────────────────────────────────────────────────────
   const [windData, setWindData] = useState<WindData | null>(null);
   const [caddieAdvice, setCaddieAdvice] = useState<CaddieAdvice | null>(null);
   const [caddieModalOpen, setCaddieModalOpen] = useState(false);
+  const [holeHistory, setHoleHistory] = useState<HoleHistorySummary | null>(null);
 
   // ── Data ───────────────────────────────────────────────────────────────
   const [clubs, setClubs] = useState<Club[]>([]);
@@ -103,6 +410,15 @@ export default function ActiveRoundScreen() {
   const hole = useMemo((): Hole | null => {
     if (!activeRound) return null;
     return activeRound.holes.find(h => h.number === activeRound.currentHoleNumber) ?? null;
+  }, [activeRound]);
+
+  const roundHoleNumbers = useMemo(() => {
+    if (!activeRound) return [];
+    const start = activeRound.round.starting_hole ?? 1;
+    if (activeRound.round.holes_played === 9) {
+      return Array.from({ length: 9 }, (_, index) => start + index);
+    }
+    return Array.from({ length: 18 }, (_, index) => ((start - 1 + index) % 18) + 1);
   }, [activeRound]);
 
   const greenMid: Coordinate | null = useMemo(() => {
@@ -119,6 +435,16 @@ export default function ActiveRoundScreen() {
     if (!hole || hole.green_back_lat == null || hole.green_back_lng == null) return null;
     return { latitude: hole.green_back_lat, longitude: hole.green_back_lng };
   }, [hole]);
+
+  const tee: Coordinate | null = useMemo(() => {
+    if (!hole || hole.tee_lat == null || hole.tee_lng == null) return null;
+    return { latitude: hole.tee_lat, longitude: hole.tee_lng };
+  }, [hole]);
+
+  const mapFallback = useMemo((): Coordinate => ({
+    latitude: greenMid?.latitude ?? activeRound?.course.lat ?? -26.6317,
+    longitude: greenMid?.longitude ?? activeRound?.course.lng ?? 152.9587,
+  }), [activeRound?.course.lat, activeRound?.course.lng, greenMid]);
 
   const distToMid = useMemo(() => {
     if (!location || !greenMid) return null;
@@ -163,7 +489,7 @@ export default function ActiveRoundScreen() {
       if (user?.id) {
         const { data: uc } = await supabase
           .from('user_clubs')
-          .select('*')
+          .select('id, club_name, carry_distance_metres')
           .eq('user_id', user.id)
           .not('carry_distance_metres', 'is', null)
           .order('carry_distance_metres', { ascending: false });
@@ -171,7 +497,7 @@ export default function ActiveRoundScreen() {
           setClubs(uc.map((c: any) => ({
             id: c.id as string,
             name: c.club_name as string,
-            type: 'iron' as ClubType,
+            type: clubTypeFromName(c.club_name as string),
             loft: null,
             custom_name: null,
             sort_order: 0,
@@ -181,14 +507,44 @@ export default function ActiveRoundScreen() {
           return;
         }
       }
-      const { data } = await supabase.from('clubs').select('*').order('sort_order');
+      const { data } = await supabase
+        .from('clubs')
+        .select('id, name, type, loft, custom_name, sort_order, carry_metres, carry_stddev_metres')
+        .order('sort_order');
       if (data) setClubs(data as Club[]);
     };
     loadClubs();
-    supabase.from('hazards').select('*').eq('course_id', '00000000-0000-0000-0000-000000000001').then(({ data }) => {
+    if (!activeRound?.round.course_id) return;
+    supabase
+      .from('hazards')
+      .select('id, course_id, hole_number, hole_numbers, type, label, coordinates, created_at')
+      .eq('course_id', activeRound.round.course_id)
+      .then(({ data }) => {
       if (data) setHazards(data as Hazard[]);
     });
-  }, [user?.id]);
+  }, [user?.id, activeRound?.round.course_id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHoleHistory(null);
+    if (!user?.id || !activeRound?.round.course_id || !hole) return undefined;
+    fetchHoleHistory(user.id, activeRound.round.course_id, hole.number).then(history => {
+      if (!cancelled) setHoleHistory(history);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRound?.round.course_id, hole?.number, user?.id]);
+
+  useEffect(() => {
+    const flushQueue = async () => {
+      const synced = await syncQueuedHoleScores();
+      if (synced > 0) setScoreSyncPending(false);
+    };
+    flushQueue();
+    const interval = setInterval(flushQueue, 15_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Fetch wind once when location first becomes available ───────────────
   useEffect(() => {
@@ -202,10 +558,12 @@ export default function ActiveRoundScreen() {
   // ── Load existing hole score when hole changes ──────────────────────────
   useEffect(() => {
     if (!activeRound || !hole) return;
-    setGrossScore(null);
-    setPutts(2);
-    setHoleScoreId(null);
+    const localScore = activeRound.scores[hole.number];
+    setGrossScore(localScore?.gross_score ?? null);
+    setPutts(localScore?.putts ?? 2);
     setCaddieAdvice(null);
+
+    if (localScore?.gross_score != null) return;
 
     supabase
       .from('hole_scores')
@@ -215,7 +573,6 @@ export default function ActiveRoundScreen() {
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
-          setHoleScoreId(data.id as string);
           setGrossScore((data.gross_score as number | null) ?? null);
           setPutts((data.putts as number) ?? 2);
         }
@@ -237,11 +594,15 @@ export default function ActiveRoundScreen() {
         windLabel: windData?.label ?? 'Calm',
         playerElevation: windData?.elevation_metres ?? 0,
         greenElevation: windData?.elevation_metres ?? 0,
+        holeNumber: hole?.number,
+        holePar: hole?.par,
+        holeIndex: hole?.stroke_index,
+        history: holeHistory,
       });
       if (advice) setCaddieAdvice(advice);
     }, 2000);
     return () => { if (caddieTimer.current) clearTimeout(caddieTimer.current); };
-  }, [location, hole?.number, windData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location, hole?.number, windData, holeHistory]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Animate camera on hole change ───────────────────────────────────────
   useEffect(() => {
@@ -271,34 +632,33 @@ export default function ActiveRoundScreen() {
   const persistScore = useCallback(async (score: number | null, p: number) => {
     if (!activeRound || !hole) return;
     const payload = {
+      round_id: activeRound.round.id,
+      hole_id: hole.id,
+      hole_number: hole.number,
       gross_score: score,
       putts: p,
+      fairway_hit: activeRound.scores[hole.number]?.fairway_hit ?? 'na',
+      gir_miss_direction: activeRound.scores[hole.number]?.gir_miss_direction ?? 'na',
+      chips: activeRound.scores[hole.number]?.chips ?? 0,
+      sand_shots: activeRound.scores[hole.number]?.sand_shots ?? 0,
+      penalties: activeRound.scores[hole.number]?.penalties ?? 0,
     };
-    // Update context
     updateScore(hole.number, payload as Partial<HoleScore>);
 
-    if (holeScoreId) {
-      await supabase.from('hole_scores').update(payload).eq('id', holeScoreId);
-    } else if (score !== null) {
-      const { data } = await supabase
-        .from('hole_scores')
-        .insert({
-          round_id: activeRound.round.id,
-          hole_id: hole.id,
-          hole_number: hole.number,
-          gross_score: score,
-          putts: p,
-          fairway_hit: 'na',
-          gir_miss_direction: 'na',
-          chips: 0,
-          sand_shots: 0,
-          penalties: 0,
-        })
-        .select('id')
-        .single();
-      if (data) setHoleScoreId((data as { id: string }).id);
+    if (score === null) return;
+
+    await queueHoleScore(payload);
+    setScoreSyncPending(true);
+
+    const { error } = await supabase
+      .from('hole_scores')
+      .upsert(payload, { onConflict: 'round_id,hole_number' });
+
+    if (!error) {
+      await removeQueuedHoleScore(activeRound.round.id, hole.number);
+      setScoreSyncPending(false);
     }
-  }, [activeRound, hole, holeScoreId, updateScore]);
+  }, [activeRound, hole, updateScore]);
 
   const scheduleAutoSave = useCallback((score: number | null, p: number) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -306,6 +666,7 @@ export default function ActiveRoundScreen() {
   }, [persistScore]);
 
   const incrementScore = useCallback(() => {
+    void Haptics.selectionAsync();
     setGrossScore(prev => {
       const next = (prev ?? hole?.par ?? 4) + 1;
       scheduleAutoSave(next, putts);
@@ -314,6 +675,7 @@ export default function ActiveRoundScreen() {
   }, [hole?.par, putts, scheduleAutoSave]);
 
   const decrementScore = useCallback(() => {
+    void Haptics.selectionAsync();
     setGrossScore(prev => {
       if (prev == null || prev <= 1) return prev;
       const next = prev - 1;
@@ -323,27 +685,28 @@ export default function ActiveRoundScreen() {
   }, [putts, scheduleAutoSave]);
 
   const changePutts = useCallback((p: number) => {
+    void Haptics.selectionAsync();
     setPutts(p);
     scheduleAutoSave(grossScore, p);
   }, [grossScore, scheduleAutoSave]);
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const goToPrevHole = useCallback(() => {
-    if (!activeRound || activeRound.currentHoleNumber <= 1) return;
-    setCurrentHole(activeRound.currentHoleNumber - 1);
-  }, [activeRound, setCurrentHole]);
+    if (!activeRound) return;
+    const index = roundHoleNumbers.indexOf(activeRound.currentHoleNumber);
+    if (index <= 0) return;
+    setCurrentHole(roundHoleNumbers[index - 1]);
+  }, [activeRound, roundHoleNumbers, setCurrentHole]);
 
   const goToNextHole = useCallback(() => {
     if (!activeRound) return;
-    const maxHole = activeRound.round.holes_played === 9
-      ? (activeRound.round.starting_hole ?? 1) + 8
-      : 18;
-    if (activeRound.currentHoleNumber >= maxHole) {
+    const index = roundHoleNumbers.indexOf(activeRound.currentHoleNumber);
+    if (index < 0 || index === roundHoleNumbers.length - 1) {
       navigation.navigate('EndRound');
       return;
     }
-    setCurrentHole(activeRound.currentHoleNumber + 1);
-  }, [activeRound, setCurrentHole, navigation]);
+    setCurrentHole(roundHoleNumbers[index + 1]);
+  }, [activeRound, roundHoleNumbers, setCurrentHole, navigation]);
 
   // ── Swipe gesture ───────────────────────────────────────────────────────
   const panResponder = useRef(
@@ -366,11 +729,9 @@ export default function ActiveRoundScreen() {
   // ── More Info caddie (with elevation + history) ─────────────────────────
   const handleCaddieMoreInfo = useCallback(async () => {
     if (!location || !greenMid || !activeRound || !hole) return;
-    const courseId = activeRound.round.course_id;
-    const [wind, greenElev, history] = await Promise.all([
+    const [wind, greenElev] = await Promise.all([
       fetchWind(location.latitude, location.longitude),
       fetchElevation(greenMid.latitude, greenMid.longitude),
-      user?.id ? fetchHoleHistory(user.id, courseId, hole.number) : Promise.resolve(null),
     ]);
     const advice = buildCaddieAdvice({
       playerPos: location,
@@ -382,16 +743,23 @@ export default function ActiveRoundScreen() {
       windLabel: wind?.label ?? 'Calm',
       playerElevation: wind?.elevation_metres ?? 0,
       greenElevation: greenElev ?? wind?.elevation_metres ?? 0,
+      holeNumber: hole.number,
+      holePar: hole.par,
+      holeIndex: hole.stroke_index,
+      history: holeHistory,
     });
     if (advice) {
-      const historyLine = history ? historyToContext(history, hole.number) : '';
-      const enrichedAdvice = historyLine
-        ? { ...advice, context: advice.context + '\n' + historyLine }
-        : advice;
-      setCaddieAdvice(enrichedAdvice);
+      setCaddieAdvice(advice);
       setCaddieModalOpen(true);
     }
-  }, [location, greenMid, holeHazards, clubs, activeRound, hole, user?.id]);
+  }, [location, greenMid, holeHazards, clubs, activeRound, hole, holeHistory]);
+
+  const handleExit = useCallback(() => {
+    Alert.alert('Exit Round', 'End round and go to summary?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'End Round', style: 'destructive', onPress: () => navigation.navigate('EndRound') },
+    ]);
+  }, [navigation]);
 
   // ── Guard ───────────────────────────────────────────────────────────────
   if (!activeRound || !hole) {
@@ -405,40 +773,13 @@ export default function ActiveRoundScreen() {
     );
   }
 
-  const holeDiff = grossScore != null ? grossScore - hole.par : null;
-  const cumulativeLabel = toParLabel(cumulativeDiff);
-  const cumulativeColor = cumulativeDiff != null ? toParColor(cumulativeDiff) : Colors.textMuted;
+  const currentHoleIndex = roundHoleNumbers.indexOf(activeRound.currentHoleNumber);
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
 
-      {/* ── Fixed top bar ─────────────────────────────────────────────── */}
-      <SafeAreaView edges={['top']} style={styles.safeTop}>
-        <View style={styles.topBar}>
-          <View style={styles.topLeft}>
-            <Text style={styles.holeLabel}>HOLE {hole.number}</Text>
-            <Text style={styles.holeMeta}>Par {hole.par}  ·  Index {hole.stroke_index}</Text>
-          </View>
-
-          <View style={styles.topRight}>
-            <Text style={[styles.roundScoreLabel, { color: cumulativeColor }]}>
-              {cumulativeLabel}
-            </Text>
-            <Text style={styles.roundScoreSub}>Round</Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.exitBtn}
-            onPress={() => Alert.alert('Exit Round', 'End round and go to summary?', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'End Round', style: 'destructive', onPress: () => navigation.navigate('EndRound') },
-            ])}
-          >
-            <Text style={styles.exitBtnText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <RoundTopBar hole={hole} cumulativeDiff={cumulativeDiff} onExit={handleExit} />
 
       {/* ── Scrollable body ───────────────────────────────────────────── */}
       <ScrollView
@@ -448,191 +789,41 @@ export default function ActiveRoundScreen() {
         scrollEventThrottle={16}
       >
 
-        {/* ── Distance block ──────────────────────────────────────────── */}
-        <View style={styles.distanceBlock}>
-          {distToMid != null ? (
-            <>
-              <Text style={styles.distBig}>{distToMid}</Text>
-              <Text style={styles.distUnit}>metres</Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.distBig}>{hole.white_metres ?? '—'}</Text>
-              <Text style={styles.distUnit}>metres (hole length)</Text>
-            </>
-          )}
-
-          {/* Front / Mid / Back row */}
-          {(distToFront != null || distToMid != null || distToBack != null) && (
-            <View style={styles.distRow}>
-              <View style={styles.distRowItem}>
-                <Text style={styles.distRowVal}>{distToFront ?? '—'}</Text>
-                <Text style={styles.distRowLabel}>FRONT</Text>
-              </View>
-              <View style={[styles.distRowItem, styles.distRowMid]}>
-                <Text style={[styles.distRowVal, styles.distRowValMid]}>{distToMid ?? '—'}</Text>
-                <Text style={[styles.distRowLabel, styles.distRowLabelMid]}>MID</Text>
-              </View>
-              <View style={styles.distRowItem}>
-                <Text style={styles.distRowVal}>{distToBack ?? '—'}</Text>
-                <Text style={styles.distRowLabel}>BACK</Text>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* ── AI Caddie strip ─────────────────────────────────────────── */}
-        <View style={styles.caddieStrip}>
-          <View style={styles.caddieStripLeft}>
-            <Text style={styles.caddieIcon}>🤖</Text>
-            <View style={styles.caddieTextBlock}>
-              <Text style={styles.caddieStripTitle}>AI CADDIE</Text>
-              <Text style={styles.caddieStripText} numberOfLines={2}>
-                {caddieAdvice ? caddieAdvice.shortText : (location ? 'Computing…' : 'GPS required')}
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity onPress={handleCaddieMoreInfo} activeOpacity={0.7}>
-            <Text style={styles.caddieMore}>More →</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Map block ───────────────────────────────────────────────── */}
-        <View style={styles.mapBlock}>
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider={PROVIDER_GOOGLE}
-            mapType="satellite"
-            initialRegion={{
-              latitude: -26.6317,
-              longitude: 152.9587,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            showsUserLocation
-            showsMyLocationButton={false}
-            showsCompass={false}
-            rotateEnabled
-            scrollEnabled
-            zoomEnabled
-          >
-            {greenMid && (
-              <Marker coordinate={greenMid} anchor={{ x: 0.5, y: 0.5 }}>
-                <View style={styles.flagMarker}>
-                  <Text style={styles.flagEmoji}>⛳</Text>
-                </View>
-              </Marker>
-            )}
-
-            {location && greenMid && (
-              <Polyline
-                coordinates={[location, greenMid]}
-                strokeColor="rgba(255,255,255,0.5)"
-                strokeWidth={1.5}
-                lineDashPattern={[6, 5]}
-              />
-            )}
-
-            {holeHazards.map(hazard => (
-              <Polygon
-                key={hazard.id}
-                coordinates={hazard.coordinates.map(c => ({ latitude: c.lat, longitude: c.lng }))}
-                fillColor={HAZARD_COLORS[hazard.type] + (hazard.type === 'ob' ? '00' : '44')}
-                strokeColor={HAZARD_COLORS[hazard.type]}
-                strokeWidth={hazard.type === 'ob' ? 2 : 1.5}
-                lineDashPattern={hazard.type === 'ob' ? [8, 5] : undefined}
-              />
-            ))}
-          </MapView>
-        </View>
-
-        {/* ── Score entry ─────────────────────────────────────────────── */}
-        <View style={styles.scoreSection}>
-          <Text style={styles.scoreSectionLabel}>SCORE THIS HOLE</Text>
-
-          <View style={styles.scoreControls}>
-            <TouchableOpacity
-              style={styles.scoreAdj}
-              onPress={decrementScore}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.scoreAdjText}>−</Text>
-            </TouchableOpacity>
-
-            <View style={[
-              styles.scoreValueWrapper,
-              holeDiff != null && { borderColor: toParColor(holeDiff) + '80' },
-            ]}>
-              <Text style={[
-                styles.scoreValue,
-                holeDiff != null && { color: toParColor(holeDiff) },
-              ]}>
-                {grossScore ?? '—'}
-              </Text>
-              {holeDiff != null && (
-                <Text style={[styles.scoreDiff, { color: toParColor(holeDiff) }]}>
-                  {toParLabel(holeDiff)}
-                </Text>
-              )}
-            </View>
-
-            <TouchableOpacity
-              style={styles.scoreAdj}
-              onPress={incrementScore}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.scoreAdjText}>+</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Putts row */}
-          <View style={styles.puttsRow}>
-            <Text style={styles.puttsLabel}>Putts</Text>
-            <View style={styles.puttsBtns}>
-              {[1, 2, 3, 4].map(p => (
-                <TouchableOpacity
-                  key={p}
-                  style={[styles.puttsBtn, putts === p && styles.puttsBtnActive]}
-                  onPress={() => changePutts(p)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.puttsBtnText, putts === p && styles.puttsBtnTextActive]}>
-                    {p}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {hole.notes && (
-            <Text style={styles.holeNotes} numberOfLines={2}>ℹ  {hole.notes}</Text>
-          )}
-        </View>
-
-        {/* ── Hole navigation ─────────────────────────────────────────── */}
-        <View style={styles.holeNav}>
-          <TouchableOpacity
-            style={[styles.holeNavBtn, activeRound.currentHoleNumber <= 1 && styles.holeNavBtnDisabled]}
-            onPress={goToPrevHole}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.holeNavText}>← PREV HOLE</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.holeNavBtn, styles.holeNavBtnNext]}
-            onPress={goToNextHole}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.holeNavText, styles.holeNavTextNext]}>
-              {activeRound.currentHoleNumber >= (activeRound.round.holes_played === 9
-                ? (activeRound.round.starting_hole ?? 1) + 8 : 18)
-                ? 'FINISH ROUND →'
-                : 'NEXT HOLE →'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <DistanceBlock
+          front={distToFront}
+          mid={distToMid}
+          back={distToBack}
+          fallback={hole.white_metres}
+          stale={locationStale}
+          error={locationError}
+        />
+        <CaddieStrip
+          advice={caddieAdvice}
+          hasLocation={location != null}
+          onMore={handleCaddieMoreInfo}
+        />
+        <RoundMap
+          mapRef={mapRef}
+          tee={tee}
+          green={greenMid}
+          hazards={holeHazards}
+          fallback={mapFallback}
+        />
+        <ScoreEntry
+          hole={hole}
+          score={grossScore}
+          putts={putts}
+          syncPending={scoreSyncPending}
+          onDecrement={decrementScore}
+          onIncrement={incrementScore}
+          onPutts={changePutts}
+        />
+        <HoleNavigation
+          canGoPrevious={currentHoleIndex > 0}
+          isLastHole={currentHoleIndex === roundHoleNumbers.length - 1}
+          onPrevious={goToPrevHole}
+          onNext={goToNextHole}
+        />
 
       </ScrollView>
 
@@ -735,6 +926,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: Spacing.xs,
   },
+  gpsStatus: {
+    fontSize: FontSize.xs,
+    fontFamily: Font.medium,
+    color: Colors.bogey,
+    marginTop: Spacing.sm,
+  },
   distRow: {
     flexDirection: 'row',
     marginTop: Spacing.lg,
@@ -755,7 +952,7 @@ const styles = StyleSheet.create({
     color: Colors.green,
   },
   distRowLabel: {
-    fontSize: 10,
+    fontSize: FontSize.xs,
     fontFamily: Font.medium,
     fontWeight: FontWeight.medium,
     color: Colors.textMuted,
@@ -780,7 +977,7 @@ const styles = StyleSheet.create({
   caddieIcon: { fontSize: 18 },
   caddieTextBlock: { flex: 1 },
   caddieStripTitle: {
-    fontSize: 10,
+    fontSize: FontSize.xs,
     fontFamily: Font.bold,
     fontWeight: FontWeight.bold,
     color: Colors.green,
@@ -826,6 +1023,19 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textAlign: 'center',
   },
+  scoreSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  syncPending: {
+    fontSize: FontSize.xs,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    color: Colors.bogey,
+    letterSpacing: 1.1,
+  },
   scoreControls: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -843,7 +1053,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scoreAdjText: {
-    fontSize: 32,
+    fontSize: FontSize.xxl,
     fontFamily: Font.bold,
     fontWeight: FontWeight.bold,
     color: Colors.text,
@@ -952,7 +1162,7 @@ const styles = StyleSheet.create({
 
   // Caddie modal overlay
   caddieModalWrapper: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: Colors.mapOverlay,
     justifyContent: 'flex-end',
   },
   caddieModalInner: {
@@ -961,11 +1171,27 @@ const styles = StyleSheet.create({
   },
 
   // Map markers
+  teeMarker: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.mapOverlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.text,
+  },
+  teeMarkerText: {
+    fontSize: FontSize.xs,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+  },
   flagMarker: {
     width: 30,
     height: 30,
     borderRadius: Radius.full,
-    backgroundColor: 'rgba(11,24,16,0.85)',
+    backgroundColor: Colors.mapOverlay,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,

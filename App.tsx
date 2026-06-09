@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -9,6 +9,16 @@ import { AuthProvider } from './src/context/AuthContext';
 import { RoundProvider } from './src/context/RoundContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { Colors } from './src/constants/theme';
+
+(Text as any).defaultProps = {
+  ...(Text as any).defaultProps,
+  style: [{ fontFamily: 'Inter_400Regular' }, (Text as any).defaultProps?.style],
+};
+
+(TextInput as any).defaultProps = {
+  ...(TextInput as any).defaultProps,
+  style: [{ fontFamily: 'Inter_400Regular' }, (TextInput as any).defaultProps?.style],
+};
 
 export default function App() {
   const [fontsLoaded] = useFonts({

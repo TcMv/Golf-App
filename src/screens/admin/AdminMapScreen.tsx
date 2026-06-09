@@ -25,11 +25,11 @@ type Layers = Record<LayerKey, boolean>;
 const COURSE_ID = '00000000-0000-0000-0000-000000000001';
 
 const HAZARD_COLORS: Record<HazardType, string> = {
-  bunker: '#F5C518',
-  water: '#4A90D9',
-  trees: '#2D6A2D',
-  ob: '#FFFFFF',
-  red_zone: '#E53E3E',
+  bunker: Colors.eagle,
+  water: Colors.textMuted,
+  trees: Colors.greenDark,
+  ob: Colors.text,
+  red_zone: Colors.doublePlus,
 };
 
 const HAZARD_LABELS: Record<HazardType, string> = {
@@ -45,13 +45,13 @@ const DEFAULT_LAYERS: Layers = {
 };
 
 const LAYER_DEFS: { key: LayerKey; label: string; color: string }[] = [
-  { key: 'tees', label: 'Tees', color: '#FFFFFF' },
-  { key: 'greens', label: 'Greens', color: '#22c55e' },
-  { key: 'bunker', label: 'Bunkers', color: '#F5C518' },
-  { key: 'water', label: 'Water', color: '#4A90D9' },
-  { key: 'trees', label: 'Trees', color: '#2D6A2D' },
-  { key: 'ob', label: 'OB', color: '#FFFFFF' },
-  { key: 'red_zone', label: 'Red Zone', color: '#E53E3E' },
+  { key: 'tees', label: 'Tees', color: Colors.text },
+  { key: 'greens', label: 'Greens', color: Colors.green },
+  { key: 'bunker', label: 'Bunkers', color: Colors.eagle },
+  { key: 'water', label: 'Water', color: Colors.textMuted },
+  { key: 'trees', label: 'Trees', color: Colors.greenDark },
+  { key: 'ob', label: 'OB', color: Colors.text },
+  { key: 'red_zone', label: 'Red Zone', color: Colors.doublePlus },
 ];
 
 type HoleMarker = {
@@ -272,7 +272,7 @@ export default function AdminMapScreen() {
                 title={`H${hole.number} Front`}
                 draggable={mode === 'edit' && !isVertexEditing}
                 onDragEnd={e => handleMarkerDragEnd(hole.id, 'green_front', e.nativeEvent.coordinate)}
-                pinColor="#22c55e"
+                pinColor={Colors.green}
               />
             )}
             {layers.greens && hole.green_mid_lat != null && hole.green_mid_lng != null && (
@@ -281,7 +281,7 @@ export default function AdminMapScreen() {
                 title={`H${hole.number} Mid`}
                 draggable={mode === 'edit' && !isVertexEditing}
                 onDragEnd={e => handleMarkerDragEnd(hole.id, 'green_mid', e.nativeEvent.coordinate)}
-                pinColor="#16a34a"
+                pinColor={Colors.greenDark}
               />
             )}
             {layers.greens && hole.green_back_lat != null && hole.green_back_lng != null && (
@@ -290,7 +290,7 @@ export default function AdminMapScreen() {
                 title={`H${hole.number} Back`}
                 draggable={mode === 'edit' && !isVertexEditing}
                 onDragEnd={e => handleMarkerDragEnd(hole.id, 'green_back', e.nativeEvent.coordinate)}
-                pinColor="#15803d"
+                pinColor={Colors.greenDark}
               />
             )}
           </React.Fragment>
@@ -308,7 +308,7 @@ export default function AdminMapScreen() {
               key={hazard.id}
               coordinates={verts}
               fillColor={HAZARD_COLORS[hazard.type] + (isBeingEdited ? '33' : '55')}
-              strokeColor={isBeingEdited ? '#fff' : HAZARD_COLORS[hazard.type]}
+              strokeColor={isBeingEdited ? Colors.text : HAZARD_COLORS[hazard.type]}
               strokeWidth={isBeingEdited ? 2.5 : 2}
               tappable={mode === 'edit' && !isVertexEditing}
               onPress={() => {
@@ -357,11 +357,11 @@ export default function AdminMapScreen() {
         {/* Draw-in-progress */}
         {drawVertices.length > 0 && (
           <>
-            <Polyline coordinates={drawVertices} strokeColor="#F5C518" strokeWidth={2} />
+            <Polyline coordinates={drawVertices} strokeColor={Colors.eagle} strokeWidth={2} />
             {closingSegment.length === 2 && (
               <Polyline
                 coordinates={closingSegment}
-                strokeColor="#F5C51888"
+                strokeColor={Colors.eagle}
                 strokeWidth={1.5}
                 lineDashPattern={[6, 4]}
               />
@@ -516,7 +516,7 @@ export default function AdminMapScreen() {
                 >
                   <Text style={[
                     styles.typeBtnText,
-                    hazardType === t && { color: t === 'trees' ? '#fff' : '#000' },
+                    hazardType === t && { color: t === 'trees' ? Colors.text : Colors.bg },
                   ]}>
                     {HAZARD_LABELS[t]}
                   </Text>
@@ -581,7 +581,7 @@ export default function AdminMapScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, backgroundColor: Colors.bg },
   overlay: { position: 'absolute', top: 0, left: 0, right: 0 },
   header: {
     flexDirection: 'row',
@@ -589,21 +589,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.base,
     paddingVertical: Spacing.sm,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: Colors.mapOverlay,
   },
   backBtn: {
     width: 36, height: 36,
     alignItems: 'center', justifyContent: 'center',
-    borderRadius: Radius.full,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface2,
   },
-  backBtnText: { fontSize: FontSize.base, color: '#fff' },
-  title: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: '#fff' },
+  backBtnText: { fontSize: FontSize.base, color: Colors.text },
+  title: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
   modeBar: {
     flexDirection: 'row',
     marginHorizontal: Spacing.base,
     marginTop: Spacing.xs,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: Colors.mapOverlay,
     borderRadius: Radius.md,
     padding: 3,
     gap: 3,
@@ -613,8 +613,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   modeBtnActive: { backgroundColor: Colors.surface3 },
-  modeBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: 'rgba(255,255,255,0.5)' },
-  modeBtnTextActive: { color: '#fff', fontWeight: FontWeight.semibold },
+  modeBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textMuted },
+  modeBtnTextActive: { color: Colors.text, fontWeight: FontWeight.semibold },
   layerScroll: { marginTop: Spacing.xs },
   layerScrollContent: {
     paddingHorizontal: Spacing.base,
@@ -625,93 +625,93 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: Spacing.sm, paddingVertical: 6,
     borderRadius: Radius.full,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: Colors.mapOverlay,
+    borderWidth: 1, borderColor: Colors.border,
   },
   layerChipActive: {
-    borderColor: 'rgba(255,255,255,0.6)',
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderColor: Colors.textMuted,
+    backgroundColor: Colors.surface2,
   },
   layerDot: {
     width: 8, height: 8, borderRadius: 4,
-    borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.4)',
+    borderWidth: 1, borderColor: Colors.border,
   },
-  layerChipText: { fontSize: 11, fontWeight: FontWeight.medium, color: 'rgba(255,255,255,0.35)' },
-  layerChipTextActive: { color: '#fff' },
+  layerChipText: { fontSize: FontSize.xs, fontWeight: FontWeight.medium, color: Colors.textMuted },
+  layerChipTextActive: { color: Colors.text },
   bottomBar: {
     position: 'absolute', left: Spacing.base, right: Spacing.base,
     alignItems: 'center', gap: Spacing.sm,
   },
   vertexBar: {
     width: '100%',
-    backgroundColor: 'rgba(0,0,0,0.88)',
+    backgroundColor: Colors.mapOverlay,
     borderRadius: Radius.lg,
     padding: Spacing.base,
     gap: Spacing.sm,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: Colors.border,
   },
   vertexCount: {
-    fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)', textAlign: 'center',
+    fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center',
   },
   vertexBtns: {
     flexDirection: 'row', gap: Spacing.sm,
     flexWrap: 'wrap', justifyContent: 'center',
   },
   hint: {
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: Colors.mapOverlay,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.base,
     paddingVertical: Spacing.sm,
   },
-  hintText: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
+  hintText: { fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center' },
   drawRow: { width: '100%', alignItems: 'center', gap: Spacing.sm },
   drawBtns: { flexDirection: 'row', gap: Spacing.sm },
   ghostBtn: {
     paddingHorizontal: Spacing.base, paddingVertical: Spacing.sm,
     borderRadius: Radius.md,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: Colors.surface2,
+    borderWidth: 1, borderColor: Colors.border,
   },
-  ghostBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: '#fff' },
+  ghostBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.text },
   dangerBtn: {
     paddingHorizontal: Spacing.base, paddingVertical: Spacing.sm,
     borderRadius: Radius.md,
-    backgroundColor: 'rgba(229,62,62,0.15)',
-    borderWidth: 1, borderColor: '#E53E3E',
+    backgroundColor: Colors.redMuted,
+    borderWidth: 1, borderColor: Colors.doublePlus,
   },
-  dangerBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: '#E53E3E' },
+  dangerBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.doublePlus },
   greenBtn: {
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm,
     borderRadius: Radius.md, backgroundColor: Colors.green,
   },
-  greenBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#000' },
+  greenBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.bg },
   vertexHandle: {
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#F5C518',
+    backgroundColor: Colors.eagle,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#000',
+    borderWidth: 2, borderColor: Colors.bg,
   },
   vertexHandleSelected: {
-    backgroundColor: '#fff',
-    borderColor: '#E53E3E',
+    backgroundColor: Colors.text,
+    borderColor: Colors.doublePlus,
   },
-  vertexHandleLabel: { fontSize: 10, fontWeight: FontWeight.bold, color: '#000' },
+  vertexHandleLabel: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.bg },
   midpointHandle: {
     width: 18, height: 18, borderRadius: 9,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: Colors.text,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: '#999',
+    borderWidth: 1, borderColor: Colors.textMuted,
   },
-  midpointLabel: { fontSize: 12, fontWeight: FontWeight.bold, color: '#333', lineHeight: 14 },
+  midpointLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.bg, lineHeight: 16 },
   drawVertex: {
     width: 24, height: 24, borderRadius: 12,
-    backgroundColor: '#F5C518',
+    backgroundColor: Colors.eagle,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#000',
+    borderWidth: 2, borderColor: Colors.bg,
   },
-  drawVertexLabel: { fontSize: 10, fontWeight: FontWeight.bold, color: '#000' },
+  drawVertexLabel: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.bg },
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    flex: 1, backgroundColor: Colors.mapOverlay,
     justifyContent: 'flex-end',
   },
   modalCard: {
@@ -754,15 +754,15 @@ const styles = StyleSheet.create({
   },
   modalBtns: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
   modalBackBtn: {
-    flex: 1, height: 48, borderRadius: Radius.full,
+    flex: 1, height: 48, borderRadius: Radius.md,
     backgroundColor: Colors.surface3,
     alignItems: 'center', justifyContent: 'center',
   },
   modalBackText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.textSecondary },
   modalSaveBtn: {
-    flex: 2, height: 48, borderRadius: Radius.full,
+    flex: 2, height: 48, borderRadius: Radius.md,
     backgroundColor: Colors.green,
     alignItems: 'center', justifyContent: 'center',
   },
-  modalSaveText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#000' },
+  modalSaveText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.bg },
 });

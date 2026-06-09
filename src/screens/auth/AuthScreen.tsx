@@ -132,7 +132,7 @@ export default function AuthScreen() {
               activeOpacity={0.8}
             >
               {loading
-                ? <ActivityIndicator color="#000" />
+                ? <ActivityIndicator color={Colors.bg} />
                 : <Text style={styles.submitBtnText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
               }
             </TouchableOpacity>
@@ -198,11 +198,11 @@ const styles = StyleSheet.create({
   form: { gap: Spacing.xs },
   fieldLabel: {
     fontSize: FontSize.xs,
-    fontWeight: FontWeight.semibold,
-    fontFamily: Font.semibold,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 1.1,
     marginTop: Spacing.base,
     marginBottom: Spacing.xs,
   },
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   },
   submitBtn: {
     marginTop: Spacing.lg,
-    height: 52,
+    minHeight: 48,
     borderRadius: Radius.md,
     backgroundColor: Colors.green,
     alignItems: 'center',
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     fontWeight: FontWeight.bold,
     fontFamily: Font.bold,
-    color: '#000',
+    color: Colors.bg,
   },
   hint: {
     marginTop: Spacing.xl,

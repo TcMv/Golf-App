@@ -14,6 +14,7 @@
     "date-fns": "^4.4.0",
     "expo": "~56.0.8",
     "expo-font": "~56.0.5",
+    "expo-haptics": "~56.0.3",
     "expo-location": "~56.0.15",
     "expo-secure-store": "~56.0.4",
     "expo-splash-screen": "~56.0.10",
@@ -38,7 +39,12 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test:handicap": "tsc --ignoreConfig src/lib/handicap.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-handicap-test && node tests/handicap.test.cjs",
+    "test:caddie": "tsc --ignoreConfig src/utils/caddie.ts src/utils/wind.ts src/utils/distance.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-caddie-test && node tests/caddie.test.cjs",
+    "test:gamification": "tsc --ignoreConfig src/utils/gamificationCore.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-gamification-test && node tests/gamification.test.cjs",
+    "test:stats": "tsc --ignoreConfig src/utils/statsAnalytics.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-stats-test && node tests/statsAnalytics.test.cjs"
   },
   "private": true
 }

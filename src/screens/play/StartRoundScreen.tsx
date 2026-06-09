@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -17,7 +18,7 @@ import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
 import { useAuth } from '../../context/AuthContext';
 import { fetchWind } from '../../utils/wind';
-import { callOpenAI, buildBriefingPrompt } from '../../utils/anthropic';
+import { buildPreRoundBriefing } from '../../utils/caddie';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Course, Hole, Round, TeeSet } from '../../types';
 
@@ -32,14 +33,12 @@ type RootStackParamList = {
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type RoundType = '18' | 'front9' | 'back9';
 
-const COURSE_ID = '00000000-0000-0000-0000-000000000001';
-
 const TEE_DOT_COLORS: Record<string, string> = {
-  white: '#FFFFFF',
-  blue: '#4A90D9',
-  red: '#E53E3E',
-  yellow: '#F5C518',
-  black: '#222222',
+  white: Colors.text,
+  blue: Colors.textMuted,
+  red: Colors.doublePlus,
+  yellow: Colors.eagle,
+  black: Colors.bg,
 };
 
 export default function StartRoundScreen() {
@@ -51,61 +50,127 @@ export default function StartRoundScreen() {
   const [startingHole, setStartingHole] = useState(1);
   const [excludeHandicap, setExcludeHandicap] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [setupLoading, setSetupLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [courseSearch, setCourseSearch] = useState('');
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [teeSets, setTeeSets] = useState<TeeSet[]>([]);
   const [selectedTeeSet, setSelectedTeeSet] = useState<TeeSet | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingTips, setBriefingTips] = useState<string | null>(null);
 
   useEffect(() => {
+    const loadCourses = async () => {
+      setSetupLoading(true);
+      const { data, error } = await supabase
+        .from('courses')
+        .select('id, name, lat, lng, holes, created_at')
+        .order('name');
+
+      if (error) {
+        Alert.alert('Course Error', 'Could not load the course database.');
+        setSetupLoading(false);
+        return;
+      }
+
+      const loaded = (data ?? []) as Course[];
+      setCourses(loaded);
+      const preferred = loaded.find(course => course.id === profile?.home_course_id) ?? loaded[0] ?? null;
+      setSelectedCourse(preferred);
+      setSetupLoading(false);
+    };
+
+    loadCourses();
+  }, [profile?.home_course_id]);
+
+  useEffect(() => {
+    if (!selectedCourse) {
+      setTeeSets([]);
+      setSelectedTeeSet(null);
+      return;
+    }
+
+    setTeeSets([]);
+    setSelectedTeeSet(null);
     supabase
       .from('tee_sets')
-      .select('*')
-      .eq('course_id', COURSE_ID)
+      .select('id, course_id, name, colour, total_metres, course_rating, slope_rating')
+      .eq('course_id', selectedCourse.id)
       .order('total_metres', { ascending: false })
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          const sets = data as TeeSet[];
-          setTeeSets(sets);
-          setSelectedTeeSet(sets.find(t => t.colour === 'white') ?? sets[0]);
+      .then(({ data, error }) => {
+        if (error) {
+          Alert.alert('Tee Error', `Could not load tees for ${selectedCourse.name}.`);
+          return;
         }
+        const sets = (data ?? []) as TeeSet[];
+        setTeeSets(sets);
+        setSelectedTeeSet(sets.find(t => t.colour === 'white') ?? sets[0] ?? null);
       });
-  }, []);
+  }, [selectedCourse]);
+
+  useEffect(() => {
+    setBriefingTips(null);
+  }, [selectedCourse?.id, selectedTeeSet?.id]);
 
   const holesPlayed = roundType === '18' ? 18 : 9;
 
   const handleGetBriefing = useCallback(async () => {
-    if (!selectedTeeSet) return;
+    if (!selectedTeeSet || !selectedCourse) return;
     setBriefingLoading(true);
     setBriefingTips(null);
     try {
-      const wind = await fetchWind(-26.6317, 152.9587);
-      const { system, user: userMsg } = buildBriefingPrompt({
-        courseName: 'Nambour Golf Club',
+      const [wind, recentRoundsResult] = await Promise.all([
+        fetchWind(selectedCourse.lat, selectedCourse.lng),
+        user?.id
+          ? supabase
+              .from('rounds')
+              .select('gross_total')
+              .eq('user_id', user.id)
+              .eq('course_id', selectedCourse.id)
+              .eq('completed', true)
+              .not('gross_total', 'is', null)
+              .order('date', { ascending: false })
+              .limit(5)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const recentCourseScores = (recentRoundsResult.data ?? [])
+        .map(round => round.gross_total as number | null)
+        .filter((score): score is number => score != null);
+      const tips = buildPreRoundBriefing({
+        courseName: selectedCourse.name,
         courseRating: selectedTeeSet.course_rating,
         slopeRating: selectedTeeSet.slope_rating,
-        teeColour: selectedTeeSet.colour,
         windLabel: wind?.label ?? 'Calm',
+        windSpeed: wind?.speed_kmh ?? 0,
         handicapIndex: profile?.handicap_index ?? null,
+        recentCourseScores,
       });
-      const tips = await callOpenAI(system, userMsg);
       setBriefingTips(tips);
     } catch {
-      setBriefingTips('Could not load briefing. Check EXPO_PUBLIC_ANTHROPIC_API_KEY.');
+      setBriefingTips('Could not build the briefing. Check your connection and try again.');
     } finally {
       setBriefingLoading(false);
     }
-  }, [selectedTeeSet, profile]);
+  }, [selectedTeeSet, selectedCourse, profile?.handicap_index, user?.id]);
 
   const handleStart = useCallback(async () => {
-    if (!selectedTeeSet) {
-      Alert.alert('Error', 'Tees not loaded yet. Please wait a moment and try again.');
+    if (!selectedCourse || !selectedTeeSet || !user?.id) {
+      Alert.alert('Error', 'Select a course and tee before starting.');
       return;
     }
     setLoading(true);
     try {
       const [{ data: course }, { data: holes }] = await Promise.all([
-        supabase.from('courses').select('*').eq('id', COURSE_ID).single(),
-        supabase.from('holes').select('*').eq('course_id', COURSE_ID).order('number'),
+        supabase
+          .from('courses')
+          .select('id, name, lat, lng, holes, created_at')
+          .eq('id', selectedCourse.id)
+          .single(),
+        supabase
+          .from('holes')
+          .select('id, course_id, number, par, stroke_index, white_metres, green_front_metres, green_back_metres, tee_lat, tee_lng, green_front_lat, green_front_lng, green_mid_lat, green_mid_lng, green_back_lat, green_back_lng, notes')
+          .eq('course_id', selectedCourse.id)
+          .order('number'),
       ]);
 
       if (!course || !holes) {
@@ -116,7 +181,7 @@ export default function StartRoundScreen() {
       const { data: roundData, error } = await supabase
         .from('rounds')
         .insert({
-          course_id: COURSE_ID,
+          course_id: selectedCourse.id,
           tee_set_id: selectedTeeSet.id,
           date: new Date().toISOString().split('T')[0],
           holes_played: holesPlayed,
@@ -124,9 +189,9 @@ export default function StartRoundScreen() {
           exclude_from_handicap: excludeHandicap,
           scoring_mode: 'classic',
           completed: false,
-          user_id: user?.id ?? null,
+          user_id: user.id,
         })
-        .select()
+        .select('id, course_id, tee_set_id, date, holes_played, scoring_mode, starting_hole, exclude_from_handicap, gross_total, net_total, handicap_differential, completed')
         .single();
 
       if (error || !roundData) {
@@ -147,7 +212,11 @@ export default function StartRoundScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedTeeSet, roundType, startingHole, excludeHandicap, holesPlayed, startRound, navigation]);
+  }, [selectedCourse, selectedTeeSet, user?.id, startingHole, excludeHandicap, holesPlayed, startRound, navigation]);
+
+  const filteredCourses = courses.filter(course =>
+    course.name.toLowerCase().includes(courseSearch.trim().toLowerCase()),
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -164,15 +233,44 @@ export default function StartRoundScreen() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Course */}
-        <View style={styles.courseRow}>
-          <View>
-            <Text style={styles.courseName}>Nambour Golf Club</Text>
-            <Text style={styles.courseLocation}>Nambour, QLD</Text>
+        <Text style={styles.sectionLabel}>Course</Text>
+        <TextInput
+          style={styles.courseSearch}
+          value={courseSearch}
+          onChangeText={setCourseSearch}
+          placeholder="Search courses"
+          placeholderTextColor={Colors.textMuted}
+          autoCapitalize="words"
+        />
+        {setupLoading ? (
+          <ActivityIndicator color={Colors.green} style={styles.setupLoader} />
+        ) : filteredCourses.length === 0 ? (
+          <View style={styles.courseEmpty}>
+            <Text style={styles.courseEmptyText}>No matching courses</Text>
           </View>
-          <View style={styles.courseTag}>
-            <Text style={styles.courseTagText}>18 holes</Text>
-          </View>
-        </View>
+        ) : (
+          filteredCourses.map(course => {
+            const isSelected = selectedCourse?.id === course.id;
+            return (
+              <TouchableOpacity
+                key={course.id}
+                style={[styles.courseRow, isSelected && styles.courseRowActive]}
+                onPress={() => setSelectedCourse(course)}
+                activeOpacity={0.7}
+              >
+                <View>
+                  <Text style={styles.courseName}>{course.name}</Text>
+                  <Text style={styles.courseLocation}>
+                    {course.lat.toFixed(4)}, {course.lng.toFixed(4)}
+                  </Text>
+                </View>
+                <View style={[styles.courseTag, isSelected && styles.courseTagActive]}>
+                  <Text style={styles.courseTagText}>{course.holes} holes</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
 
         {/* Round Type */}
         <Text style={styles.sectionLabel}>Round Type</Text>
@@ -219,6 +317,11 @@ export default function StartRoundScreen() {
 
         {/* Tee Selection */}
         <Text style={styles.sectionLabel}>Tees</Text>
+        {selectedCourse && teeSets.length === 0 && !setupLoading ? (
+          <View style={styles.courseEmpty}>
+            <Text style={styles.courseEmptyText}>No tee data is available for this course.</Text>
+          </View>
+        ) : null}
         {teeSets.map(tee => {
           const isSelected = selectedTeeSet?.id === tee.id;
           return (
@@ -228,7 +331,7 @@ export default function StartRoundScreen() {
               onPress={() => setSelectedTeeSet(tee)}
               activeOpacity={0.7}
             >
-              <View style={[styles.teeColorDot, { backgroundColor: TEE_DOT_COLORS[tee.colour] ?? '#fff' }]} />
+              <View style={[styles.teeColorDot, { backgroundColor: TEE_DOT_COLORS[tee.colour] ?? Colors.text }]} />
               <View style={styles.teeInfo}>
                 <Text style={styles.teeName}>{tee.name}</Text>
                 <Text style={styles.teeDetails}>{tee.total_metres}m  ·  Slope {tee.slope_rating}  ·  Rating {tee.course_rating}</Text>
@@ -261,11 +364,11 @@ export default function StartRoundScreen() {
               style={styles.briefingGetBtn}
               onPress={handleGetBriefing}
               activeOpacity={0.8}
-              disabled={briefingLoading || !selectedTeeSet}
+              disabled={briefingLoading || !selectedTeeSet || !selectedCourse}
             >
               {briefingLoading
                 ? <ActivityIndicator color={Colors.green} />
-                : <Text style={styles.briefingGetBtnText}>⛳  Get AI Briefing</Text>}
+                : <Text style={styles.briefingGetBtnText}>⛳  Build Caddie Briefing</Text>}
             </TouchableOpacity>
           )}
         </View>
@@ -291,10 +394,10 @@ export default function StartRoundScreen() {
           style={[styles.startBtn, loading && styles.startBtnDisabled]}
           onPress={handleStart}
           activeOpacity={0.8}
-          disabled={loading}
+          disabled={loading || !selectedCourse || !selectedTeeSet}
         >
           {loading ? (
-            <ActivityIndicator color="#000" />
+            <ActivityIndicator color={Colors.bg} />
           ) : (
             <Text style={styles.startBtnText}>⛳  Start Round</Text>
           )}
@@ -320,17 +423,34 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.surface2,
   },
   backBtnText: { fontSize: FontSize.base, color: Colors.textSecondary },
-  headerTitle: {
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semibold,
-    color: Colors.text,
-  },
+  headerTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, fontFamily: Font.semibold, color: Colors.text },
   scroll: { flex: 1 },
   scrollContent: { padding: Spacing.base, paddingBottom: Spacing.xxl },
+  courseSearch: {
+    minHeight: 48,
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.base,
+    color: Colors.text,
+    fontSize: FontSize.base,
+    fontFamily: Font.regular,
+    marginBottom: Spacing.sm,
+  },
+  setupLoader: { marginVertical: Spacing.lg },
+  courseEmpty: {
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.base,
+  },
+  courseEmptyText: { color: Colors.textMuted, fontSize: FontSize.sm, fontFamily: Font.regular },
   courseRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -342,8 +462,9 @@ const styles = StyleSheet.create({
     padding: Spacing.base,
     marginBottom: Spacing.base,
   },
-  courseName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
-  courseLocation: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2 },
+  courseRowActive: { borderColor: Colors.green },
+  courseName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, fontFamily: Font.semibold, color: Colors.text },
+  courseLocation: { fontSize: FontSize.sm, fontFamily: Font.regular, color: Colors.textMuted, marginTop: Spacing.xs },
   courseTag: {
     backgroundColor: Colors.greenMuted,
     borderRadius: Radius.sm,
@@ -351,12 +472,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   courseTagText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.green },
+  courseTagActive: { backgroundColor: Colors.greenMuted },
   sectionLabel: {
     fontSize: FontSize.xs,
-    fontWeight: FontWeight.semibold,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 1.1,
     marginBottom: Spacing.sm,
     marginTop: Spacing.base,
   },
@@ -407,7 +530,7 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: Radius.full,
-    backgroundColor: '#ffffff',
+    backgroundColor: Colors.text,
     borderWidth: 1,
     borderColor: Colors.borderStrong,
   },
@@ -422,7 +545,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  teeCheckText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: '#000' },
+  teeCheckText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.bg },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -448,7 +571,7 @@ const styles = StyleSheet.create({
   briefingHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   briefingIcon: { fontSize: 18 },
   briefingTitle: {
-    fontSize: 10,
+    fontSize: FontSize.xs,
     fontFamily: Font.bold,
     fontWeight: FontWeight.bold,
     color: Colors.green,
@@ -461,7 +584,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   briefingGetBtn: {
-    height: 44,
+    minHeight: 48,
     borderRadius: Radius.md,
     backgroundColor: Colors.greenMuted,
     borderWidth: 1,
@@ -489,11 +612,11 @@ const styles = StyleSheet.create({
   },
   startBtn: {
     height: 56,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
   },
   startBtnDisabled: { opacity: 0.5 },
-  startBtnText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#000000' },
+  startBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.bg },
 });

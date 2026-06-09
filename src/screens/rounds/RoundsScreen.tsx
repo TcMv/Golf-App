@@ -12,6 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { format, isThisMonth, isThisYear } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Round } from '../../types';
 
@@ -112,22 +113,31 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 export default function RoundsScreen() {
   const navigation = useNavigation<Nav>();
+  const { user } = useAuth();
   const [rounds, setRounds] = useState<RoundRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterKey>('all');
 
   const fetchRounds = useCallback(async () => {
+    if (!user?.id) {
+      setRounds([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('rounds')
         .select(
           `
-          *,
+          id, course_id, tee_set_id, date, holes_played, scoring_mode,
+          starting_hole, exclude_from_handicap, gross_total, net_total,
+          handicap_differential, completed,
           courses:course_id ( name ),
-          holes:course_id ( par )
+          holes:course_id ( number, par )
         `,
         )
+        .eq('user_id', user.id)
         .eq('completed', true)
         .order('date', { ascending: false });
 
@@ -138,7 +148,13 @@ export default function RoundsScreen() {
 
       // Aggregate par totals from holes
       const rows: RoundRow[] = (data ?? []).map((r: any) => {
-        const holesArr: { par: number }[] = r.holes ?? [];
+        const startingHole = r.starting_hole ?? 1;
+        const endingHole = startingHole + 8;
+        const holesArr: { number: number; par: number }[] = r.holes_played === 9
+          ? (r.holes ?? []).filter(
+              (hole: { number: number }) => hole.number >= startingHole && hole.number <= endingHole,
+            )
+          : r.holes ?? [];
         const parTotal =
           holesArr.length > 0
             ? holesArr.reduce((sum: number, h: { par: number }) => sum + h.par, 0)
@@ -154,7 +170,7 @@ export default function RoundsScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchRounds();

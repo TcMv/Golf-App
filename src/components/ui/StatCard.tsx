@@ -37,7 +37,7 @@ export function StatCard({ label, value, subLabel, color }: StatCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.surface2,
+    backgroundColor: Colors.surface1,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.lg,
@@ -55,19 +55,19 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: FontSize.xs,
-    fontWeight: FontWeight.medium,
-    fontFamily: Font.medium,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.textMuted,
     marginTop: Spacing.xs,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1.1,
     textAlign: 'center',
   },
   subLabel: {
     fontSize: FontSize.xs,
     fontFamily: Font.regular,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: Spacing.xs,
     textAlign: 'center',
   },
 });

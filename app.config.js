@@ -19,7 +19,7 @@ module.exports = {
     android: {
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
-        backgroundColor: '#0a0a0a',
+        backgroundColor: '#0b1810',
       },
       package: 'com.personal.golfcaddie',
       permissions: [
@@ -39,7 +39,7 @@ module.exports = {
         {
           image: './assets/splash-icon.png',
           resizeMode: 'contain',
-          backgroundColor: '#0a0a0a',
+          backgroundColor: '#0b1810',
         },
       ],
       [

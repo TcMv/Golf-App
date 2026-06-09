@@ -11,8 +11,11 @@ export function calcDifferential(
 
 export function calcHandicapIndex(differentials: number[]): number | null {
   if (differentials.length === 0) return null;
-  const sorted = [...differentials].sort((a, b) => a - b);
-  const recent20 = sorted.slice(0, 20);
+  // Callers pass newest-first differentials. Select the latest 20 before
+  // ranking them, otherwise an old career-best round can incorrectly remain
+  // in the current handicap window.
+  const recent20 = differentials.slice(0, 20);
+  const sorted = [...recent20].sort((a, b) => a - b);
   const count = recent20.length;
 
   let useCount: number;
@@ -26,9 +29,9 @@ export function calcHandicapIndex(differentials: number[]): number | null {
   else if (count === 19) useCount = 7;
   else useCount = 8;
 
-  const best = recent20.slice(0, useCount);
+  const best = sorted.slice(0, useCount);
   const avg = best.reduce((s, d) => s + d, 0) / useCount;
-  return Math.floor(avg * 0.96 * 10) / 10;
+  return Math.floor(avg * 10) / 10;
 }
 
 export function courseHandicap(

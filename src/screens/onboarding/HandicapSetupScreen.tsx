@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 
 const ONBOARDING_KEY = '@golf_onboarding_done';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing, Typography } from '../../constants/theme';
 
 type RootStackParamList = {
   Welcome: undefined;
@@ -136,9 +136,9 @@ const styles = StyleSheet.create({
   progressLineDone: { backgroundColor: Colors.greenDark },
 
   content: { flex: 1, padding: Spacing.xl, gap: Spacing.base },
-  step: { fontSize: FontSize.xs, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
-  subtitle: { fontSize: FontSize.base, color: Colors.textSecondary, lineHeight: FontSize.base * 1.5 },
+  step: { ...Typography.label, color: Colors.textMuted },
+  title: { ...Typography.h1, color: Colors.text },
+  subtitle: { ...Typography.body, color: Colors.textMuted, lineHeight: 24 },
   inputCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,12 +152,13 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     height: 64,
-    fontSize: 40,
+    fontSize: FontSize.xxxl,
     fontWeight: FontWeight.black,
+    fontFamily: Font.black,
     color: Colors.text,
   },
-  inputUnit: { fontSize: FontSize.sm, color: Colors.textMuted, fontWeight: FontWeight.medium },
-  note: { fontSize: FontSize.sm, color: Colors.textMuted, lineHeight: FontSize.sm * 1.6 },
+  inputUnit: { ...Typography.caption, color: Colors.textMuted, fontWeight: FontWeight.medium, fontFamily: Font.medium },
+  note: { ...Typography.caption, color: Colors.textMuted, lineHeight: 20 },
 
   footer: {
     padding: Spacing.base,
@@ -166,13 +167,18 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     height: 56,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
   },
   saveBtnDisabled: { opacity: 0.4 },
-  saveBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#000' },
+  saveBtnText: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
+    color: Colors.bg,
+  },
   skipBtn: { height: 48, alignItems: 'center', justifyContent: 'center' },
-  skipBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Colors.textSecondary },
+  skipBtnText: { ...Typography.body, fontWeight: FontWeight.medium, fontFamily: Font.medium, color: Colors.textMuted },
 });

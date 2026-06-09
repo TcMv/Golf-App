@@ -1,47 +1,13 @@
-import React, { useCallback, useState } from 'react';
+import React from 'react';
 import {
-  ActivityIndicator,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { CaddieAdvice } from '../../utils/caddie';
-
-type Message = { role: 'user' | 'assistant'; text: string };
-
-const OPENAI_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? '';
-
-async function askGPT(messages: Message[], context: string): Promise<string> {
-  const systemPrompt =
-    `You are a golf caddie assistant. Be concise and practical — this is mid-round advice. ` +
-    `Max 3 sentences per response. No filler phrases. Use metres, not yards.\n\nShot context:\n${context}`;
-
-  const body = {
-    model: 'gpt-4o-mini',
-    max_tokens: 200,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      ...messages.map(m => ({ role: m.role, content: m.text })),
-    ],
-  };
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) throw new Error(`OpenAI API error ${res.status}`);
-  const json = await res.json();
-  return json.choices?.[0]?.message?.content ?? 'No response.';
-}
 
 type Props = {
   advice: CaddieAdvice;
@@ -49,292 +15,228 @@ type Props = {
 };
 
 export default function CaddiePanel({ advice, onDismiss }: Props) {
-  const [moreInfoOpen, setMoreInfoOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [followUp, setFollowUp] = useState('');
-
-  const openMoreInfo = useCallback(async () => {
-    if (!OPENAI_KEY) {
-      setMessages([{ role: 'assistant', text: 'Set EXPO_PUBLIC_OPENAI_API_KEY in eas.json to enable AI advice.' }]);
-      setMoreInfoOpen(true);
-      return;
-    }
-    setMoreInfoOpen(true);
-    if (messages.length > 0) return; // already loaded
-    setLoading(true);
-    try {
-      const initialMsg: Message = {
-        role: 'user',
-        text: `Give me the full breakdown for this shot.`,
-      };
-      const reply = await askGPT([initialMsg], advice.context);
-      setMessages([initialMsg, { role: 'assistant', text: reply }]);
-    } catch {
-      setMessages([{ role: 'assistant', text: 'Could not connect. Check your internet connection.' }]);
-    } finally {
-      setLoading(false);
-    }
-  }, [advice.context, messages.length]);
-
-  const sendFollowUp = useCallback(async () => {
-    const text = followUp.trim();
-    if (!text || loading) return;
-    const newMessages: Message[] = [...messages, { role: 'user', text }];
-    setMessages(newMessages);
-    setFollowUp('');
-    setLoading(true);
-    try {
-      const reply = await askGPT(newMessages, advice.context);
-      setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', text: 'Could not connect.' }]);
-    } finally {
-      setLoading(false);
-    }
-  }, [followUp, loading, messages, advice.context]);
-
-  const { recommended, alternatives, distToPin, windLabel } = advice;
+  const { recommended, alternatives, distToPin, playingDistance, history } = advice;
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
 
   return (
-    <>
-      {/* Compact pop-up card */}
-      <View style={styles.card}>
-        <View style={styles.cardTop}>
-          <View style={styles.clubBadge}>
-            <Text style={styles.clubBadgeText}>{clubLabel}</Text>
-          </View>
-          <View style={styles.cardMeta}>
-            <Text style={styles.carryText}>{recommended.adjustedCarry}m</Text>
-            <Text style={styles.pinText}>{distToPin}m to pin</Text>
-          </View>
-          <TouchableOpacity style={styles.dismissBtn} onPress={onDismiss}>
-            <Text style={styles.dismissText}>✕</Text>
-          </TouchableOpacity>
+    <View style={styles.card}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.eyebrow}>DETERMINISTIC CADDIE</Text>
+          <Text style={styles.title}>{clubLabel}</Text>
         </View>
-
-        {/* Wind */}
-        {windLabel !== 'Calm' && (
-          <Text style={styles.metaLine}>
-            💨 {windLabel}{Math.abs(advice.windAdjustment) >= 3 ? ` · ${advice.windAdjustment > 0 ? '+' : ''}${advice.windAdjustment}m` : ''}
-          </Text>
-        )}
-
-        {/* Elevation */}
-        {Math.abs(advice.elevDiff) >= 3 && (
-          <Text style={styles.metaLine}>
-            {advice.elevDiff > 0 ? '⬆' : '⬇'} {Math.abs(advice.elevDiff)}m {advice.elevDiff > 0 ? 'uphill' : 'downhill'}
-          </Text>
-        )}
-
-        {/* Hazard warnings */}
-        {recommended.warnings.map((w, i) => (
-          <Text key={i} style={styles.warningLine}>⚠ {w.type} {w.distanceMetres}m {w.side}</Text>
-        ))}
-        {recommended.clearsHazards && alternatives.length > 0 && (
-          <Text style={styles.safeLine}>✓ clears all hazards</Text>
-        )}
-
-        {/* Alternatives */}
-        {alternatives.length > 0 && (
-          <View style={styles.altRow}>
-            <Text style={styles.altLabel}>Alt: </Text>
-            {alternatives.map((a, i) => (
-              <Text key={i} style={styles.altChip}>
-                {a.club.custom_name ?? a.club.name} {a.adjustedCarry}m
-                {i < alternatives.length - 1 ? '  ' : ''}
-              </Text>
-            ))}
-          </View>
-        )}
-
-        <TouchableOpacity style={styles.moreInfoBtn} onPress={openMoreInfo} activeOpacity={0.8}>
-          <Text style={styles.moreInfoText}>More Info →</Text>
+        <TouchableOpacity style={styles.dismissBtn} onPress={onDismiss}>
+          <Text style={styles.dismissText}>Done</Text>
         </TouchableOpacity>
       </View>
 
-      {/* More Info modal */}
-      <Modal visible={moreInfoOpen} transparent animationType="slide" onRequestClose={() => setMoreInfoOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Caddie Advice</Text>
-              <TouchableOpacity onPress={() => setMoreInfoOpen(false)}>
-                <Text style={styles.modalClose}>Done</Text>
-              </TouchableOpacity>
-            </View>
+      <View style={styles.metrics}>
+        <View style={styles.metric}>
+          <Text style={styles.metricValue}>{distToPin}m</Text>
+          <Text style={styles.metricLabel}>TO PIN</Text>
+        </View>
+        <View style={styles.metric}>
+          <Text style={[styles.metricValue, styles.metricAccent]}>{playingDistance}m</Text>
+          <Text style={styles.metricLabel}>PLAYS LIKE</Text>
+        </View>
+        <View style={styles.metric}>
+          <Text style={styles.metricValue}>{recommended.adjustedCarry}m</Text>
+          <Text style={styles.metricLabel}>EXPECTED</Text>
+        </View>
+      </View>
 
-            {/* Context summary */}
-            <View style={styles.contextBar}>
-              <Text style={styles.contextText}>
-                {clubLabel} · {recommended.adjustedCarry}m · {distToPin}m to pin · {windLabel}
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Text style={styles.sectionLabel}>SHOT PLAN</Text>
+        {advice.strategy.map((line, index) => (
+          <View key={`${index}-${line}`} style={styles.strategyRow}>
+            <Text style={styles.strategyNumber}>{index + 1}</Text>
+            <Text style={styles.strategyText}>{line}</Text>
+          </View>
+        ))}
+
+        <Text style={styles.sectionLabel}>CONDITIONS</Text>
+        <View style={styles.conditionCard}>
+          <Text style={styles.conditionText}>Wind: {advice.windLabel}</Text>
+          <Text style={styles.conditionText}>
+            Wind effect: {advice.windAdjustment === 0 ? 'neutral' : `${advice.windAdjustment > 0 ? '+' : ''}${advice.windAdjustment}m carry`}
+          </Text>
+          <Text style={styles.conditionText}>
+            Elevation: {advice.elevDiff === 0 ? 'level' : `${advice.elevDiff > 0 ? '+' : ''}${advice.elevDiff}m`}
+          </Text>
+        </View>
+
+        {recommended.warnings.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>HAZARDS</Text>
+            {recommended.warnings.map(warning => (
+              <Text key={warning.label} style={styles.warningText}>
+                {warning.type.toUpperCase()} · {warning.distanceMetres}m · {warning.side}
               </Text>
-            </View>
+            ))}
+          </>
+        )}
 
-            <ScrollView style={styles.chatScroll} contentContainerStyle={styles.chatContent}>
-              {loading && messages.length === 0 && (
-                <ActivityIndicator color={Colors.green} style={{ marginTop: Spacing.xl }} />
-              )}
-              {messages.map((m, i) => (
-                <View key={i} style={[styles.bubble, m.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant]}>
-                  <Text style={[styles.bubbleText, m.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextAssistant]}>
-                    {m.text}
+        {alternatives.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>ALTERNATIVES</Text>
+            <View style={styles.alternatives}>
+              {alternatives.map(option => (
+                <View key={option.club.id} style={styles.alternative}>
+                  <Text style={styles.alternativeClub}>
+                    {option.club.custom_name ?? option.club.name}
                   </Text>
+                  <Text style={styles.alternativeCarry}>{option.adjustedCarry}m</Text>
                 </View>
               ))}
-              {loading && messages.length > 0 && (
-                <View style={[styles.bubble, styles.bubbleAssistant]}>
-                  <ActivityIndicator color={Colors.green} size="small" />
-                </View>
-              )}
-            </ScrollView>
+            </View>
+          </>
+        )}
 
-            {/* Follow-up quick questions */}
-            {messages.length > 0 && !loading && (
-              <View style={styles.quickRow}>
-                {['What if I lay up?', 'Is the wind helping?', 'Safe play option?'].map(q => (
-                  <TouchableOpacity
-                    key={q}
-                    style={styles.quickBtn}
-                    onPress={() => { setFollowUp(q); }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.quickBtnText}>{q}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Send follow-up */}
-            {followUp.length > 0 && (
-              <View style={styles.followUpRow}>
-                <Text style={styles.followUpPreview}>{followUp}</Text>
-                <TouchableOpacity style={styles.sendBtn} onPress={sendFollowUp} disabled={loading}>
-                  <Text style={styles.sendBtnText}>Ask</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.clearBtn} onPress={() => setFollowUp('')}>
-                  <Text style={styles.clearBtnText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
-    </>
+        {history && (
+          <>
+            <Text style={styles.sectionLabel}>YOUR HISTORY</Text>
+            <View style={styles.historyCard}>
+              <Text style={styles.historyValue}>{history.avg.toFixed(1)}</Text>
+              <Text style={styles.historyText}>
+                average · best {history.best} · GIR {history.girPct}% · {history.avgPutts.toFixed(1)} putts
+              </Text>
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'rgba(10,20,10,0.92)',
-    borderRadius: Radius.lg,
-    padding: Spacing.base,
+    maxHeight: '82%',
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.xl,
     borderWidth: 1,
     borderColor: Colors.borderStrong,
-    gap: 6,
+    overflow: 'hidden',
   },
-  cardTop: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    justifyContent: 'space-between',
+    padding: Spacing.base,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  clubBadge: {
-    backgroundColor: Colors.green,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
+  eyebrow: {
+    color: Colors.green,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.xs,
+    letterSpacing: 0.8,
   },
-  clubBadgeText: { fontSize: FontSize.lg, fontWeight: FontWeight.black, color: '#000' },
-  cardMeta: { flex: 1 },
-  carryText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text },
-  pinText: { fontSize: FontSize.xs, color: Colors.textMuted },
-  dismissBtn: {
-    width: 28, height: 28, borderRadius: Radius.full,
-    backgroundColor: Colors.surface3,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  dismissText: { fontSize: FontSize.xs, color: Colors.textMuted },
-  metaLine: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  warningLine: { fontSize: FontSize.sm, color: '#F97316', fontWeight: FontWeight.medium },
-  safeLine: { fontSize: FontSize.sm, color: Colors.green },
-  altRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  altLabel: { fontSize: FontSize.xs, color: Colors.textMuted },
-  altChip: { fontSize: FontSize.xs, color: Colors.textSecondary },
-  moreInfoBtn: {
-    alignSelf: 'flex-end',
+  title: {
+    color: Colors.text,
+    fontFamily: Font.black,
+    fontWeight: FontWeight.black,
+    fontSize: FontSize.xl,
     marginTop: 2,
   },
-  moreInfoText: { fontSize: FontSize.sm, color: Colors.green, fontWeight: FontWeight.semibold },
-
-  // Modal
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modal: {
-    backgroundColor: Colors.surface1,
-    borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl,
-    borderWidth: 1, borderColor: Colors.border,
-    maxHeight: '75%',
-  },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: Spacing.base,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  modalTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text },
-  modalClose: { fontSize: FontSize.base, color: Colors.green, fontWeight: FontWeight.semibold },
-  contextBar: {
-    backgroundColor: Colors.surface2,
-    paddingHorizontal: Spacing.base, paddingVertical: Spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  contextText: { fontSize: FontSize.xs, color: Colors.textSecondary },
-  chatScroll: { flex: 1 },
-  chatContent: { padding: Spacing.base, gap: Spacing.sm },
-  bubble: {
-    maxWidth: '90%',
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-  },
-  bubbleUser: {
-    alignSelf: 'flex-end',
-    backgroundColor: Colors.greenMuted,
-    borderBottomRightRadius: 4,
-  },
-  bubbleAssistant: {
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.surface3,
-    borderBottomLeftRadius: 4,
-  },
-  bubbleText: { fontSize: FontSize.base, lineHeight: 22 },
-  bubbleTextUser: { color: Colors.green },
-  bubbleTextAssistant: { color: Colors.text },
-  quickRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs,
-    paddingHorizontal: Spacing.base, paddingBottom: Spacing.sm,
-  },
-  quickBtn: {
-    paddingHorizontal: Spacing.sm, paddingVertical: 6,
+  dismissBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderRadius: Radius.full,
     backgroundColor: Colors.surface3,
-    borderWidth: 1, borderColor: Colors.border,
   },
-  quickBtnText: { fontSize: FontSize.xs, color: Colors.textSecondary },
-  followUpRow: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    padding: Spacing.base,
-    borderTopWidth: 1, borderTopColor: Colors.border,
+  dismissText: {
+    color: Colors.green,
+    fontFamily: Font.semibold,
+    fontWeight: FontWeight.semibold,
+    fontSize: FontSize.sm,
   },
-  followUpPreview: { flex: 1, fontSize: FontSize.sm, color: Colors.text },
-  sendBtn: {
+  metrics: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surface2,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  metric: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+  },
+  metricValue: {
+    color: Colors.text,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.md,
+  },
+  metricAccent: { color: Colors.green },
+  metricLabel: {
+    color: Colors.textMuted,
+    fontFamily: Font.medium,
+    fontWeight: FontWeight.medium,
+    fontSize: FontSize.xs,
+    marginTop: 2,
+  },
+  scroll: { padding: Spacing.base },
+  sectionLabel: {
+    color: Colors.textMuted,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.xs,
+    letterSpacing: 0.8,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  strategyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  strategyNumber: {
+    width: 22,
+    height: 22,
+    borderRadius: Radius.full,
+    textAlign: 'center',
+    lineHeight: 22,
+    color: Colors.bg,
     backgroundColor: Colors.green,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.xs,
+  },
+  strategyText: {
+    flex: 1,
+    color: Colors.text,
+    fontFamily: Font.regular,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+  },
+  conditionCard: {
+    padding: Spacing.md,
     borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    backgroundColor: Colors.surface2,
+    gap: Spacing.xs,
   },
-  sendBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#000' },
-  clearBtn: {
-    width: 28, height: 28, borderRadius: Radius.full,
-    backgroundColor: Colors.surface3,
-    alignItems: 'center', justifyContent: 'center',
+  conditionText: { color: Colors.textSecondary, fontFamily: Font.regular, fontSize: FontSize.sm },
+  warningText: { color: Colors.bogey, fontFamily: Font.semibold, fontSize: FontSize.sm, marginBottom: Spacing.xs },
+  alternatives: { flexDirection: 'row', gap: Spacing.sm },
+  alternative: {
+    flex: 1,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface2,
   },
-  clearBtnText: { fontSize: FontSize.xs, color: Colors.textMuted },
+  alternativeClub: { color: Colors.text, fontFamily: Font.semibold, fontSize: FontSize.sm },
+  alternativeCarry: { color: Colors.green, fontFamily: Font.bold, fontSize: FontSize.md, marginTop: 2 },
+  historyCard: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    marginBottom: Spacing.xl,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface2,
+  },
+  historyValue: { color: Colors.green, fontFamily: Font.black, fontSize: FontSize.xl },
+  historyText: { flex: 1, color: Colors.textSecondary, fontFamily: Font.regular, fontSize: FontSize.sm },
 });

@@ -100,11 +100,11 @@ const categoryColors: Record<Exclude<ScoreCategory, 'none' | 'par'>, string> = {
 };
 
 const scoreTextColor: Record<Exclude<ScoreCategory, 'none'>, string> = {
-  eaglePlus: '#000000',
-  birdie: '#ffffff',
+  eaglePlus: Colors.bg,
+  birdie: Colors.bg,
   par: Colors.scorePar,
-  bogey: '#ffffff',
-  doublePlus: '#ffffff',
+  bogey: Colors.bg,
+  doublePlus: Colors.text,
 };
 
 // ---------------------------------------------------------------------------

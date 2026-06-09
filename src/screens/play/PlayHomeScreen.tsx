@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -12,11 +13,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
+import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { useUserStats, xpProgress } from '../../hooks/useUserStats';
+import { loadWeeklyChallenge, processPracticeActivity } from '../../utils/gamification';
+import { calcHandicapIndex } from '../../lib/handicap';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
-import type { Round } from '../../types';
+import type { Round, Profile } from '../../types';
 
 // ---------------------------------------------------------------------------
 // Navigation types
@@ -33,141 +39,292 @@ type RootStackParamList = {
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 // ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const COURSE_ID = '00000000-0000-0000-0000-000000000001';
-const COURSE_NAME = 'Nambour Golf Club';
-const COURSE_LOCATION = 'Nambour, QLD';
-
-// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface CourseStats {
-  roundsPlayed: number;
-  avgScore: number | null;
-  bestScore: number | null;
-}
 
 interface RecentRound {
   id: string;
   date: string;
+  course_name: string;
   gross_total: number | null;
-  par: number;
-  handicap_differential: number | null;
+  par_total: number;
+  exclude_from_handicap: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function SectionTitle({ title, action }: { title: string; action?: React.ReactNode }) {
-  return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {action}
-    </View>
-  );
+interface WeeklyChallenge {
+  id: string;
+  title: string;
+  description: string;
+  challenge_type: string;
+  target_value: number;
 }
 
-function ScoreToParLabel({ gross, par }: { gross: number | null; par: number }) {
-  if (gross === null) return <Text style={styles.roundScore}>–</Text>;
-  const diff = gross - par;
-  let color = Colors.scorePar;
-  let label = 'E';
-  if (diff > 0) { color = diff === 1 ? Colors.bogey : Colors.doublePlus; label = `+${diff}`; }
-  if (diff < 0) { color = Colors.birdie; label = `${diff}`; }
-  return (
-    <View style={styles.toParRow}>
-      <Text style={styles.roundScore}>{gross}</Text>
-      <View style={[styles.toParBadge, { backgroundColor: color + '22' }]}>
-        <Text style={[styles.toParText, { color }]}>{label}</Text>
-      </View>
-    </View>
-  );
+interface ChallengeProgress {
+  current_value: number;
+  completed: boolean;
 }
-
-// ---------------------------------------------------------------------------
-// Screen
-// ---------------------------------------------------------------------------
 
 export default function PlayHomeScreen() {
   const navigation = useNavigation<Nav>();
-  const { stats: userStats, badges, loading: statsLoading } = useUserStats();
+  const { user, profile } = useAuth();
+  const { stats: userStats, refresh: refreshStats, loading: statsLoading } = useUserStats();
 
-  const [stats, setStats] = useState<CourseStats>({ roundsPlayed: 0, avgScore: null, bestScore: null });
-  const [recentRounds, setRecentRounds] = useState<RecentRound[]>([]);
+  // Loading States
   const [loading, setLoading] = useState(true);
 
+  // Data States
+  const [recentRound, setRecentRound] = useState<RecentRound | null>(null);
+  const [handicapIndex, setHandicapIndex] = useState<number | null>(null);
+  const [handicapDelta, setHandicapDelta] = useState<number | null>(null);
+
+  // Weekly Challenge
+  const [weeklyChallenge, setWeeklyChallenge] = useState<WeeklyChallenge | null>(null);
+  const [challengeProgress, setChallengeProgress] = useState<ChallengeProgress | null>(null);
+
+  // Monthly Stats
+  const [monthlyAvgScore, setMonthlyAvgScore] = useState<number | null>(null);
+  const [monthlyGIR, setMonthlyGIR] = useState<number | null>(null);
+  const [monthlyPutts, setMonthlyPutts] = useState<number | null>(null);
+
+  // Practice Log Modal
+  const [practiceModalVisible, setPracticeModalVisible] = useState(false);
+  const [practiceLogging, setPracticeLogging] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // Calculations & Fetching
+  // ---------------------------------------------------------------------------
+
   const fetchData = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      // Fetch completed rounds for this course
-      const { data: rounds, error } = await supabase
+      // 1. Fetch completed rounds with holes to calculate scorecard totals
+      const { data: roundsData, error: roundsError } = await supabase
         .from('rounds')
-        .select('id, date, gross_total, handicap_differential, holes_played')
-        .eq('course_id', COURSE_ID)
+        .select(`
+          id,
+          date,
+          gross_total,
+          handicap_differential,
+          exclude_from_handicap,
+          completed,
+          course_id,
+          holes_played,
+          starting_hole,
+          courses:course_id ( name ),
+          holes:course_id ( number, par )
+        `)
+        .eq('user_id', user.id)
         .eq('completed', true)
-        .order('date', { ascending: false })
-        .limit(20);
+        .order('date', { ascending: false });
 
-      if (error) throw error;
+      if (roundsError) throw roundsError;
 
-      const completed = (rounds ?? []) as (Round & { holes_played: number })[];
-      const withScore = completed.filter((r) => r.gross_total !== null);
+      const rounds = (roundsData ?? []).map((r: any) => {
+        const startingHole = r.starting_hole ?? 1;
+        const endingHole = startingHole + 8;
+        const hList = r.holes_played === 9
+          ? (r.holes ?? []).filter(
+              (hole: { number: number }) => hole.number >= startingHole && hole.number <= endingHole,
+            )
+          : r.holes ?? [];
+        const parTotal = hList.length > 0 ? hList.reduce((sum: number, h: any) => sum + h.par, 0) : 72;
+        return {
+          ...r,
+          course_name: r.courses?.name ?? 'Unknown Course',
+          par_total: parTotal,
+        };
+      });
 
-      const roundsPlayed = completed.length;
-      const bestScore = withScore.length > 0
-        ? Math.min(...withScore.map((r) => r.gross_total!))
-        : null;
-      const avgScore = withScore.length > 0
-        ? Math.round(withScore.reduce((s, r) => s + r.gross_total!, 0) / withScore.length)
-        : null;
+      // 2. Set most recent round
+      if (rounds.length > 0) {
+        const last = rounds[0];
+        setRecentRound({
+          id: last.id,
+          date: last.date,
+          course_name: last.course_name,
+          gross_total: last.gross_total,
+          par_total: last.par_total,
+          exclude_from_handicap: last.exclude_from_handicap,
+        });
+      } else {
+        setRecentRound(null);
+      }
 
-      setStats({ roundsPlayed, avgScore, bestScore });
+      // 3. Calculate Handicap & Delta
+      const differentials = rounds
+        .filter(r => r.handicap_differential !== null && !r.exclude_from_handicap)
+        .map(r => r.handicap_differential as number);
 
-      // Fetch course par for to-par calculations
-      const { data: holes } = await supabase
-        .from('holes')
-        .select('par')
-        .eq('course_id', COURSE_ID);
+      const currentHandicap = calcHandicapIndex(differentials) ?? (profile?.handicap_index !== null ? profile?.handicap_index : null) ?? null;
+      setHandicapIndex(currentHandicap);
 
-      const totalPar = (holes ?? []).reduce((s: number, h: { par: number }) => s + h.par, 0) || 72;
+      // Prior rounds (before the 1st of the current month)
+      const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const priorRounds = rounds.filter(r => new Date(r.date) < firstDayOfMonth);
+      const priorDiffs = priorRounds
+        .filter(r => r.handicap_differential !== null && !r.exclude_from_handicap)
+        .map(r => r.handicap_differential as number);
+      const priorHandicap = calcHandicapIndex(priorDiffs);
 
-      const recent: RecentRound[] = completed.slice(0, 3).map((r) => ({
-        id: r.id,
-        date: r.date,
-        gross_total: r.gross_total,
-        par: totalPar,
-        handicap_differential: r.handicap_differential,
-      }));
-      setRecentRounds(recent);
+      if (currentHandicap !== null && priorHandicap !== null) {
+        setHandicapDelta(currentHandicap - priorHandicap);
+      } else {
+        setHandicapDelta(null);
+      }
+
+      // 4. Calculate Month-to-Date Stats
+      const thisMonthRounds = rounds.filter(r => new Date(r.date) >= firstDayOfMonth);
+      const scoredThisMonth = thisMonthRounds.filter(r => r.gross_total !== null);
+
+      if (scoredThisMonth.length > 0) {
+        const avgScore = scoredThisMonth.reduce((sum, r) => sum + r.gross_total!, 0) / scoredThisMonth.length;
+        setMonthlyAvgScore(Math.round(avgScore));
+
+        // Fetch scores for this month's rounds to calculate overall GIR & putts
+        const roundIds = thisMonthRounds.map(r => r.id);
+        const { data: scoresData } = await supabase
+          .from('hole_scores')
+          .select('gir, putts')
+          .in('round_id', roundIds);
+
+        const monthScores = scoresData ?? [];
+        if (monthScores.length > 0) {
+          const girHits = monthScores.filter(s => s.gir === true).length;
+          setMonthlyGIR(Math.round((girHits / monthScores.length) * 100));
+
+          const totalPutts = monthScores.reduce((sum, s) => sum + (s.putts ?? 0), 0);
+          setMonthlyPutts(Number((totalPutts / thisMonthRounds.length).toFixed(1)));
+        } else {
+          setMonthlyGIR(null);
+          setMonthlyPutts(null);
+        }
+      } else {
+        setMonthlyAvgScore(null);
+        setMonthlyGIR(null);
+        setMonthlyPutts(null);
+      }
+
+      // 5. Fetch Weekly Challenge (Defensive Check in case tables do not exist)
+      try {
+        const weekly = await loadWeeklyChallenge(user.id);
+        setWeeklyChallenge({
+          id: weekly.challenge.key,
+          title: weekly.challenge.title,
+          description: weekly.challenge.description,
+          challenge_type: weekly.challenge.key,
+          target_value: weekly.challenge.target,
+        });
+        setChallengeProgress({
+          current_value: weekly.currentValue,
+          completed: weekly.completed,
+        });
+      } catch (challengeErr) {
+        console.warn('Weekly challenges schema might be missing:', challengeErr);
+        setWeeklyChallenge(null);
+        setChallengeProgress(null);
+      }
+
     } catch (err) {
-      Alert.alert('Error', 'Failed to load course data');
+      console.error(err);
+      Alert.alert('Load Error', 'Failed to retrieve home dashboard statistics.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user, profile]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // ---------------------------------------------------------------------------
+  // Action Handlers
+  // ---------------------------------------------------------------------------
+
+  const handleLogPractice = async (type: string) => {
+    if (!user || !userStats) return;
+    setPracticeLogging(true);
+    try {
+      const activity = await processPracticeActivity(user.id, type);
+
+      // Haptic Feedback
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (hapticErr) {
+        // Safe fallback
+      }
+
+      Alert.alert(
+        'Practice Logged! 🏌️',
+        `Logged "${type}" successfully!\n+15 XP Awarded.\n🔥 Streak is now ${activity.streak} days!`,
+        [{ text: 'Great', onPress: () => {
+          setPracticeModalVisible(false);
+          refreshStats();
+          fetchData();
+        }}]
+      );
+
+    } catch (e: any) {
+      Alert.alert('Save Error', e.message ?? 'Failed to log practice activity.');
+    } finally {
+      setPracticeLogging(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Helper Renderers
+  // ---------------------------------------------------------------------------
+
+  const getGreeting = () => {
+    const hours = new Date().getHours();
+    if (hours < 12) return 'Good morning';
+    if (hours < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const displayName = profile?.display_name || user?.email?.split('@')[0] || 'Golfer';
+
+  const renderDeltaBadge = () => {
+    if (handicapDelta === null) return null;
+    const isImproved = handicapDelta < 0;
+    const icon = isImproved ? 'arrow-down-circle' : 'arrow-up-circle';
+    const color = isImproved ? Colors.green : Colors.red;
+    const absVal = Math.abs(handicapDelta).toFixed(1);
+
+    return (
+      <View style={styles.deltaContainer}>
+        <Ionicons name={icon} size={14} color={color} />
+        <Text style={[styles.deltaText, { color }]}>{absVal} this month</Text>
+      </View>
+    );
+  };
+
+  const xpProgressInfo = useMemo(() => {
+    if (!userStats) return { pct: 0, currentXp: 0, neededXp: 200, level: 1 };
+    return xpProgress(userStats.xp);
+  }, [userStats]);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
 
-      {/* ── Header ── */}
+      {/* ── time-aware Greeting & Handicap Strip ── */}
       <View style={styles.header}>
-        <Text style={styles.logo}>GolfCaddie</Text>
+        <View>
+          <Text style={styles.greeting}>{getGreeting()}, {displayName}</Text>
+          <View style={styles.handicapStrip}>
+            <Text style={styles.handicapText}>
+              Handicap: <Text style={styles.handicapVal}>{handicapIndex !== null ? handicapIndex.toFixed(1) : '—'}</Text>
+            </Text>
+            {renderDeltaBadge()}
+          </View>
+        </View>
         <TouchableOpacity
-          style={styles.iconBtn}
+          style={styles.settingsBtn}
           onPress={() => navigation.navigate('StartRound')}
-          accessibilityLabel="Settings"
+          accessibilityLabel="Start New Round Quick Settings"
         >
-          {/* Settings gear icon (drawn with text) */}
-          <Text style={styles.iconText}>⚙</Text>
+          <Ionicons name="golf-outline" size={24} color={Colors.green} />
         </TouchableOpacity>
       </View>
 
@@ -176,346 +333,284 @@ export default function PlayHomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Course hero card ── */}
-        <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={styles.courseTagRow}>
-              <View style={styles.courseTag}>
-                <Text style={styles.courseTagText}>18</Text>
-              </View>
-              <Text style={styles.courseTagLabel}>Holes</Text>
-            </View>
+        {/* ── Streak & XP Card ── */}
+        <View style={styles.streakCard}>
+          <View style={styles.streakHeader}>
+            <Text style={styles.streakTitle}>🔥 {userStats?.streak_days ?? 0}-Day Streak</Text>
+            <Text style={styles.levelLabel}>LVL {xpProgressInfo.level}</Text>
           </View>
-          <Text style={styles.courseName}>{COURSE_NAME}</Text>
-          <Text style={styles.courseLocation}>{COURSE_LOCATION}</Text>
+          <View style={styles.progressContainer}>
+            <View style={styles.xpBarBackground}>
+              <View style={[styles.xpBarFill, { width: `${xpProgressInfo.pct * 100}%` }]} />
+            </View>
+            <Text style={styles.xpProgressText}>
+              {xpProgressInfo.currentXp} / {xpProgressInfo.neededXp} XP to Level {xpProgressInfo.level + 1}
+            </Text>
+          </View>
+        </View>
 
+        {/* ── Action CTAs Row ── */}
+        <View style={styles.ctaContainer}>
           <TouchableOpacity
-            style={styles.startBtn}
+            style={styles.ctaPrimary}
             onPress={() => navigation.navigate('StartRound')}
             activeOpacity={0.8}
           >
-            <Text style={styles.startBtnIcon}>⛳</Text>
-            <Text style={styles.startBtnLabel}>Start Round</Text>
+            <Text style={styles.ctaPrimaryText}>START ROUND</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.ctaSecondary}
+            onPress={() => setPracticeModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.ctaSecondaryText}>PRACTICE LOG</Text>
           </TouchableOpacity>
         </View>
 
-        {/* ── My Stats card ── */}
-        <View style={styles.statsCard}>
-          <Text style={styles.statsTitle}>My Stats at Nambour</Text>
-          {loading ? (
-            <ActivityIndicator color={Colors.green} style={{ marginTop: Spacing.base }} />
-          ) : (
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.roundsPlayed}</Text>
-                <Text style={styles.statLabel}>Rounds</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: stats.avgScore ? Colors.text : Colors.textMuted }]}>
-                  {stats.avgScore ?? '–'}
-                </Text>
-                <Text style={styles.statLabel}>Avg Score</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: stats.bestScore ? Colors.green : Colors.textMuted }]}>
-                  {stats.bestScore ?? '–'}
-                </Text>
-                <Text style={styles.statLabel}>Best Score</Text>
-              </View>
+        {/* ── Weekly Challenge Card ── */}
+        {weeklyChallenge && challengeProgress && (
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardTitle}>WEEKLY CHALLENGE</Text>
+              {challengeProgress.completed ? (
+                <View style={styles.completedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.green} />
+                  <Text style={styles.completedBadgeText}>COMPLETED</Text>
+                </View>
+              ) : (
+                <Text style={styles.cardSubTitle}>ACTIVE</Text>
+              )}
             </View>
-          )}
-        </View>
+            <Text style={styles.challengeTitle}>{weeklyChallenge.title}</Text>
+            <Text style={styles.challengeDesc}>{weeklyChallenge.description}</Text>
 
-        {/* ── Progress card (XP + streak) ── */}
-        {!statsLoading && userStats && (() => {
-          const prog = xpProgress(userStats.xp);
-          return (
-            <View style={styles.progressCard}>
-              <View style={styles.progressTop}>
-                <View style={styles.levelBadge}>
-                  <Text style={styles.levelBadgeText}>LVL {prog.level}</Text>
-                </View>
-                <View style={styles.progressMid}>
-                  <View style={styles.xpBarBg}>
-                    <View style={[styles.xpBarFill, { width: `${Math.round(prog.pct * 100)}%` as any }]} />
-                  </View>
-                  <Text style={styles.xpBarLabel}>{prog.currentXp} / {prog.neededXp} XP</Text>
-                </View>
-                {userStats.streak_days > 0 && (
-                  <View style={styles.streakBadge}>
-                    <Text style={styles.streakIcon}>🔥</Text>
-                    <Text style={styles.streakText}>{userStats.streak_days}</Text>
-                  </View>
+            <View style={styles.challengeProgressRow}>
+              <View style={styles.challengeBarBg}>
+                <View
+                  style={[
+                    styles.challengeBarFill,
+                    { width: `${Math.min(100, ((challengeProgress.current_value / weeklyChallenge.target_value) * 100))}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.challengeProgressText}>
+                {challengeProgress.current_value} / {weeklyChallenge.target_value}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* ── Last Round Card ── */}
+        {recentRound && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>LAST ROUND</Text>
+            <View style={styles.lastRoundHeader}>
+              <View>
+                <Text style={styles.lastRoundCourse}>{recentRound.course_name}</Text>
+                <Text style={styles.lastRoundDate}>
+                  {formatDistanceToNow(new Date(recentRound.date), { addSuffix: true })}
+                </Text>
+              </View>
+              <View style={styles.lastRoundScoreWrapper}>
+                <Text style={styles.lastRoundGross}>{recentRound.gross_total ?? '—'}</Text>
+                {recentRound.gross_total !== null && (
+                  <Text
+                    style={[
+                      styles.lastRoundDiff,
+                      {
+                        color:
+                          recentRound.gross_total - recentRound.par_total < 0
+                            ? Colors.green
+                            : recentRound.gross_total - recentRound.par_total === 0
+                            ? Colors.text
+                            : Colors.orange,
+                      },
+                    ]}
+                  >
+                    {recentRound.gross_total - recentRound.par_total === 0
+                      ? 'E'
+                      : recentRound.gross_total - recentRound.par_total > 0
+                      ? `+${recentRound.gross_total - recentRound.par_total}`
+                      : String(recentRound.gross_total - recentRound.par_total)}
+                  </Text>
                 )}
               </View>
             </View>
-          );
-        })()}
-
-        {/* ── Badges shelf ── */}
-        {!statsLoading && badges.length > 0 && (
-          <>
-            <SectionTitle title="Badges" />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.badgesShelf}
-              style={styles.badgesScroll}
+            <TouchableOpacity
+              style={styles.viewScorecardLink}
+              onPress={() => navigation.navigate('RoundDetail', { roundId: recentRound.id })}
+              activeOpacity={0.7}
             >
-              {badges.slice(0, 8).map(b => (
-                <View key={b.badge_key} style={styles.badgeChip}>
-                  <Text style={styles.badgeChipIcon}>{b.icon}</Text>
-                  <Text style={styles.badgeChipName} numberOfLines={1}>{b.name}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          </>
+              <Text style={styles.viewScorecardLinkText}>View Scorecard</Text>
+              <Ionicons name="arrow-forward" size={14} color={Colors.green} />
+            </TouchableOpacity>
+          </View>
         )}
 
-        {/* ── Recent Rounds ── */}
-        <SectionTitle
-          title="Recent Rounds"
-          action={
-            <TouchableOpacity onPress={() => {}}>
-              <Text style={styles.viewAllBtn}>View All</Text>
-            </TouchableOpacity>
-          }
-        />
-
-        <View style={styles.roundsCard}>
-          {loading ? (
-            <ActivityIndicator color={Colors.green} style={{ marginVertical: Spacing.base }} />
-          ) : recentRounds.length === 0 ? (
-            <Text style={styles.emptyText}>No completed rounds yet</Text>
-          ) : (
-            recentRounds.map((round, idx) => {
-              const dateLabel = (() => {
-                try { return format(new Date(round.date), 'dd MMM yyyy'); } catch { return round.date; }
-              })();
-              return (
-                <React.Fragment key={round.id}>
-                  {idx > 0 && <View style={styles.roundDivider} />}
-                  <TouchableOpacity
-                    style={styles.roundRow}
-                    onPress={() => navigation.navigate('RoundDetail', { roundId: round.id })}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.roundLeft}>
-                      <Text style={styles.roundDate}>{dateLabel}</Text>
-                      {round.handicap_differential !== null && (
-                        <Text style={styles.roundDiff}>
-                          Diff: {round.handicap_differential.toFixed(1)}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={styles.roundRight}>
-                      <ScoreToParLabel gross={round.gross_total} par={round.par} />
-                      <Text style={styles.chevron}>›</Text>
-                    </View>
-                  </TouchableOpacity>
-                </React.Fragment>
-              );
-            })
-          )}
+        {/* ── Month-To-Date Stats strip ── */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>YOUR STATS THIS MONTH</Text>
+          <View style={styles.monthStatsStrip}>
+            <View style={styles.monthStatItem}>
+              <Text style={styles.monthStatVal}>{monthlyAvgScore ?? '—'}</Text>
+              <Text style={styles.monthStatLabel}>Avg Score</Text>
+            </View>
+            <View style={styles.monthStatDivider} />
+            <View style={styles.monthStatItem}>
+              <Text style={styles.monthStatVal}>{monthlyGIR !== null ? `${monthlyGIR}%` : '—'}</Text>
+              <Text style={styles.monthStatLabel}>GIR %</Text>
+            </View>
+            <View style={styles.monthStatDivider} />
+            <View style={styles.monthStatItem}>
+              <Text style={styles.monthStatVal}>{monthlyPutts ?? '—'}</Text>
+              <Text style={styles.monthStatLabel}>Putts/Round</Text>
+            </View>
+          </View>
         </View>
-
-        {/* ── Add Past Round ── */}
-        <TouchableOpacity style={styles.addPastBtn} onPress={() => {}}>
-          <Text style={styles.addPastText}>+ Add Past Round</Text>
-        </TouchableOpacity>
       </ScrollView>
+
+      {/* Practice Log Modal */}
+      <Modal
+        visible={practiceModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPracticeModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Practice Log</Text>
+              <TouchableOpacity
+                onPress={() => setPracticeModalVisible(false)}
+                disabled={practiceLogging}
+              >
+                <Ionicons name="close" size={24} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalDesc}>
+              Select a practice session type to log. You will gain +15 XP and maintain your daily streak!
+            </Text>
+
+            <View style={styles.practiceOptions}>
+              {[
+                { type: 'Driving Range (50+ balls)', icon: '⛳' },
+                { type: 'Putting Green (30+ mins)', icon: '⛳' },
+                { type: 'Chipping & Short Game', icon: '⛳' },
+                { type: 'Practice Round (9 Holes)', icon: '⛳' },
+              ].map(opt => (
+                <TouchableOpacity
+                  key={opt.type}
+                  style={styles.practiceBtn}
+                  onPress={() => handleLogPractice(opt.type)}
+                  disabled={practiceLogging}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.practiceBtnIcon}>{opt.icon}</Text>
+                  <Text style={styles.practiceBtnText}>{opt.type}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// Redesigned Styles
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
+  safeArea: { flex: 1, backgroundColor: Colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  logo: {
-    fontSize: FontSize.base,
-    fontWeight: FontWeight.bold,
-    fontFamily: Font.bold,
-    color: Colors.green,
-    letterSpacing: 0.5,
-  },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconText: {
-    fontSize: FontSize.lg,
-    color: Colors.textSecondary,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: Spacing.base,
-    paddingBottom: Spacing.xxxl,
-  },
-
-  // Hero card
-  heroCard: {
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.xl,
-    marginBottom: Spacing.base,
-    overflow: 'hidden',
-  },
-  heroTop: {
-    marginBottom: Spacing.md,
-  },
-  courseTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  courseTag: {
-    backgroundColor: Colors.greenMuted,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-  },
-  courseTagText: {
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.bold,
-    fontFamily: Font.bold,
-    color: Colors.green,
-  },
-  courseTagLabel: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    fontWeight: FontWeight.medium,
-    fontFamily: Font.medium,
-  },
-  courseName: {
-    fontSize: FontSize.xl,
-    fontWeight: FontWeight.bold,
-    fontFamily: Font.bold,
-    color: Colors.text,
-    marginBottom: Spacing.xs,
-    lineHeight: FontSize.xl * 1.2,
-  },
-  courseLocation: {
-    fontSize: FontSize.sm,
-    fontFamily: Font.regular,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.lg,
-  },
-  startBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.green,
-    borderRadius: Radius.full,
-    height: 52,
-    gap: Spacing.sm,
-  },
-  startBtnIcon: {
-    fontSize: FontSize.base,
-  },
-  startBtnLabel: {
+  greeting: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold,
-    fontFamily: Font.semibold,
-    color: '#000000',
-  },
-
-  // Stats card
-  statsCard: {
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.base,
-    marginBottom: Spacing.base,
-  },
-  statsTitle: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semibold,
-    fontFamily: Font.semibold,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.base,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: Colors.border,
-  },
-  statValue: {
-    fontSize: FontSize.xxl,
-    fontWeight: FontWeight.bold,
-    fontFamily: Font.bold,
     color: Colors.text,
+    fontFamily: Font.semibold,
   },
-  statLabel: {
-    fontSize: FontSize.xs,
-    fontFamily: Font.regular,
-    color: Colors.textMuted,
-    marginTop: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-
-  // Progress card
-  progressCard: {
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.base,
-    marginBottom: Spacing.base,
-  },
-  progressTop: {
+  handicapStrip: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 4,
     gap: Spacing.sm,
   },
-  levelBadge: {
-    backgroundColor: Colors.green,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
+  handicapText: {
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+    fontFamily: Font.regular,
   },
-  levelBadgeText: {
+  handicapVal: {
+    color: Colors.text,
+    fontWeight: FontWeight.bold,
+  },
+  deltaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  deltaText: {
     fontSize: FontSize.xs,
-    fontFamily: Font.black,
-    fontWeight: FontWeight.black,
-    color: '#000',
-    letterSpacing: 0.4,
+    fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
   },
-  progressMid: { flex: 1, gap: 4 },
-  xpBarBg: {
-    height: 6,
+  settingsBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  scroll: { flex: 1 },
+  scrollContent: { padding: Spacing.base, gap: Spacing.base, paddingBottom: Spacing.xxl },
+
+  // Streak & XP Progress Card
+  streakCard: {
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.base,
+  },
+  streakHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  streakTitle: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    fontFamily: Font.bold,
+  },
+  levelLabel: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    color: Colors.green,
+    fontFamily: Font.bold,
+    backgroundColor: Colors.surface2,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
+  },
+  progressContainer: {
+    marginTop: Spacing.md,
+    gap: Spacing.xs,
+  },
+  xpBarBackground: {
+    height: 8,
     backgroundColor: Colors.surface3,
     borderRadius: Radius.full,
     overflow: 'hidden',
@@ -523,154 +618,265 @@ const styles = StyleSheet.create({
   xpBarFill: {
     height: '100%',
     backgroundColor: Colors.green,
-    borderRadius: Radius.full,
   },
-  xpBarLabel: {
-    fontSize: 10,
-    fontFamily: Font.regular,
+  xpProgressText: {
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
-  },
-  streakBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: Colors.surface3,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-  },
-  streakIcon: { fontSize: 14 },
-  streakText: {
-    fontSize: FontSize.sm,
-    fontFamily: Font.bold,
-    fontWeight: FontWeight.bold,
-    color: Colors.text,
+    fontFamily: Font.regular,
   },
 
-  // Badges shelf
-  badgesScroll: { marginBottom: Spacing.base },
-  badgesShelf: { gap: Spacing.sm, paddingRight: Spacing.base },
-  badgeChip: {
-    backgroundColor: Colors.surface1,
+  // CTA Buttons Row
+  ctaContainer: {
+    flexDirection: 'column',
+    gap: Spacing.sm,
+  },
+  ctaPrimary: {
+    backgroundColor: Colors.green,
+    height: 52,
     borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaPrimaryText: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.bold,
+    color: Colors.bg,
+    fontFamily: Font.bold,
+    letterSpacing: 0.5,
+  },
+  ctaSecondary: {
+    backgroundColor: Colors.surface2,
+    height: 52,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    alignItems: 'center',
-    gap: 4,
-    minWidth: 72,
   },
-  badgeChipIcon: { fontSize: 24 },
-  badgeChipName: {
-    fontSize: 10,
-    fontFamily: Font.medium,
-    fontWeight: FontWeight.medium,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-
-  // Section header
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semibold,
-    fontFamily: Font.semibold,
+  ctaSecondaryText: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.bold,
     color: Colors.text,
-  },
-  viewAllBtn: {
-    fontSize: FontSize.sm,
-    color: Colors.green,
-    fontWeight: FontWeight.medium,
-    fontFamily: Font.medium,
+    fontFamily: Font.bold,
+    letterSpacing: 0.5,
   },
 
-  // Rounds card
-  roundsCard: {
+  // General Cards
+  card: {
     backgroundColor: Colors.surface1,
     borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginBottom: Spacing.base,
-    overflow: 'hidden',
-  },
-  roundRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     padding: Spacing.base,
   },
-  roundDivider: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginHorizontal: Spacing.base,
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
   },
-  roundLeft: {
-    gap: 2,
-  },
-  roundDate: {
-    fontSize: FontSize.base,
-    fontWeight: FontWeight.medium,
-    fontFamily: Font.medium,
-    color: Colors.text,
-  },
-  roundDiff: {
+  cardTitle: {
     fontSize: FontSize.xs,
-    fontFamily: Font.regular,
+    fontWeight: FontWeight.bold,
     color: Colors.textMuted,
+    letterSpacing: 0.8,
+    fontFamily: Font.bold,
   },
-  roundRight: {
+  cardSubTitle: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    color: Colors.green,
+    letterSpacing: 0.8,
+    fontFamily: Font.bold,
+  },
+  completedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 3,
+  },
+  completedBadgeText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    color: Colors.green,
+    fontFamily: Font.bold,
+  },
+
+  // Challenge specifics
+  challengeTitle: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    fontFamily: Font.bold,
+  },
+  challengeDesc: {
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    fontFamily: Font.regular,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  challengeProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
     gap: Spacing.sm,
   },
-  roundScore: {
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.bold,
-    fontFamily: Font.bold,
-    color: Colors.text,
+  challengeBarBg: {
+    flex: 1,
+    height: 6,
+    backgroundColor: Colors.surface3,
+    borderRadius: Radius.full,
+    overflow: 'hidden',
   },
-  toParRow: {
+  challengeBarFill: {
+    height: '100%',
+    backgroundColor: Colors.green,
+  },
+  challengeProgressText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semibold,
+    color: Colors.textSecondary,
+    fontFamily: Font.semibold,
+    width: 32,
+    textAlign: 'right',
+  },
+
+  // Last Round Card
+  lastRoundHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
+  },
+  lastRoundCourse: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold,
+    color: Colors.text,
+    fontFamily: Font.semibold,
+  },
+  lastRoundDate: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    fontFamily: Font.regular,
+    marginTop: 2,
+  },
+  lastRoundScoreWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
   },
-  toParBadge: {
-    borderRadius: Radius.sm,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  toParText: {
-    fontSize: FontSize.xs,
+  lastRoundGross: {
+    fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
+    color: Colors.text,
     fontFamily: Font.bold,
   },
-  chevron: {
-    fontSize: FontSize.xl,
-    color: Colors.textMuted,
-    lineHeight: FontSize.xl,
-  },
-  emptyText: {
-    padding: Spacing.base,
-    color: Colors.textMuted,
-    textAlign: 'center',
+  lastRoundDiff: {
     fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
+    backgroundColor: Colors.subtle,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+  },
+  viewScorecardLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: Spacing.md,
+  },
+  viewScorecardLinkText: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semibold,
+    color: Colors.green,
+    fontFamily: Font.semibold,
   },
 
-  // Add past round
-  addPastBtn: {
+  // Month stats strip
+  monthStatsStrip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Spacing.base,
+    marginTop: Spacing.xs,
   },
-  addPastText: {
-    fontSize: FontSize.base,
-    color: Colors.textSecondary,
-    fontWeight: FontWeight.medium,
-    fontFamily: Font.medium,
+  monthStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  monthStatVal: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    fontFamily: Font.bold,
+  },
+  monthStatLabel: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    fontFamily: Font.regular,
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  monthStatDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: Colors.border,
+  },
+
+  // Modal styling
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: Colors.backdrop,
+    justifyContent: 'flex-end',
+  },
+  modal: {
+    backgroundColor: Colors.surface1,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.xl,
+    paddingBottom: Spacing.xxl,
+    gap: Spacing.md,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    fontFamily: Font.bold,
+  },
+  modalDesc: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    lineHeight: 16,
+    fontFamily: Font.regular,
+  },
+  practiceOptions: {
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  practiceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+  },
+  practiceBtnIcon: { fontSize: 16 },
+  practiceBtnText: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semibold,
+    color: Colors.text,
+    fontFamily: Font.semibold,
   },
 });

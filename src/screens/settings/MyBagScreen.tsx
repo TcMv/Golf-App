@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Club, ClubType } from '../../types';
 
 const CLUB_TYPES: ClubType[] = ['driver', 'wood', 'hybrid', 'iron', 'wedge', 'putter'];
@@ -223,7 +223,7 @@ export default function MyBagScreen() {
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveBtn} onPress={saveCarry} disabled={saving}>
                 {saving
-                  ? <ActivityIndicator color="#000" />
+                  ? <ActivityIndicator color={Colors.bg} />
                   : <Text style={styles.saveBtnText}>Save</Text>
                 }
               </TouchableOpacity>
@@ -296,7 +296,7 @@ export default function MyBagScreen() {
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveBtn} onPress={handleAdd} disabled={saving}>
                 {saving
-                  ? <ActivityIndicator color="#000" />
+                  ? <ActivityIndicator color={Colors.bg} />
                   : <Text style={styles.saveBtnText}>Add Club</Text>
                 }
               </TouchableOpacity>
@@ -362,12 +362,12 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: { fontSize: FontSize.xs, color: Colors.textMuted },
   addBtn: {
-    height: 52, borderRadius: Radius.full,
+    minHeight: 48, borderRadius: Radius.md,
     borderWidth: 1, borderColor: Colors.borderStrong, borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm,
   },
   addBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.green },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalBackdrop: { flex: 1, backgroundColor: Colors.backdrop, justifyContent: 'flex-end' },
   modal: {
     backgroundColor: Colors.surface1,
     borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl,
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   typeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
-    borderRadius: Radius.full, backgroundColor: Colors.surface3,
+    borderRadius: Radius.md, backgroundColor: Colors.surface3,
     borderWidth: 1, borderColor: Colors.border,
   },
   typeBtnActive: { backgroundColor: Colors.greenMuted, borderColor: Colors.green },
@@ -397,13 +397,18 @@ const styles = StyleSheet.create({
   typeBtnTextActive: { color: Colors.green },
   modalBtns: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
   cancelBtn: {
-    flex: 1, height: 48, borderRadius: Radius.full,
+    flex: 1, minHeight: 48, borderRadius: Radius.md,
     backgroundColor: Colors.surface3, alignItems: 'center', justifyContent: 'center',
   },
   cancelBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.textSecondary },
   saveBtn: {
-    flex: 2, height: 48, borderRadius: Radius.full,
+    flex: 2, minHeight: 48, borderRadius: Radius.md,
     backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center',
   },
-  saveBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#000' },
+  saveBtnText: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
+    color: Colors.bg,
+  },
 });

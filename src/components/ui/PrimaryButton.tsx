@@ -1,11 +1,11 @@
 import React from 'react';
 import {
+  Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   ViewStyle,
 } from 'react-native';
-import { Colors, Font, FontSize, FontWeight, Radius } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,19 +33,19 @@ export function PrimaryButton({
   style,
 }: PrimaryButtonProps) {
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
       disabled={disabled}
-      activeOpacity={0.75}
-      style={[
+      style={({ pressed }) => [
         styles.base,
         variantStyles[variant],
+        pressed && pressedStyles[variant],
         disabled && styles.disabled,
         style,
       ]}
     >
       <Text style={[styles.label, labelStyles[variant]]}>{label}</Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -55,17 +55,18 @@ export function PrimaryButton({
 
 const styles = StyleSheet.create({
   base: {
-    height: 52,
+    minHeight: 48,
     width: '100%',
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
   },
   label: {
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semibold,
-    fontFamily: Font.semibold,
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
   },
   disabled: {
     opacity: 0.4,
@@ -86,12 +87,24 @@ const variantStyles = StyleSheet.create({
 
 const labelStyles = StyleSheet.create({
   primary: {
-    color: '#000000',
+    color: Colors.bg,
   },
   secondary: {
     color: Colors.text,
   },
   danger: {
     color: Colors.text,
+  },
+});
+
+const pressedStyles = StyleSheet.create({
+  primary: {
+    backgroundColor: Colors.greenDark,
+  },
+  secondary: {
+    opacity: 0.8,
+  },
+  danger: {
+    opacity: 0.8,
   },
 });

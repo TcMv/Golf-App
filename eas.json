@@ -11,7 +11,7 @@
         "EXPO_PUBLIC_SUPABASE_URL": "https://iqcdaosprzrthjopmidk.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_HDTw5shBwTj5WyWNYNjbGw_puFaxKOh",
         "GOOGLE_MAPS_API_KEY": "AIzaSyD3JCytbIFJGoFatqPDeexvN5I_fqzTfKE",
-        "EXPO_PUBLIC_OPENAI_API_KEY": "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"
+        "EXPO_PUBLIC_OPENAI_API_KEY": ""
       }
     },
     "preview": {

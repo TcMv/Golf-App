@@ -25,16 +25,75 @@ export type ClubOption = {
   warnings: HazardWarning[];
 };
 
+export type CaddieHistory = {
+  count: number;
+  avg: number;
+  best: number;
+  girPct: number;
+  avgPutts: number;
+};
+
 export type CaddieAdvice = {
   distToPin: number;
+  playingDistance: number;
   recommended: ClubOption;
   alternatives: ClubOption[];
   windLabel: string;
   windAdjustment: number;
   elevDiff: number;
+  strategy: string[];
+  history: CaddieHistory | null;
   shortText: string;
   context: string;
 };
+
+export function buildPreRoundBriefing(params: {
+  courseName: string;
+  courseRating: number;
+  slopeRating: number;
+  windLabel: string;
+  windSpeed: number;
+  handicapIndex: number | null;
+  recentCourseScores: number[];
+}): string {
+  const {
+    courseName,
+    courseRating,
+    slopeRating,
+    windLabel,
+    windSpeed,
+    handicapIndex,
+    recentCourseScores,
+  } = params;
+  const tips: string[] = [];
+
+  if (windSpeed >= 20) {
+    tips.push(`In ${windLabel}, swing within yourself and use one extra club into the wind.`);
+  } else if (windSpeed >= 8) {
+    tips.push(`With ${windLabel}, confirm wind direction on exposed tees before selecting a club.`);
+  } else {
+    tips.push(`Conditions are ${windLabel.toLowerCase()}; commit to normal carry numbers.`);
+  }
+
+  if (slopeRating >= 130) {
+    tips.push(`${courseName} plays demanding at slope ${slopeRating}; favour fairways and centre green.`);
+  } else if (courseRating >= 72) {
+    tips.push(`The ${courseRating.toFixed(1)} rating rewards avoiding penalties more than chasing flags.`);
+  } else {
+    tips.push(`Use the manageable ${slopeRating} slope to play assertively from good lies.`);
+  }
+
+  if (recentCourseScores.length > 0) {
+    const average = recentCourseScores.reduce((sum, score) => sum + score, 0) / recentCourseScores.length;
+    tips.push(`Your recent average here is ${average.toFixed(1)}; set a target of ${Math.max(1, Math.floor(average - 1))} or better.`);
+  } else if (handicapIndex != null) {
+    tips.push(`Off ${handicapIndex.toFixed(1)}, protect your score on stroke-index holes and take chances elsewhere.`);
+  } else {
+    tips.push('Set a conservative target for the opening three holes, then adjust once your strike is clear.');
+  }
+
+  return tips.map((tip, index) => `${index + 1}. ${tip}`).join('\n');
+}
 
 export function buildCaddieAdvice(params: {
   playerPos: LatLng;
@@ -46,8 +105,26 @@ export function buildCaddieAdvice(params: {
   windLabel: string;
   playerElevation: number;
   greenElevation: number;
+  holeNumber?: number;
+  holePar?: number;
+  holeIndex?: number;
+  history?: CaddieHistory | null;
 }): CaddieAdvice | null {
-  const { playerPos, greenMid, hazards, clubs, windSpeed, windDir, windLabel, playerElevation, greenElevation } = params;
+  const {
+    playerPos,
+    greenMid,
+    hazards,
+    clubs,
+    windSpeed,
+    windDir,
+    windLabel,
+    playerElevation,
+    greenElevation,
+    holeNumber,
+    holePar,
+    holeIndex,
+    history = null,
+  } = params;
   const elevDiff = Math.round(greenElevation - playerElevation);
 
   const distToPin = haversineMetres(playerPos, greenMid);
@@ -121,20 +198,57 @@ export function buildCaddieAdvice(params: {
             : best
         );
 
-  const windAdj = recommended.adjustedCarry - recommended.club.carry_metres!;
+  const baseCarry = recommended.club.carry_metres!;
+  const windAdjustedCarry = windCarryAdjustment(baseCarry, windSpeed, windDir, bToGreen);
+  const windAdj = windAdjustedCarry - baseCarry;
+  const totalAdjustment = recommended.adjustedCarry - baseCarry;
+  const playingDistance = Math.max(1, Math.round(distToPin - totalAdjustment));
   const alternatives = options
     .filter(o => o.club.id !== recommended.club.id && o.adjustedCarry <= distToPin + 30)
+    .sort((a, b) =>
+      Math.abs(a.adjustedCarry - distToPin) - Math.abs(b.adjustedCarry - distToPin)
+    )
     .slice(0, 2);
 
-  // Short text for pop-up
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
-  const windStr = Math.abs(windAdj) >= 3 ? ` · ${windAdj > 0 ? '+' : ''}${windAdj}m wind` : '';
-  const hazardStr = recommended.warnings.length > 0
-    ? ` · ⚠ ${recommended.warnings[0].type} ${recommended.warnings[0].distanceMetres}m ${recommended.warnings[0].side}`
-    : recommended.clearsHazards && activeHazards.length > 0
-    ? ' · clears hazards'
-    : '';
-  const shortText = `${clubLabel} · ${recommended.adjustedCarry}m${windStr}${hazardStr}`;
+  const primaryHazard = recommended.warnings[0] ?? (
+    activeHazards.length > 0
+      ? {
+          type: activeHazards[0].hazard.type,
+          distanceMetres: activeHazards[0].dist,
+          side: activeHazards[0].side,
+          label: '',
+        }
+      : null
+  );
+  const missLine = primaryHazard
+    ? `Miss ${primaryHazard.side === 'centre' ? 'away from' : primaryHazard.side === 'left' ? 'right of' : 'left of'} ${primaryHazard.type}.`
+    : 'Commit to the centre of the green.';
+  const shortText = `${windLabel}. Play ${playingDistance}m. ${clubLabel}. ${missLine}`;
+
+  const strategy: string[] = [
+    `Play this as ${playingDistance}m with ${clubLabel}; expected carry is ${recommended.adjustedCarry}m.`,
+  ];
+  if (primaryHazard) {
+    strategy.push(
+      `${primaryHazard.type} is in play at ${primaryHazard.distanceMetres}m ${primaryHazard.side}; favour the opposite side.`,
+    );
+  } else {
+    strategy.push('No mapped hazard blocks the direct line to the green.');
+  }
+  if (holeIndex != null) {
+    strategy.push(
+      holeIndex <= 5
+        ? `This is stroke index ${holeIndex}; prioritise position and accept the safe miss.`
+        : `Stroke index ${holeIndex}; a committed centre-green shot is the percentage play.`,
+    );
+  }
+  if (history) {
+    const target = holePar != null && history.avg > holePar
+      ? `Your average is ${history.avg.toFixed(1)}; avoiding a big miss is the clearest gain.`
+      : `You average ${history.avg.toFixed(1)} here with ${history.girPct}% GIR.`;
+    strategy.push(target);
+  }
 
   // Context string for Claude
   const hazardLines = activeHazards
@@ -144,7 +258,7 @@ export function buildCaddieAdvice(params: {
     ? `Elevation: ${elevDiff > 0 ? '+' : ''}${elevDiff}m (${elevDiff > 0 ? 'uphill' : 'downhill'}).\n`
     : '';
   const context =
-    `Hole: ${distToPin}m to pin. Wind: ${windLabel}. ${elevLine}` +
+    `Hole ${holeNumber ?? ''}: ${distToPin}m to pin. Wind: ${windLabel}. ${elevLine}` +
     `Recommended: ${clubLabel} (carries ${recommended.club.carry_metres}m, adjusted ${recommended.adjustedCarry}m).\n` +
     (activeHazards.length > 0 ? `Hazards in play:\n${hazardLines}\n` : 'No hazards in play.\n') +
     (recommended.warnings.length > 0
@@ -152,5 +266,17 @@ export function buildCaddieAdvice(params: {
       : '') +
     `Other options: ${alternatives.map(o => `${o.club.custom_name ?? o.club.name} (${o.adjustedCarry}m)`).join(', ') || 'none'}.`;
 
-  return { distToPin, recommended, alternatives, windLabel, windAdjustment: windAdj, elevDiff, shortText, context };
+  return {
+    distToPin,
+    playingDistance,
+    recommended,
+    alternatives,
+    windLabel,
+    windAdjustment: windAdj,
+    elevDiff,
+    strategy,
+    history,
+    shortText,
+    context,
+  };
 }

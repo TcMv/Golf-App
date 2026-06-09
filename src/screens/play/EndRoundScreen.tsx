@@ -19,6 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 import { calcDifferential } from '../../lib/handicap';
 import { callOpenAI, buildDebriefPrompt } from '../../utils/anthropic';
 import { processRoundFinish, type NewBadge } from '../../utils/gamification';
+import AchievementCelebration from '../../components/gamification/AchievementCelebration';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type RootStackParamList = {
@@ -58,8 +59,18 @@ export default function EndRoundScreen() {
   const [debriefTips, setDebriefTips] = useState<string | null>(null);
   const [xpGained, setXpGained] = useState<number | null>(null);
   const [newBadges, setNewBadges] = useState<NewBadge[]>([]);
+  const [celebrationIndex, setCelebrationIndex] = useState(0);
 
-  const holes = activeRound?.holes ?? [];
+  const holes = useMemo(() => {
+    if (!activeRound) return [];
+    const start = activeRound.round.starting_hole ?? 1;
+    const sequence = activeRound.round.holes_played === 9
+      ? Array.from({ length: 9 }, (_, index) => start + index)
+      : Array.from({ length: 18 }, (_, index) => ((start - 1 + index) % 18) + 1);
+    return sequence
+      .map(number => activeRound.holes.find(hole => hole.number === number))
+      .filter((hole): hole is NonNullable<typeof hole> => hole != null);
+  }, [activeRound]);
   const scores = activeRound?.scores ?? {};
 
   const stats = useMemo(() => {
@@ -72,6 +83,8 @@ export default function EndRoundScreen() {
     let totalPutts = 0;
     let totalPenalties = 0;
     let birdie = 0;
+    let eagles = 0;
+    let holeInOnes = 0;
     let parCount = 0;
     let bogey = 0;
     let doublePlus = 0;
@@ -84,7 +97,9 @@ export default function EndRoundScreen() {
         totalScore += g;
         const diff = g - hole.par;
         toPar += diff;
-        if (diff <= -1) birdie++;
+        if (g === 1) holeInOnes++;
+        if (diff <= -2) eagles++;
+        else if (diff === -1) birdie++;
         else if (diff === 0) parCount++;
         else if (diff === 1) bogey++;
         else doublePlus++;
@@ -96,11 +111,11 @@ export default function EndRoundScreen() {
       totalPenalties += s.penalties ?? 0;
     }
 
-    return { totalScore, toPar, fir, firTotal, gir, girTotal, totalPutts, totalPenalties, birdie, parCount, bogey, doublePlus };
+    return { totalScore, toPar, fir, firTotal, gir, girTotal, totalPutts, totalPenalties, birdie, eagles, holeInOnes, parCount, bogey, doublePlus };
   }, [holes, scores]);
 
   const differential = useMemo(() => {
-    if (!activeRound || stats.totalScore === 0) return null;
+    if (!activeRound || activeRound.round.holes_played !== 18 || stats.totalScore === 0) return null;
     const { slope_rating, course_rating } = activeRound.teeSet;
     return calcDifferential(stats.totalScore, course_rating, slope_rating);
   }, [activeRound, stats]);
@@ -125,7 +140,8 @@ export default function EndRoundScreen() {
           gross_total: stats.totalScore || null,
           handicap_differential: differential != null ? Math.round(differential * 10) / 10 : null,
         })
-        .eq('id', activeRound.round.id);
+        .eq('id', activeRound.round.id)
+        .eq('user_id', user?.id ?? '');
 
       if (error) {
         Alert.alert('Error', 'Failed to save round: ' + error.message);
@@ -154,16 +170,22 @@ export default function EndRoundScreen() {
           const girPct2 = stats.girTotal > 0 ? Math.round((stats.gir / stats.girTotal) * 100) : 0;
           const result = await processRoundFinish(user.id, activeRound.round.date, {
             birdies: stats.birdie,
-            eagles: 0,
+            eagles: stats.eagles,
             pars: stats.parCount,
             bogeys: stats.bogey,
             doublePlus: stats.doublePlus,
             girPct: girPct2,
             totalPutts: stats.totalPutts,
             holesPlayed: holes.length,
+            totalScore: stats.totalScore,
+            toPar: stats.toPar,
+            holeInOnes: stats.holeInOnes,
+            courseId: activeRound.round.course_id,
+            handicapIndex: profile?.handicap_index ?? null,
           });
           setXpGained(result.xpGained);
           setNewBadges(result.newBadges);
+          setCelebrationIndex(0);
         } catch {
           // non-critical — swallow silently
         }
@@ -194,7 +216,7 @@ export default function EndRoundScreen() {
     } finally {
       setFinishLoading(false);
     }
-  }, [activeRound, stats, differential, holes, scores, profile]);
+  }, [activeRound, stats, differential, holes, scores, profile, user?.id]);
 
   const handleDiscard = useCallback(() => {
     Alert.alert(
@@ -207,7 +229,11 @@ export default function EndRoundScreen() {
           style: 'destructive',
           onPress: async () => {
             if (activeRound) {
-              await supabase.from('rounds').delete().eq('id', activeRound.round.id);
+              await supabase
+                .from('rounds')
+                .delete()
+                .eq('id', activeRound.round.id)
+                .eq('user_id', user?.id ?? '');
             }
             endRound();
             navigation.reset({ index: 0, routes: [{ name: 'PlayHome' }] });
@@ -215,7 +241,7 @@ export default function EndRoundScreen() {
         },
       ],
     );
-  }, [activeRound, endRound, navigation]);
+  }, [activeRound, endRound, navigation, user?.id]);
 
   if (!activeRound) {
     return (
@@ -409,12 +435,19 @@ export default function EndRoundScreen() {
               disabled={finishLoading}
             >
               {finishLoading
-                ? <ActivityIndicator color="#000" />
+                ? <ActivityIndicator color={Colors.bg} />
                 : <Text style={styles.finishBtnText}>Finish Round</Text>}
             </TouchableOpacity>
           </>
         )}
       </View>
+      <AchievementCelebration
+        badge={newBadges[celebrationIndex] ?? null}
+        onDismiss={() => {
+          if (celebrationIndex < newBadges.length - 1) setCelebrationIndex(index => index + 1);
+          else setNewBadges([]);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -444,9 +477,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.base,
     gap: Spacing.sm,
   },
-  heroScore: { fontSize: 72, fontWeight: FontWeight.black, fontFamily: Font.black, color: Colors.text, lineHeight: 80 },
+  heroScore: { fontSize: FontSize.xxxl, fontWeight: FontWeight.black, fontFamily: Font.black, color: Colors.text, lineHeight: 56 },
   toParBadge: {
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
   },
@@ -575,7 +608,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   badgesTitle: {
-    fontSize: 10,
+    fontSize: FontSize.xs,
     fontFamily: Font.bold,
     fontWeight: FontWeight.bold,
     color: Colors.yellow,
@@ -616,7 +649,7 @@ const styles = StyleSheet.create({
   },
   debriefIcon: { fontSize: 18 },
   debriefTitle: {
-    fontSize: 10,
+    fontSize: FontSize.xs,
     fontFamily: Font.bold,
     fontWeight: FontWeight.bold,
     color: Colors.green,
@@ -641,7 +674,7 @@ const styles = StyleSheet.create({
   discardBtn: {
     flex: 1,
     height: 52,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.redMuted,
     borderWidth: 1,
     borderColor: Colors.red,
@@ -652,10 +685,10 @@ const styles = StyleSheet.create({
   finishBtn: {
     flex: 2,
     height: 52,
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  finishBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: '#000' },
+  finishBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.bg },
 });
