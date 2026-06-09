@@ -380,7 +380,7 @@ export default function ZoneEditor() {
             )}
             {drawing && (
               <DrawingManager
-                drawingMode={google.maps.drawing.OverlayType.POLYGON}
+                drawingMode={'polygon' as google.maps.drawing.OverlayType}
                 options={{
                   drawingControl: false,
                   polygonOptions: {
