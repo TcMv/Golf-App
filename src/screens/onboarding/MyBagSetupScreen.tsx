@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -42,26 +43,22 @@ export default function MyBagSetupScreen() {
   const { user } = useAuth();
   const returnTo = route.params?.returnTo ?? 'HandicapSetup';
 
-  // Wizard state: 0 = Splash, 1-14 = Wizard Club Steps
+  // Wizard state: 0 = Splash, 1-N = Wizard Club Steps
   const [step, setStep] = useState(0);
 
   // Distances record (club name -> carry distance string)
-  const [carries, setCarries] = useState<Record<string, string>>({});
+  const [carries, setCarries] = useState<Record<string, string>>(() =>
+    Object.fromEntries(SETUP_CLUBS.map(club => [club.name, String(club.defaultCarry)])),
+  );
+  const [averageClubs, setAverageClubs] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(SETUP_CLUBS.map(club => [club.name, true])),
+  );
 
   // Excluded clubs record (club name -> boolean)
   const [excludedClubs, setExcludedClubs] = useState<Record<string, boolean>>({});
 
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<TextInput>(null);
-
-  // Initialize carries with preset defaults
-  useEffect(() => {
-    const initialCarries: Record<string, string> = {};
-    SETUP_CLUBS.forEach(c => {
-      initialCarries[c.name] = String(c.defaultCarry);
-    });
-    setCarries(initialCarries);
-  }, []);
 
   // Autofocus the input field when stepping through clubs
   useEffect(() => {
@@ -80,7 +77,24 @@ export default function MyBagSetupScreen() {
     }));
   };
 
+  const useAverageForClub = (clubName: string, defaultCarry: number) => {
+    setCarries(prev => ({
+      ...prev,
+      [clubName]: String(defaultCarry),
+    }));
+    setAverageClubs(prev => ({
+      ...prev,
+      [clubName]: true,
+    }));
+    setExcludedClubs(prev => ({
+      ...prev,
+      [clubName]: false,
+    }));
+    Keyboard.dismiss();
+  };
+
   const handleNext = () => {
+    Keyboard.dismiss();
     if (step === SETUP_CLUBS.length) {
       handleFinish();
     } else {
@@ -89,6 +103,7 @@ export default function MyBagSetupScreen() {
   };
 
   const handleBack = () => {
+    Keyboard.dismiss();
     if (step > 0) {
       setStep(step - 1);
     }
@@ -206,6 +221,14 @@ export default function MyBagSetupScreen() {
               <Text style={styles.primaryBtnText}>Let's Enter Distances</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              style={styles.averageSetupBtn}
+              onPress={() => handleFinish()}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.averageSetupTitle}>I don't know my distances</Text>
+              <Text style={styles.averageSetupText}>Use average golfer estimates</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.secondaryBtn}
               onPress={() => handleFinish(true)}
               activeOpacity={0.8}
@@ -229,7 +252,8 @@ export default function MyBagSetupScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
       >
         {/* Progress Bar & Skip option */}
         <View style={styles.wizardHeader}>
@@ -250,7 +274,11 @@ export default function MyBagSetupScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.wizardStepInfo}>
             <Text style={styles.stepCount}>Club {step} of {SETUP_CLUBS.length}</Text>
             <Text style={styles.clubName}>{currentClub.name}</Text>
@@ -264,15 +292,44 @@ export default function MyBagSetupScreen() {
             </Text>
             <TextInput
               ref={inputRef}
-              style={[styles.inputField, isExcluded && styles.inputFieldDisabled]}
+              style={[
+                styles.inputField,
+                averageClubs[currentClub.name] && styles.inputFieldAverage,
+                isExcluded && styles.inputFieldDisabled,
+              ]}
               value={carryVal}
-              onChangeText={val => setCarries(prev => ({ ...prev, [currentClub.name]: val }))}
+              onChangeText={val => {
+                setCarries(prev => ({ ...prev, [currentClub.name]: val }));
+                setAverageClubs(prev => ({ ...prev, [currentClub.name]: false }));
+              }}
               keyboardType="number-pad"
               editable={!isExcluded}
               placeholder="e.g. 150"
               placeholderTextColor={Colors.textMuted}
             />
+            {averageClubs[currentClub.name] && !isExcluded && (
+              <Text style={styles.averageNote}>Average golfer estimate</Text>
+            )}
           </View>
+
+          <TouchableOpacity
+            style={[
+              styles.averageToggle,
+              averageClubs[currentClub.name] && !isExcluded && styles.averageToggleActive,
+            ]}
+            onPress={() => useAverageForClub(currentClub.name, currentClub.defaultCarry)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.averageToggleText}>
+              <Text style={styles.averageToggleTitle}>I don't know my carry distance</Text>
+              <Text style={styles.averageToggleSub}>
+                Use the average estimate: {currentClub.defaultCarry}m
+              </Text>
+            </View>
+            <Text style={styles.averageCheck}>
+              {averageClubs[currentClub.name] && !isExcluded ? '✓' : 'Use'}
+            </Text>
+          </TouchableOpacity>
 
           {/* Exclude Toggle */}
           <TouchableOpacity
@@ -360,6 +417,28 @@ const styles = StyleSheet.create({
   },
   splashFooter: {
     gap: Spacing.sm,
+  },
+  averageSetupBtn: {
+    minHeight: 64,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.green,
+    backgroundColor: Colors.greenMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.base,
+  },
+  averageSetupTitle: {
+    color: Colors.green,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.base,
+  },
+  averageSetupText: {
+    color: Colors.textSecondary,
+    fontFamily: Font.regular,
+    fontSize: FontSize.sm,
+    marginTop: 2,
   },
   primaryBtn: {
     height: 56,
@@ -478,8 +557,52 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     opacity: 0.3,
   },
+  inputFieldAverage: {
+    borderColor: Colors.greenDark,
+  },
+  averageNote: {
+    color: Colors.green,
+    fontFamily: Font.medium,
+    fontSize: FontSize.xs,
+  },
   mutedText: {
     color: Colors.textMuted,
+  },
+  averageToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface1,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    padding: Spacing.base,
+    gap: Spacing.sm,
+  },
+  averageToggleActive: {
+    borderColor: Colors.green,
+    backgroundColor: Colors.greenMuted,
+  },
+  averageToggleText: {
+    flex: 1,
+  },
+  averageToggleTitle: {
+    color: Colors.text,
+    fontFamily: Font.semibold,
+    fontWeight: FontWeight.semibold,
+    fontSize: FontSize.sm,
+  },
+  averageToggleSub: {
+    color: Colors.textMuted,
+    fontFamily: Font.regular,
+    fontSize: FontSize.xs,
+    marginTop: 3,
+  },
+  averageCheck: {
+    color: Colors.green,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.sm,
   },
   excludeToggle: {
     flexDirection: 'row',

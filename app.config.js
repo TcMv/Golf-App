@@ -18,6 +18,7 @@ module.exports = {
       },
     },
     android: {
+      softwareKeyboardLayoutMode: 'resize',
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#0b1810',

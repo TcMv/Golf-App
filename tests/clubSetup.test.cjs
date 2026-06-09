@@ -12,5 +12,6 @@ const driver = SETUP_CLUBS[0];
 assert.equal(isValidClubCarry(driver, 210), true);
 assert.equal(isValidClubCarry(driver, 10), false);
 assert.equal(SETUP_CLUBS.some(club => club.type === 'putter'), false);
+assert.equal(SETUP_CLUBS.every(club => isValidClubCarry(club, club.defaultCarry)), true);
 
 console.log('club setup tests passed');
