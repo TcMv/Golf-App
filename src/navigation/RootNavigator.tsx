@@ -84,10 +84,10 @@ function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
       {!onboardingDone ? (
         <>
           <Stack.Screen name="Welcome" component={WelcomeScreen} />
-          <Stack.Screen name="MyBagSetup" component={MyBagSetupScreen} />
           <Stack.Screen name="HandicapSetup" component={HandicapSetupScreen} />
         </>
       ) : null}
+      <Stack.Screen name="MyBagSetup" component={MyBagSetupScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="StartRound" component={StartRoundScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="ActiveRound" component={ActiveRoundScreen} options={{ presentation: 'fullScreenModal' }} />

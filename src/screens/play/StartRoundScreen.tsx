@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
@@ -28,6 +28,7 @@ type RootStackParamList = {
   ActiveRound: undefined;
   EndRound: undefined;
   RoundDetail: { roundId: string };
+  MyBagSetup: { returnTo?: 'HandicapSetup' | 'StartRound' | 'Main' } | undefined;
 };
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -58,6 +59,49 @@ export default function StartRoundScreen() {
   const [selectedTeeSet, setSelectedTeeSet] = useState<TeeSet | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingTips, setBriefingTips] = useState<string | null>(null);
+  const bagPromptedForFocus = useRef(false);
+
+  useFocusEffect(useCallback(() => {
+    let cancelled = false;
+    bagPromptedForFocus.current = false;
+
+    const checkBagBeforeFirstRound = async () => {
+      if (!user?.id) return;
+      const { data: savedClubs, error: clubError } = await supabase
+        .from('user_clubs')
+        .select('club_name')
+        .eq('user_id', user.id)
+        .not('carry_distance_metres', 'is', null);
+      const hasUsableClub = (savedClubs ?? []).some(
+        club => club.club_name.toLowerCase() !== 'putter',
+      );
+      if (
+        cancelled
+        || clubError
+        || hasUsableClub
+        || bagPromptedForFocus.current
+      ) {
+        return;
+      }
+      bagPromptedForFocus.current = true;
+      Alert.alert(
+        'Set Up Your Clubs',
+        'Add your carry distances before starting to enable accurate caddie recommendations.',
+        [
+          { text: 'Continue Without', style: 'cancel' },
+          {
+            text: 'Set Up Now',
+            onPress: () => navigation.navigate('MyBagSetup', { returnTo: 'StartRound' }),
+          },
+        ],
+      );
+    };
+
+    void checkBagBeforeFirstRound();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigation, user?.id]));
 
   useEffect(() => {
     const loadCourses = async () => {

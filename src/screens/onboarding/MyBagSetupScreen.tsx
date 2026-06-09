@@ -14,46 +14,33 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { isValidClubCarry, SETUP_CLUBS } from '../../utils/clubSetup';
 
 type RootStackParamList = {
   Welcome: undefined;
   MyBagSetup: undefined;
   HandicapSetup: undefined;
   Main: undefined;
+  StartRound: undefined;
 };
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-interface OnboardingClub {
-  name: string;
-  type: string;
-  defaultCarry: number;
-  desc: string;
-}
-
-const WIZARD_CLUBS: OnboardingClub[] = [
-  { name: 'Driver', type: 'driver', defaultCarry: 210, desc: 'Your primary tee club. Metres of carry.' },
-  { name: '3W', type: 'wood', defaultCarry: 190, desc: '3 Wood. Good for long fairway shots or tight tees.' },
-  { name: '5W', type: 'wood', defaultCarry: 180, desc: '5 Wood. High launching fairway wood.' },
-  { name: '4i', type: 'iron', defaultCarry: 165, desc: '4 Iron. Long iron distance.' },
-  { name: '5i', type: 'iron', defaultCarry: 155, desc: '5 Iron.' },
-  { name: '6i', type: 'iron', defaultCarry: 145, desc: '6 Iron.' },
-  { name: '7i', type: 'iron', defaultCarry: 135, desc: '7 Iron. Standard mid iron carry.' },
-  { name: '8i', type: 'iron', defaultCarry: 125, desc: '8 Iron.' },
-  { name: '9i', type: 'iron', defaultCarry: 115, desc: '9 Iron.' },
-  { name: 'PW', type: 'wedge', defaultCarry: 105, desc: 'Pitching Wedge. Short game approach.' },
-  { name: 'GW (52°)', type: 'wedge', defaultCarry: 95, desc: 'Gap Wedge. Between PW and SW.' },
-  { name: 'SW (56°)', type: 'wedge', defaultCarry: 85, desc: 'Sand Wedge. Essential for bunkers and short chips.' },
-  { name: 'LW (60°)', type: 'wedge', defaultCarry: 75, desc: 'Lob Wedge. For high flop shots.' },
-  { name: 'Putter', type: 'putter', defaultCarry: 15, desc: 'Putting distance on green.' },
-];
+type SetupRoute = RouteProp<{
+  MyBagSetup: {
+    returnTo?: 'HandicapSetup' | 'StartRound' | 'Main';
+  } | undefined;
+}, 'MyBagSetup'>;
 
 export default function MyBagSetupScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<SetupRoute>();
   const { user } = useAuth();
+  const returnTo = route.params?.returnTo ?? 'HandicapSetup';
 
   // Wizard state: 0 = Splash, 1-14 = Wizard Club Steps
   const [step, setStep] = useState(0);
@@ -70,7 +57,7 @@ export default function MyBagSetupScreen() {
   // Initialize carries with preset defaults
   useEffect(() => {
     const initialCarries: Record<string, string> = {};
-    WIZARD_CLUBS.forEach(c => {
+    SETUP_CLUBS.forEach(c => {
       initialCarries[c.name] = String(c.defaultCarry);
     });
     setCarries(initialCarries);
@@ -94,7 +81,7 @@ export default function MyBagSetupScreen() {
   };
 
   const handleNext = () => {
-    if (step === WIZARD_CLUBS.length) {
+    if (step === SETUP_CLUBS.length) {
       handleFinish();
     } else {
       setStep(step + 1);
@@ -107,27 +94,48 @@ export default function MyBagSetupScreen() {
     }
   };
 
+  const continueAfterSetup = () => {
+    if (returnTo === 'StartRound') {
+      navigation.goBack();
+    } else if (returnTo === 'Main') {
+      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+    } else {
+      navigation.navigate('HandicapSetup');
+    }
+  };
+
   const handleFinish = async (skipAll = false) => {
     if (!user) {
-      navigation.navigate('HandicapSetup');
+      continueAfterSetup();
+      return;
+    }
+
+    if (skipAll) {
+      continueAfterSetup();
       return;
     }
 
     setSaving(true);
     try {
-      const insertData = [];
+      const insertData: {
+        user_id: string;
+        club_name: string;
+        carry_distance_metres: number;
+      }[] = [];
 
-      for (let i = 0; i < WIZARD_CLUBS.length; i++) {
-        const club = WIZARD_CLUBS[i];
+      for (let i = 0; i < SETUP_CLUBS.length; i++) {
+        const club = SETUP_CLUBS[i];
 
-        // Skip excluded clubs if not skipping the entire wizard
-        if (!skipAll && excludedClubs[club.name]) {
+        if (excludedClubs[club.name]) {
           continue;
         }
 
-        let carry = parseInt(carries[club.name], 10);
-        if (isNaN(carry) || carry <= 0) {
-          carry = club.defaultCarry;
+        const carry = parseInt(carries[club.name], 10);
+        if (!isValidClubCarry(club, carry)) {
+          const range = club.type === 'putter' ? '1m and 100m' : '20m and 400m';
+          Alert.alert('Check Distance', `Enter a carry between ${range} for ${club.name}.`);
+          setStep(i + 1);
+          return;
         }
 
         insertData.push({
@@ -137,21 +145,23 @@ export default function MyBagSetupScreen() {
         });
       }
 
+      const { error: deleteError } = await supabase
+        .from('user_clubs')
+        .delete()
+        .eq('user_id', user.id);
+      if (deleteError) throw deleteError;
       if (insertData.length > 0) {
-        // Delete existing user clubs if any to avoid duplicates
-        await supabase.from('user_clubs').delete().eq('user_id', user.id);
-
-        // Insert user club carry distances
         const { error } = await supabase.from('user_clubs').insert(insertData);
         if (error) throw error;
       }
     } catch (e) {
-      console.error('Failed to save user clubs during onboarding:', e);
       Alert.alert('Save Error', 'Could not save carry distances. You can try again later in Settings.');
+      setSaving(false);
+      return;
     } finally {
       setSaving(false);
-      navigation.navigate('HandicapSetup');
     }
+    continueAfterSetup();
   };
 
   // ---------------------------------------------------------------------------
@@ -210,7 +220,7 @@ export default function MyBagSetupScreen() {
   }
 
   // 2. Render Club Wizard Steps (Step 1-14)
-  const currentClub = WIZARD_CLUBS[step - 1];
+  const currentClub = SETUP_CLUBS[step - 1];
   const isExcluded = excludedClubs[currentClub.name] === true;
   const carryVal = carries[currentClub.name] ?? '';
 
@@ -225,7 +235,7 @@ export default function MyBagSetupScreen() {
         {/* Progress Bar & Skip option */}
         <View style={styles.wizardHeader}>
           <View style={styles.progressDots}>
-            {WIZARD_CLUBS.map((_, idx) => (
+            {SETUP_CLUBS.map((_, idx) => (
               <View
                 key={idx}
                 style={[
@@ -243,7 +253,7 @@ export default function MyBagSetupScreen() {
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.wizardStepInfo}>
-            <Text style={styles.stepCount}>Club {step} of 14</Text>
+            <Text style={styles.stepCount}>Club {step} of {SETUP_CLUBS.length}</Text>
             <Text style={styles.clubName}>{currentClub.name}</Text>
             <Text style={styles.clubDesc}>{currentClub.desc}</Text>
           </View>
@@ -293,7 +303,7 @@ export default function MyBagSetupScreen() {
             activeOpacity={0.8}
           >
             <Text style={styles.nextBtnText}>
-              {step === WIZARD_CLUBS.length ? 'Finish & Save →' : 'Next →'}
+              {step === SETUP_CLUBS.length ? 'Finish & Save →' : 'Next →'}
             </Text>
           </TouchableOpacity>
         </View>

@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -12,8 +13,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
-import { format, formatDistanceToNow } from 'date-fns';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { formatDistanceToNow } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
@@ -21,8 +22,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useUserStats, xpProgress } from '../../hooks/useUserStats';
 import { loadWeeklyChallenge, processPracticeActivity } from '../../utils/gamification';
 import { calcHandicapIndex } from '../../lib/handicap';
+import { calculateRoundPar, monthStartString } from '../../utils/homeDashboard';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
-import type { Round, Profile } from '../../types';
 
 // ---------------------------------------------------------------------------
 // Navigation types
@@ -71,6 +72,7 @@ export default function PlayHomeScreen() {
 
   // Loading States
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Data States
   const [recentRound, setRecentRound] = useState<RecentRound | null>(null);
@@ -95,8 +97,10 @@ export default function PlayHomeScreen() {
   // ---------------------------------------------------------------------------
 
   const fetchData = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     try {
       // 1. Fetch completed rounds with holes to calculate scorecard totals
       const { data: roundsData, error: roundsError } = await supabase
@@ -121,18 +125,15 @@ export default function PlayHomeScreen() {
       if (roundsError) throw roundsError;
 
       const rounds = (roundsData ?? []).map((r: any) => {
-        const startingHole = r.starting_hole ?? 1;
-        const endingHole = startingHole + 8;
-        const hList = r.holes_played === 9
-          ? (r.holes ?? []).filter(
-              (hole: { number: number }) => hole.number >= startingHole && hole.number <= endingHole,
-            )
-          : r.holes ?? [];
-        const parTotal = hList.length > 0 ? hList.reduce((sum: number, h: any) => sum + h.par, 0) : 72;
+        const parTotal = calculateRoundPar(
+          r.holes ?? [],
+          r.starting_hole ?? 1,
+          r.holes_played ?? 18,
+        );
         return {
           ...r,
           course_name: r.courses?.name ?? 'Unknown Course',
-          par_total: parTotal,
+          par_total: parTotal ?? (r.holes_played === 9 ? 36 : 72),
         };
       });
 
@@ -160,8 +161,8 @@ export default function PlayHomeScreen() {
       setHandicapIndex(currentHandicap);
 
       // Prior rounds (before the 1st of the current month)
-      const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-      const priorRounds = rounds.filter(r => new Date(r.date) < firstDayOfMonth);
+      const firstDayOfMonth = monthStartString();
+      const priorRounds = rounds.filter(r => r.date < firstDayOfMonth);
       const priorDiffs = priorRounds
         .filter(r => r.handicap_differential !== null && !r.exclude_from_handicap)
         .map(r => r.handicap_differential as number);
@@ -174,7 +175,7 @@ export default function PlayHomeScreen() {
       }
 
       // 4. Calculate Month-to-Date Stats
-      const thisMonthRounds = rounds.filter(r => new Date(r.date) >= firstDayOfMonth);
+      const thisMonthRounds = rounds.filter(r => r.date >= firstDayOfMonth);
       const scoredThisMonth = thisMonthRounds.filter(r => r.gross_total !== null);
 
       if (scoredThisMonth.length > 0) {
@@ -233,16 +234,22 @@ export default function PlayHomeScreen() {
     }
   }, [user, profile]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useFocusEffect(useCallback(() => {
+    void Promise.all([fetchData(), refreshStats()]);
+  }, [fetchData, refreshStats]));
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([fetchData(), refreshStats()]);
+    setRefreshing(false);
+  }, [fetchData, refreshStats]);
 
   // ---------------------------------------------------------------------------
   // Action Handlers
   // ---------------------------------------------------------------------------
 
   const handleLogPractice = async (type: string) => {
-    if (!user || !userStats) return;
+    if (!user) return;
     setPracticeLogging(true);
     try {
       const activity = await processPracticeActivity(user.id, type);
@@ -332,7 +339,18 @@ export default function PlayHomeScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={Colors.green}
+            colors={[Colors.green]}
+          />
+        }
       >
+        {(loading || statsLoading) && !refreshing && (
+          <ActivityIndicator color={Colors.green} style={styles.loadingIndicator} />
+        )}
         {/* ── Streak & XP Card ── */}
         <View style={styles.streakCard}>
           <View style={styles.streakHeader}>
@@ -401,7 +419,7 @@ export default function PlayHomeScreen() {
         )}
 
         {/* ── Last Round Card ── */}
-        {recentRound && (
+        {recentRound ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>LAST ROUND</Text>
             <View style={styles.lastRoundHeader}>
@@ -444,6 +462,14 @@ export default function PlayHomeScreen() {
               <Text style={styles.viewScorecardLinkText}>View Scorecard</Text>
               <Ionicons name="arrow-forward" size={14} color={Colors.green} />
             </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>LAST ROUND</Text>
+            <Text style={styles.emptyCardTitle}>No completed rounds yet</Text>
+            <Text style={styles.emptyCardText}>
+              Start a round to build your score history and monthly trends.
+            </Text>
           </View>
         )}
 
@@ -575,6 +601,7 @@ const styles = StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { padding: Spacing.base, gap: Spacing.base, paddingBottom: Spacing.xxl },
+  loadingIndicator: { paddingVertical: Spacing.sm },
 
   // Streak & XP Progress Card
   streakCard: {
@@ -794,6 +821,20 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.semibold,
     color: Colors.green,
     fontFamily: Font.semibold,
+  },
+  emptyCardTitle: {
+    color: Colors.text,
+    fontFamily: Font.semibold,
+    fontWeight: FontWeight.semibold,
+    fontSize: FontSize.base,
+    marginTop: Spacing.sm,
+  },
+  emptyCardText: {
+    color: Colors.textMuted,
+    fontFamily: Font.regular,
+    fontSize: FontSize.sm,
+    lineHeight: 19,
+    marginTop: 2,
   },
 
   // Month stats strip
