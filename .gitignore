@@ -34,6 +34,10 @@ yarn-error.*
 .env
 .env*.local
 
+# web-admin build artifacts
+web-admin/node_modules/
+web-admin/dist/
+
 # typescript
 *.tsbuildinfo
 
