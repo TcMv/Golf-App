@@ -102,6 +102,8 @@ export type Club = {
   loft: number | null;
   custom_name: string | null;
   sort_order: number;
+  carry_metres: number | null;
+  carry_stddev_metres: number | null;
 };
 
 export type HandicapHistory = {

@@ -18,6 +18,10 @@ import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
 import { useLocation } from '../../hooks/useLocation';
 import { haversineMetres } from '../../utils/distance';
+import { fetchWind } from '../../utils/wind';
+import { buildCaddieAdvice } from '../../utils/caddie';
+import type { CaddieAdvice } from '../../utils/caddie';
+import CaddiePanel from '../../components/caddie/CaddiePanel';
 import HoleScoringSheet from '../../components/scoring/HoleScoringSheet';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Club, Coordinate, Hazard, HazardType, Hole, HoleScore, Shot } from '../../types';
@@ -138,6 +142,7 @@ export default function ActiveRoundScreen() {
   const [clubs, setClubs] = useState<Club[]>([]);
   const [clubModalVisible, setClubModalVisible] = useState(false);
   const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [caddieAdvice, setCaddieAdvice] = useState<CaddieAdvice | null>(null);
 
   useEffect(() => {
     supabase.from('clubs').select('*').order('sort_order').then(({ data }) => {
@@ -217,11 +222,27 @@ export default function ActiveRoundScreen() {
     );
   }, [hole?.number]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleCaddie = useCallback(async () => {
+    if (!location || !greenMid) return;
+    const wind = await fetchWind(location.latitude, location.longitude);
+    const advice = buildCaddieAdvice({
+      playerPos: location,
+      greenMid,
+      hazards,
+      clubs,
+      windSpeed: wind?.speed_kmh ?? 0,
+      windDir: wind?.direction_deg ?? 0,
+      windLabel: wind?.label ?? 'Calm',
+    });
+    setCaddieAdvice(advice);
+  }, [location, greenMid, hazards, clubs]);
+
   const goToPrevHole = useCallback(() => {
     if (!activeRound || activeRound.currentHoleNumber <= 1) return;
     setCurrentHole(activeRound.currentHoleNumber - 1);
     setScoringVisible(false);
     setShotStatus('idle');
+    setCaddieAdvice(null);
   }, [activeRound, setCurrentHole]);
 
   const goToNextHole = useCallback(() => {
@@ -236,6 +257,7 @@ export default function ActiveRoundScreen() {
     setCurrentHole(activeRound.currentHoleNumber + 1);
     setScoringVisible(false);
     setShotStatus('idle');
+    setCaddieAdvice(null);
   }, [activeRound, setCurrentHole, navigation]);
 
   const handleSaveScore = useCallback((score: Partial<HoleScore>) => {
@@ -510,6 +532,15 @@ export default function ActiveRoundScreen() {
           </TouchableOpacity>
         ) : null}
 
+        {/* Caddie button */}
+        <TouchableOpacity
+          style={styles.caddieBtn}
+          onPress={handleCaddie}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.caddieBtnText}>🎙 Caddie</Text>
+        </TouchableOpacity>
+
         {/* Enter Score button */}
         <TouchableOpacity
           style={styles.scoreBtn}
@@ -519,6 +550,16 @@ export default function ActiveRoundScreen() {
           <Text style={styles.scoreBtnText}>⛳ Score</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Caddie pop-up */}
+      {caddieAdvice && (
+        <View style={[styles.caddiePanelWrapper, { bottom: insets.bottom + 90 }]}>
+          <CaddiePanel
+            advice={caddieAdvice}
+            onDismiss={() => setCaddieAdvice(null)}
+          />
+        </View>
+      )}
 
       {/* Cumulative score pill */}
       <View style={[styles.cumulativePill, { bottom: insets.bottom + 80 }]}>
@@ -691,6 +732,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(251,191,36,0.12)',
   },
   trackBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text },
+  caddieBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface2,
+    borderWidth: 1,
+    borderColor: Colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  caddieBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.green },
+  caddiePanelWrapper: {
+    position: 'absolute',
+    left: Spacing.base,
+    right: Spacing.base,
+  },
   scoreBtn: {
     flex: 1,
     height: 44,
