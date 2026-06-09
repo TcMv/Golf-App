@@ -71,6 +71,8 @@ const CLUB_PRESETS: Preset[] = [
   { name: '56° Wedge', type: 'wedge', loft: 56 },
   { name: '58° Wedge', type: 'wedge', loft: 58 },
   { name: '60° Wedge', type: 'wedge', loft: 60 },
+  { name: '62° Wedge', type: 'wedge', loft: 62 },
+  { name: '64° Wedge', type: 'wedge', loft: 64 },
   { name: 'Sand Wedge', type: 'wedge', loft: 56 },
   { name: 'Lob Wedge', type: 'wedge', loft: 60 },
   { name: 'Putter', type: 'putter', loft: null },
