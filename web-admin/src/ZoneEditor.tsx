@@ -138,15 +138,6 @@ export default function ZoneEditor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hole?.id]);
 
-  // Esc cancels drawing
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setDrawing(null); setDraftCoords([]); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
   // Cursor crosshair while drawing
   useEffect(() => {
     if (!mapRef.current) return;
@@ -188,16 +179,50 @@ export default function ZoneEditor() {
     setDraftCoords(prev => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
   }, [drawing]);
 
+  const finishDrawing = useCallback((removeDoubleClickPoint = false) => {
+    if (!drawing || saving) return;
+    const coords = removeDoubleClickPoint && draftCoords.length > 1
+      ? draftCoords.slice(0, -1)
+      : draftCoords;
+    if (coords.length < 3) return;
+
+    const type = drawing;
+    setDrawing(null);
+    setDraftCoords([]);
+    void saveZoneRef.current(type, coords);
+  }, [draftCoords, drawing, saving]);
+
   // dblclick fires a click event immediately before it, so slice off that last point
   const onMapDblClick = useCallback((_e: google.maps.MapMouseEvent) => {
-    if (!drawing) return;
-    setDraftCoords(prev => {
-      const coords = prev.length > 1 ? prev.slice(0, -1) : prev;
-      if (coords.length >= 3) void saveZoneRef.current(drawing, coords);
-      return [];
-    });
-    setDrawing(null);
-  }, [drawing]);
+    finishDrawing(true);
+  }, [finishDrawing]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!drawing) return;
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        finishDrawing();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDrawing(null);
+        setDraftCoords([]);
+        return;
+      }
+
+      if ((event.key === 'Backspace' || event.key === 'Delete') && draftCoords.length > 0) {
+        event.preventDefault();
+        setDraftCoords(coords => coords.slice(0, -1));
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [draftCoords.length, drawing, finishDrawing]);
 
   // After saving, polygons are editable — attach listeners to capture vertex drags
   const attachEditListeners = useCallback((polygon: google.maps.Polygon, type: ZoneType) => {
@@ -350,7 +375,8 @@ export default function ZoneEditor() {
 
           {drawing && (
             <div style={S.drawHint}>
-              Click to place vertices · <strong>Double-click</strong> to close &amp; save · <kbd>Esc</kbd> to cancel
+              Click to place vertices · <kbd>Enter</kbd> closes &amp; saves
+              {' '}· double-click also works · <kbd>Backspace</kbd> undoes · <kbd>Esc</kbd> cancels
             </div>
           )}
 
