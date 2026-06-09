@@ -17,7 +17,7 @@ import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
 import { useAuth } from '../../context/AuthContext';
 import { calcDifferential } from '../../lib/handicap';
-import { callClaudeHaiku, buildDebriefPrompt } from '../../utils/anthropic';
+import { callOpenAI, buildDebriefPrompt } from '../../utils/anthropic';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type RootStackParamList = {
@@ -160,7 +160,7 @@ export default function EndRoundScreen() {
           courseName: activeRound.course.name,
           differential,
         });
-        const tips = await callClaudeHaiku(system, userMsg);
+        const tips = await callOpenAI(system, userMsg);
         setDebriefTips(tips);
       } catch {
         setDebriefTips('Could not load tips. Check EXPO_PUBLIC_ANTHROPIC_API_KEY.');

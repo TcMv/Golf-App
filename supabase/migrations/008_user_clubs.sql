@@ -21,6 +21,15 @@ CREATE POLICY "user_clubs_own" ON user_clubs
 CREATE INDEX IF NOT EXISTS idx_user_clubs_user ON user_clubs(user_id);
 
 -- Unique constraint on hole_scores so auto-save and finish-round can both upsert safely
-ALTER TABLE hole_scores
-  ADD CONSTRAINT IF NOT EXISTS hole_scores_round_hole_unique
-  UNIQUE (round_id, hole_number);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'hole_scores_round_hole_unique'
+  ) THEN
+    ALTER TABLE hole_scores
+      ADD CONSTRAINT hole_scores_round_hole_unique
+      UNIQUE (round_id, hole_number);
+  END IF;
+END;
+$$;

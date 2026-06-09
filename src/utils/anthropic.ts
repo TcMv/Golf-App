@@ -1,26 +1,27 @@
-const ANTHROPIC_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? '';
+const OPENAI_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? '';
 
-export async function callClaudeHaiku(system: string, userMessage: string): Promise<string> {
-  if (!ANTHROPIC_KEY) {
-    return 'Add EXPO_PUBLIC_ANTHROPIC_API_KEY to eas.json to enable AI tips.';
+export async function callOpenAI(system: string, userMessage: string): Promise<string> {
+  if (!OPENAI_KEY) {
+    return 'Add EXPO_PUBLIC_OPENAI_API_KEY to your .env file to enable AI tips.';
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
+      Authorization: `Bearer ${OPENAI_KEY}`,
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'gpt-4o-mini',
       max_tokens: 400,
-      system,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: userMessage },
+      ],
     }),
   });
-  if (!res.ok) throw new Error(`Anthropic API error ${res.status}`);
+  if (!res.ok) throw new Error(`OpenAI API error ${res.status}`);
   const json = await res.json();
-  return (json.content?.[0]?.text as string) ?? 'No response.';
+  return (json.choices?.[0]?.message?.content as string) ?? 'No response.';
 }
 
 export function buildDebriefPrompt(stats: {
@@ -64,7 +65,7 @@ export function buildBriefingPrompt(params: {
     `Pre-round briefing for ${params.courseName} (${params.teeColour} tees, rating ${params.courseRating}, slope ${params.slopeRating}).\n` +
     `Conditions: ${params.windLabel}.\n` +
     (params.handicapIndex != null ? `Player handicap: ${params.handicapIndex}.\n` : '') +
-    '\nGive 3 strategic tips for today\'s round.';
+    "\nGive 3 strategic tips for today's round.";
 
   return { system, user };
 }

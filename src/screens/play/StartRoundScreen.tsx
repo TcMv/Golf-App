@@ -17,7 +17,7 @@ import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
 import { useAuth } from '../../context/AuthContext';
 import { fetchWind } from '../../utils/wind';
-import { callClaudeHaiku, buildBriefingPrompt } from '../../utils/anthropic';
+import { callOpenAI, buildBriefingPrompt } from '../../utils/anthropic';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Course, Hole, Round, TeeSet } from '../../types';
 
@@ -87,7 +87,7 @@ export default function StartRoundScreen() {
         windLabel: wind?.label ?? 'Calm',
         handicapIndex: profile?.handicap_index ?? null,
       });
-      const tips = await callClaudeHaiku(system, userMsg);
+      const tips = await callOpenAI(system, userMsg);
       setBriefingTips(tips);
     } catch {
       setBriefingTips('Could not load briefing. Check EXPO_PUBLIC_ANTHROPIC_API_KEY.');
