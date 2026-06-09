@@ -132,8 +132,7 @@ export default function MyBagSetupScreen() {
 
         const carry = parseInt(carries[club.name], 10);
         if (!isValidClubCarry(club, carry)) {
-          const range = club.type === 'putter' ? '1m and 100m' : '20m and 400m';
-          Alert.alert('Check Distance', `Enter a carry between ${range} for ${club.name}.`);
+          Alert.alert('Check Distance', `Enter a carry between 20m and 400m for ${club.name}.`);
           setStep(i + 1);
           return;
         }

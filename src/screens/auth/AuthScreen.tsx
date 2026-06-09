@@ -25,9 +25,11 @@ export default function AuthScreen() {
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setError(null);
+    setSuccess(null);
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail || !password) {
       setError('Email and password are required.');
@@ -39,10 +41,19 @@ export default function AuthScreen() {
     }
     setLoading(true);
     try {
-      const err = mode === 'signin'
-        ? await signIn(trimmedEmail, password)
-        : await signUp(trimmedEmail, password, displayName);
-      if (err) setError(err.message);
+      if (mode === 'signin') {
+        const err = await signIn(trimmedEmail, password);
+        if (err) setError(err.message);
+      } else {
+        const result = await signUp(trimmedEmail, password, displayName);
+        if (result.error) {
+          setError(result.error.message);
+        } else if (result.requiresEmailConfirmation) {
+          setSuccess('Account created. Check your email, confirm the account, then return here and sign in.');
+          setMode('signin');
+          setPassword('');
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -64,7 +75,7 @@ export default function AuthScreen() {
           <View style={styles.toggle}>
             <TouchableOpacity
               style={[styles.toggleBtn, mode === 'signin' && styles.toggleBtnActive]}
-              onPress={() => { setMode('signin'); setError(null); }}
+              onPress={() => { setMode('signin'); setError(null); setSuccess(null); }}
               activeOpacity={0.7}
             >
               <Text style={[styles.toggleBtnText, mode === 'signin' && styles.toggleBtnTextActive]}>
@@ -73,7 +84,7 @@ export default function AuthScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toggleBtn, mode === 'signup' && styles.toggleBtnActive]}
-              onPress={() => { setMode('signup'); setError(null); }}
+              onPress={() => { setMode('signup'); setError(null); setSuccess(null); }}
               activeOpacity={0.7}
             >
               <Text style={[styles.toggleBtnText, mode === 'signup' && styles.toggleBtnTextActive]}>
@@ -124,6 +135,7 @@ export default function AuthScreen() {
             />
 
             {error && <Text style={styles.errorText}>{error}</Text>}
+            {success && <Text style={styles.successText}>{success}</Text>}
 
             <TouchableOpacity
               style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
@@ -222,6 +234,14 @@ const styles = StyleSheet.create({
     fontFamily: Font.regular,
     color: Colors.red,
     marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  successText: {
+    fontSize: FontSize.sm,
+    fontFamily: Font.medium,
+    color: Colors.green,
+    marginTop: Spacing.sm,
+    lineHeight: 20,
     textAlign: 'center',
   },
   submitBtn: {

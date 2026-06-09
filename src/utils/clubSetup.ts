@@ -1,6 +1,6 @@
 export type SetupClub = {
   name: string;
-  type: 'driver' | 'wood' | 'hybrid' | 'iron' | 'wedge' | 'putter';
+  type: 'driver' | 'wood' | 'hybrid' | 'iron' | 'wedge';
   defaultCarry: number;
   desc: string;
 };
@@ -19,12 +19,9 @@ export const SETUP_CLUBS: SetupClub[] = [
   { name: 'GW (52°)', type: 'wedge', defaultCarry: 95, desc: 'Gap Wedge. Between PW and SW.' },
   { name: 'SW (56°)', type: 'wedge', defaultCarry: 85, desc: 'Sand Wedge. Essential for bunkers and short chips.' },
   { name: 'LW (60°)', type: 'wedge', defaultCarry: 75, desc: 'Lob Wedge. For high flop shots.' },
-  { name: 'Putter', type: 'putter', defaultCarry: 15, desc: 'Typical long-putt distance on the green.' },
 ];
 
 export function isValidClubCarry(club: SetupClub, carry: number): boolean {
   if (!Number.isFinite(carry)) return false;
-  return club.type === 'putter'
-    ? carry >= 1 && carry <= 100
-    : carry >= 20 && carry <= 400;
+  return carry >= 20 && carry <= 400;
 }

@@ -3,13 +3,18 @@ import type { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../types';
 
+interface SignUpResult {
+  error: AuthError | null;
+  requiresEmailConfirmation: boolean;
+}
+
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
-  signUp: (email: string, password: string, displayName: string) => Promise<AuthError | null>;
+  signUp: (email: string, password: string, displayName: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -22,13 +27,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase
+  const fetchProfile = useCallback(async (userId: string, authUser?: User | null) => {
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, display_name, ghin_number, home_course_id, units_preference, handicap_index, avatar_url, notify_round_reminders, notify_streak_alerts, notify_achievement_unlocks, created_at')
       .eq('id', userId)
+      .maybeSingle();
+
+    if (!error && data) {
+      setProfile(data as Profile);
+      return;
+    }
+
+    if (!authUser || authUser.id !== userId) {
+      setProfile(null);
+      return;
+    }
+
+    const displayName = typeof authUser.user_metadata?.display_name === 'string'
+      ? authUser.user_metadata.display_name.trim()
+      : '';
+    const { data: created } = await supabase
+      .from('profiles')
+      .upsert({
+        id: userId,
+        display_name: displayName || authUser.email?.split('@')[0] || 'Golfer',
+      })
+      .select('id, display_name, ghin_number, home_course_id, units_preference, handicap_index, avatar_url, notify_round_reminders, notify_streak_alerts, notify_achievement_unlocks, created_at')
       .single();
-    setProfile(data as Profile | null);
+    setProfile(created as Profile | null);
   }, []);
 
   useEffect(() => {
@@ -36,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        fetchProfile(s.user.id).finally(() => setLoading(false));
+        fetchProfile(s.user.id, s.user).finally(() => setLoading(false));
       } else {
         setLoading(false);
       }
@@ -46,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        fetchProfile(s.user.id);
+        fetchProfile(s.user.id, s.user);
       } else {
         setProfile(null);
       }
@@ -61,15 +88,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, displayName: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (!error && data.user) {
-      await supabase.from('profiles').insert({
-        id: data.user.id,
-        display_name: displayName.trim() || email.split('@')[0],
-      });
-      await fetchProfile(data.user.id);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          display_name: displayName.trim() || email.split('@')[0],
+        },
+      },
+    });
+    if (!error && data.user && data.session) {
+      await fetchProfile(data.user.id, data.user);
     }
-    return error;
+    return {
+      error,
+      requiresEmailConfirmation: !error && !data.session,
+    };
   }, [fetchProfile]);
 
   const signOut = useCallback(async () => {
@@ -77,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (user) await fetchProfile(user.id);
+    if (user) await fetchProfile(user.id, user);
   }, [user, fetchProfile]);
 
   return (
