@@ -151,6 +151,16 @@ export type Hazard = {
   created_at: string;
 };
 
+export type Profile = {
+  id: string;
+  display_name: string;
+  ghin_number: string | null;
+  home_course_id: string | null;
+  units_preference: 'metres' | 'yards';
+  handicap_index: number | null;
+  created_at: string;
+};
+
 export type RoundStats = {
   totalScore: number;
   toPar: number;

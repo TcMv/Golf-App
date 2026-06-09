@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
+import { useAuth } from '../../context/AuthContext';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Course, Hole, Round, TeeSet } from '../../types';
 
@@ -42,6 +43,7 @@ const TEE_DOT_COLORS: Record<string, string> = {
 export default function StartRoundScreen() {
   const navigation = useNavigation<Nav>();
   const { startRound } = useRound();
+  const { user } = useAuth();
 
   const [roundType, setRoundType] = useState<RoundType>('18');
   const [startingHole, setStartingHole] = useState(1);
@@ -95,6 +97,7 @@ export default function StartRoundScreen() {
           exclude_from_handicap: excludeHandicap,
           scoring_mode: 'classic',
           completed: false,
+          user_id: user?.id ?? null,
         })
         .select()
         .single();

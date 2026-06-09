@@ -1,10 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Font, FontSize, FontWeight } from '../constants/theme';
+import { useAuth } from '../context/AuthContext';
+
+// Auth
+import AuthScreen from '../screens/auth/AuthScreen';
 
 // Onboarding
 import WelcomeScreen from '../screens/onboarding/WelcomeScreen';
@@ -26,8 +29,6 @@ import SettingsScreen from '../screens/settings/SettingsScreen';
 import MyBagScreen from '../screens/settings/MyBagScreen';
 import AdminMapScreen from '../screens/admin/AdminMapScreen';
 
-const ONBOARDING_KEY = '@golf_onboarding_done';
-
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -37,7 +38,7 @@ function MainTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: Colors.bg,
+          backgroundColor: Colors.surface1,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
         },
@@ -74,17 +75,31 @@ function MainTabs() {
   );
 }
 
+function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {!onboardingDone ? (
+        <>
+          <Stack.Screen name="Welcome" component={WelcomeScreen} />
+          <Stack.Screen name="MyBagSetup" component={MyBagSetupScreen} />
+          <Stack.Screen name="HandicapSetup" component={HandicapSetupScreen} />
+        </>
+      ) : null}
+      <Stack.Screen name="Main" component={MainTabs} />
+      <Stack.Screen name="StartRound" component={StartRoundScreen} options={{ presentation: 'modal' }} />
+      <Stack.Screen name="ActiveRound" component={ActiveRoundScreen} options={{ presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="EndRound" component={EndRoundScreen} options={{ presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="RoundDetail" component={RoundDetailScreen} />
+      <Stack.Screen name="MyBag" component={MyBagScreen} />
+      <Stack.Screen name="AdminMap" component={AdminMapScreen} options={{ presentation: 'fullScreenModal' }} />
+    </Stack.Navigator>
+  );
+}
+
 export default function RootNavigator() {
-  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
+  const { session, loading } = useAuth();
 
-  const checkOnboarding = useCallback(async () => {
-    const done = await AsyncStorage.getItem(ONBOARDING_KEY);
-    setOnboardingDone(done === 'true');
-  }, []);
-
-  useEffect(() => { checkOnboarding(); }, [checkOnboarding]);
-
-  if (onboardingDone === null) {
+  if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={Colors.green} />
@@ -92,41 +107,14 @@ export default function RootNavigator() {
     );
   }
 
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {!onboardingDone ? (
-        <>
-          <Stack.Screen name="Welcome" component={WelcomeScreen} />
-          <Stack.Screen name="MyBagSetup" component={MyBagSetupScreen} />
-          <Stack.Screen
-            name="HandicapSetup"
-            component={HandicapSetupScreen}
-          />
-        </>
-      ) : null}
-      <Stack.Screen name="Main" component={MainTabs} />
-      <Stack.Screen
-        name="StartRound"
-        component={StartRoundScreen}
-        options={{ presentation: 'modal' }}
-      />
-      <Stack.Screen
-        name="ActiveRound"
-        component={ActiveRoundScreen}
-        options={{ presentation: 'fullScreenModal' }}
-      />
-      <Stack.Screen
-        name="EndRound"
-        component={EndRoundScreen}
-        options={{ presentation: 'fullScreenModal' }}
-      />
-      <Stack.Screen name="RoundDetail" component={RoundDetailScreen} />
-      <Stack.Screen name="MyBag" component={MyBagScreen} />
-      <Stack.Screen
-        name="AdminMap"
-        component={AdminMapScreen}
-        options={{ presentation: 'fullScreenModal' }}
-      />
-    </Stack.Navigator>
-  );
+  if (!session) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Auth" component={AuthScreen} />
+      </Stack.Navigator>
+    );
+  }
+
+  // Signed in — skip onboarding (profile exists already)
+  return <AuthedStack onboardingDone={true} />;
 }

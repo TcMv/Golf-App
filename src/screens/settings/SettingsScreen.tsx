@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type RootStackParamList = {
@@ -52,6 +53,7 @@ function SettingsRow({
 
 export default function SettingsScreen() {
   const navigation = useNavigation<Nav>();
+  const { user, profile, signOut } = useAuth();
   const [handicapIndex, setHandicapIndex] = useState<string>('');
   const [handicapModalVisible, setHandicapModalVisible] = useState(false);
   const [handicapInput, setHandicapInput] = useState('');
@@ -125,6 +127,23 @@ export default function SettingsScreen() {
             label="Course Editor"
             value="Map & hazards"
             onPress={() => navigation.navigate('AdminMap')}
+          />
+        </View>
+
+        {/* Account */}
+        <Text style={styles.sectionLabel}>Account</Text>
+        <View style={styles.card}>
+          <SettingsRow label={profile?.display_name ?? 'Golfer'} value={user?.email ?? ''} chevron={false} />
+          <View style={styles.rowDivider} />
+          <SettingsRow
+            label="Sign Out"
+            chevron={false}
+            onPress={() =>
+              Alert.alert('Sign Out', 'Are you sure?', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Sign Out', style: 'destructive', onPress: signOut },
+              ])
+            }
           />
         </View>
 
