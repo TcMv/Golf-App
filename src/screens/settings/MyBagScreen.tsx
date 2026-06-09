@@ -3,7 +3,10 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -201,8 +204,9 @@ export default function MyBagScreen() {
         animationType="slide"
         onRequestClose={() => setEditState(null)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modal}>
             <Text style={styles.modalTitle}>
               {editState?.club.custom_name ?? editState?.club.name}
             </Text>
@@ -231,8 +235,9 @@ export default function MyBagScreen() {
                 }
               </TouchableOpacity>
             </View>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Add Club Modal */}
@@ -242,8 +247,14 @@ export default function MyBagScreen() {
         animationType="slide"
         onRequestClose={() => setAddModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalBackdrop}>
+            <ScrollView
+              style={styles.modal}
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <Text style={styles.modalTitle}>Add Club</Text>
 
             <Text style={styles.inputLabel}>Name</Text>
@@ -304,8 +315,9 @@ export default function MyBagScreen() {
                 }
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -374,6 +386,10 @@ const styles = StyleSheet.create({
   modal: {
     backgroundColor: Colors.surface1,
     borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl,
+    padding: Spacing.xl, gap: Spacing.md, paddingBottom: Spacing.xxl,
+    maxHeight: '90%',
+  },
+  modalScrollContent: {
     padding: Spacing.xl, gap: Spacing.md, paddingBottom: Spacing.xxl,
   },
   modalTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
