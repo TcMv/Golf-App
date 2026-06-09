@@ -19,7 +19,7 @@ import { useLocation } from '../../hooks/useLocation';
 import { haversineMetres } from '../../utils/distance';
 import { fetchElevation, fetchWind } from '../../utils/wind';
 import type { WindData } from '../../utils/wind';
-import { buildCaddieAdvice } from '../../utils/caddie';
+import { buildCaddieAdvice, buildCaddiePrompt } from '../../utils/caddie';
 import type { CaddieAdvice } from '../../utils/caddie';
 import { fetchHoleHistory } from '../../utils/holeHistory';
 import type { HoleHistorySummary } from '../../utils/holeHistory';
@@ -128,6 +128,8 @@ export default function ActiveRoundScreen() {
   const [holeHistory, setHoleHistory] = useState<HoleHistorySummary | null>(null);
   const [caddieAdvice, setCaddieAdvice] = useState<CaddieAdvice | null>(null);
   const [caddieOpen, setCaddieOpen] = useState(false);
+  const [caddieLlmText, setCaddieLlmText] = useState<string | null>(null);
+  const [caddieLlmLoading, setCaddieLlmLoading] = useState(false);
   const [scoringOpen, setScoringOpen] = useState(false);
   const [trackingStart, setTrackingStart] = useState<Coordinate | null>(null);
   const [pendingShot, setPendingShot] = useState<PendingShot | null>(null);
@@ -382,6 +384,10 @@ export default function ActiveRoundScreen() {
       navigation.navigate('EndRound');
       return;
     }
+    // Clear caddie LLM state when changing holes
+    setCaddieOpen(false);
+    setCaddieLlmText(null);
+    setCaddieLlmLoading(false);
     setCurrentHole(roundHoleNumbers[nextIndex]);
   }, [activeRound, currentHoleIndex, navigation, roundHoleNumbers, setCurrentHole]);
 
@@ -488,7 +494,20 @@ export default function ActiveRoundScreen() {
     }), learning);
     if (advice) {
       setCaddieAdvice(advice);
+      setCaddieLlmText(null);
+      setCaddieLlmLoading(true);
       setCaddieOpen(true);
+      // Fire LLM read in background — panel shows spinner until it resolves
+      const { system, userMessage } = buildCaddiePrompt(advice);
+      supabase.functions
+        .invoke('golf-coach', { body: { system, userMessage } })
+        .then(({ data, error }) => {
+          if (!error && typeof data?.text === 'string' && data.text.trim().length > 0) {
+            setCaddieLlmText(data.text.trim());
+          }
+        })
+        .catch(() => { /* fall back to deterministic lines */ })
+        .finally(() => setCaddieLlmLoading(false));
     }
   }, [greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location]);
 
@@ -741,6 +760,8 @@ export default function ActiveRoundScreen() {
               advice={caddieAdvice}
               units={units}
               onDismiss={() => setCaddieOpen(false)}
+              llmText={caddieLlmText}
+              llmLoading={caddieLlmLoading}
             />
           </View>
         </View>

@@ -280,3 +280,10 @@ export function buildCaddieAdvice(params: {
     context,
   };
 }
+
+export function buildCaddiePrompt(advice: CaddieAdvice): { system: string; userMessage: string } {
+  return {
+    system: "You are an experienced golf caddie at Nambour Golf Club. Give pre-shot advice in exactly 2 short sentences. First sentence: the specific shot — club, target distance, and where to aim or land it. Second sentence: the one critical factor — the hazard to avoid, the wind effect, or the player's personal miss tendency if their data shows one. Be direct, confident, and specific. No filler phrases. Sound like a real caddie who knows the player's game.",
+    userMessage: advice.context,
+  };
+}

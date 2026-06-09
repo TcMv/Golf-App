@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,28 +16,38 @@ type Props = {
   advice: CaddieAdvice;
   onDismiss: () => void;
   units: DistanceUnits;
+  llmText?: string | null;
+  llmLoading?: boolean;
 };
 
-export default function CaddiePanel({ advice, onDismiss, units }: Props) {
+export default function CaddiePanel({ advice, onDismiss, units, llmText, llmLoading }: Props) {
   const { recommended, alternatives, distToPin, playingDistance, history } = advice;
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
   const unit = distanceUnitLabel(units, true);
   const primaryWarning = recommended.warnings[0];
-  const displayStrategy = [
+
+  // Deterministic fallback lines (used if LLM is unavailable)
+  const fallbackLines = [
     `Play this as ${convertDistance(playingDistance, units)}${unit} with ${clubLabel}.`,
     primaryWarning
       ? `${primaryWarning.type} is in play at ${convertDistance(primaryWarning.distanceMetres, units)}${unit} ${primaryWarning.side}.`
-      : 'No mapped hazard blocks the direct line to the green.',
-    history
-      ? `You average ${history.avg.toFixed(1)} here with ${history.girPct}% GIR.`
-      : 'Commit to the centre of the green and accept the safe miss.',
+      : history
+        ? `You average ${history.avg.toFixed(1)} here with ${history.girPct}% GIR.`
+        : 'Commit to the centre of the green.',
   ];
+
+  // LLM text is 2 sentences separated by newline
+  const llmLines = llmText
+    ? llmText.split('\n').filter(l => l.trim().length > 0).slice(0, 2)
+    : null;
+
+  const shotLines = llmLines ?? fallbackLines;
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.eyebrow}>DETERMINISTIC CADDIE</Text>
+          <Text style={styles.eyebrow}>CADDIE</Text>
           <Text style={styles.title}>{clubLabel}</Text>
         </View>
         <TouchableOpacity style={styles.dismissBtn} onPress={onDismiss}>
@@ -61,12 +72,19 @@ export default function CaddiePanel({ advice, onDismiss, units }: Props) {
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionLabel}>SHOT PLAN</Text>
-        {displayStrategy.map((line, index) => (
-          <View key={`${index}-${line}`} style={styles.strategyRow}>
-            <Text style={styles.strategyNumber}>{index + 1}</Text>
-            <Text style={styles.strategyText}>{line}</Text>
+        {llmLoading && !llmLines ? (
+          <View style={styles.llmLoading}>
+            <ActivityIndicator size="small" color={Colors.green} />
+            <Text style={styles.llmLoadingText}>Getting caddie read…</Text>
           </View>
-        ))}
+        ) : (
+          shotLines.map((line, index) => (
+            <View key={`${index}-${line}`} style={styles.strategyRow}>
+              <Text style={styles.strategyNumber}>{index + 1}</Text>
+              <Text style={styles.strategyText}>{line}</Text>
+            </View>
+          ))
+        )}
 
         <Text style={styles.sectionLabel}>CONDITIONS</Text>
         <View style={styles.conditionCard}>
@@ -224,6 +242,17 @@ const styles = StyleSheet.create({
     fontFamily: Font.regular,
     fontSize: FontSize.sm,
     lineHeight: 20,
+  },
+  llmLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+  },
+  llmLoadingText: {
+    color: Colors.textMuted,
+    fontFamily: Font.regular,
+    fontSize: FontSize.sm,
   },
   conditionCard: {
     padding: Spacing.md,
