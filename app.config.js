@@ -9,6 +9,7 @@ module.exports = {
     ios: {
       supportsTablet: false,
       bundleIdentifier: 'com.personal.golfcaddie',
+      buildNumber: '1',
       infoPlist: {
         NSLocationWhenInUseUsageDescription:
           'GPS measures distances to the green and tracks your shots during a round.',
@@ -22,6 +23,7 @@ module.exports = {
         backgroundColor: '#0b1810',
       },
       package: 'com.personal.golfcaddie',
+      versionCode: 1,
       permissions: [
         'ACCESS_FINE_LOCATION',
         'ACCESS_COARSE_LOCATION',
@@ -38,6 +40,7 @@ module.exports = {
         'expo-splash-screen',
         {
           image: './assets/splash-icon.png',
+          imageWidth: 220,
           resizeMode: 'contain',
           backgroundColor: '#0b1810',
         },

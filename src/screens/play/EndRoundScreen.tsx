@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { format } from 'date-fns';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
 import { useAuth } from '../../context/AuthContext';
@@ -23,6 +24,7 @@ import AchievementCelebration from '../../components/gamification/AchievementCel
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type RootStackParamList = {
+  Main: undefined;
   PlayHome: undefined;
   StartRound: undefined;
   ActiveRound: undefined;
@@ -126,7 +128,7 @@ export default function EndRoundScreen() {
 
   const handleGoHome = useCallback(() => {
     endRound();
-    navigation.reset({ index: 0, routes: [{ name: 'PlayHome' }] });
+    navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
   }, [endRound, navigation]);
 
   const handleFinish = useCallback(async () => {
@@ -163,6 +165,7 @@ export default function EndRoundScreen() {
       }
 
       setRoundSaved(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       // Gamification: XP + badges
       if (user?.id) {
@@ -209,7 +212,7 @@ export default function EndRoundScreen() {
         const tips = await callOpenAI(system, userMsg);
         setDebriefTips(tips);
       } catch {
-        setDebriefTips('Could not load tips. Check EXPO_PUBLIC_ANTHROPIC_API_KEY.');
+        setDebriefTips('AI coach tips are unavailable right now. Check your connection and try again later.');
       } finally {
         setDebriefLoading(false);
       }
@@ -236,7 +239,7 @@ export default function EndRoundScreen() {
                 .eq('user_id', user?.id ?? '');
             }
             endRound();
-            navigation.reset({ index: 0, routes: [{ name: 'PlayHome' }] });
+            navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
           },
         },
       ],

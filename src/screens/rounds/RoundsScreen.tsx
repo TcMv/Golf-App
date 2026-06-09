@@ -116,6 +116,7 @@ export default function RoundsScreen() {
   const { user } = useAuth();
   const [rounds, setRounds] = useState<RoundRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
 
   const fetchRounds = useCallback(async () => {
@@ -125,6 +126,7 @@ export default function RoundsScreen() {
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const { data, error } = await supabase
         .from('rounds')
@@ -142,7 +144,7 @@ export default function RoundsScreen() {
         .order('date', { ascending: false });
 
       if (error) {
-        console.error('Error fetching rounds:', error);
+        setError('Could not load your rounds.');
         return;
       }
 
@@ -211,10 +213,18 @@ export default function RoundsScreen() {
         <View style={styles.center}>
           <ActivityIndicator color={Colors.green} />
         </View>
+      ) : error ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchRounds}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={filtered}
           keyExtractor={(r) => r.id}
+          initialNumToRender={8}
           contentContainerStyle={
             filtered.length === 0 ? styles.emptyContainer : styles.listContent
           }
@@ -310,6 +320,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  retryButton: {
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.green,
+  },
+  retryText: {
+    color: Colors.bg,
+    fontWeight: FontWeight.bold,
   },
   card: {
     backgroundColor: Colors.surface1,

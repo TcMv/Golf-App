@@ -2,8 +2,11 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
+  useRef,
   useState,
 } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
   ActiveRound,
   Course,
@@ -37,6 +40,7 @@ interface RoundContextValue {
 // ---------------------------------------------------------------------------
 
 const RoundContext = createContext<RoundContextValue | null>(null);
+const ACTIVE_ROUND_KEY = '@golf_active_round_v1';
 
 // ---------------------------------------------------------------------------
 // Provider
@@ -44,6 +48,36 @@ const RoundContext = createContext<RoundContextValue | null>(null);
 
 export function RoundProvider({ children }: { children: React.ReactNode }) {
   const [activeRound, setActiveRound] = useState<ActiveRound | null>(null);
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(ACTIVE_ROUND_KEY)
+      .then(value => {
+        if (!cancelled && value) {
+          try {
+            setActiveRound(JSON.parse(value) as ActiveRound);
+          } catch {
+            void AsyncStorage.removeItem(ACTIVE_ROUND_KEY);
+          }
+        }
+      })
+      .finally(() => {
+        hydrated.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (activeRound) {
+      void AsyncStorage.setItem(ACTIVE_ROUND_KEY, JSON.stringify(activeRound));
+    } else {
+      void AsyncStorage.removeItem(ACTIVE_ROUND_KEY);
+    }
+  }, [activeRound]);
 
   const startRound = useCallback(
     (round: Round, course: Course, teeSet: TeeSet, holes: Hole[]) => {
@@ -102,6 +136,7 @@ export function RoundProvider({ children }: { children: React.ReactNode }) {
 
   const endRound = useCallback(() => {
     setActiveRound(null);
+    void AsyncStorage.removeItem(ACTIVE_ROUND_KEY);
   }, []);
 
   return (

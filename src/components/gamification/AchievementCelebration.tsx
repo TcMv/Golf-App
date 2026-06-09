@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -41,6 +42,7 @@ export default function AchievementCelebration({
   const opacity = useSharedValue(0);
   useEffect(() => {
     if (badge) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       opacity.value = withTiming(1, { duration: 250 });
       scale.value = withSpring(1, { damping: 9, stiffness: 120 });
     }

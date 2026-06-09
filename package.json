@@ -46,7 +46,9 @@
     "test:gamification": "tsc --ignoreConfig src/utils/gamificationCore.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-gamification-test && node tests/gamification.test.cjs",
     "test:stats": "tsc --ignoreConfig src/utils/statsAnalytics.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-stats-test && node tests/statsAnalytics.test.cjs",
     "test:home": "tsc --ignoreConfig src/utils/homeDashboard.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-home-test && node tests/homeDashboard.test.cjs",
-    "test:club-setup": "tsc --ignoreConfig src/utils/clubSetup.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-club-setup-test && node tests/clubSetup.test.cjs"
+    "test:club-setup": "tsc --ignoreConfig src/utils/clubSetup.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-club-setup-test && node tests/clubSetup.test.cjs",
+    "test:profile": "tsc --ignoreConfig src/utils/profile.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-profile-test && node tests/profile.test.cjs",
+    "test:units": "tsc --ignoreConfig src/utils/units.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-units-test && node tests/units.test.cjs"
   },
   "private": true
 }

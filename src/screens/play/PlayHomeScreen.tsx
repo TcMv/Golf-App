@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { useRound } from '../../context/RoundContext';
 import { useUserStats, xpProgress } from '../../hooks/useUserStats';
 import { loadWeeklyChallenge, processPracticeActivity } from '../../utils/gamification';
 import { calcHandicapIndex } from '../../lib/handicap';
@@ -68,6 +69,7 @@ interface ChallengeProgress {
 export default function PlayHomeScreen() {
   const navigation = useNavigation<Nav>();
   const { user, profile } = useAuth();
+  const { activeRound } = useRound();
   const { stats: userStats, refresh: refreshStats, loading: statsLoading } = useUserStats();
 
   // Loading States
@@ -220,14 +222,12 @@ export default function PlayHomeScreen() {
           current_value: weekly.currentValue,
           completed: weekly.completed,
         });
-      } catch (challengeErr) {
-        console.warn('Weekly challenges schema might be missing:', challengeErr);
+      } catch {
         setWeeklyChallenge(null);
         setChallengeProgress(null);
       }
 
-    } catch (err) {
-      console.error(err);
+    } catch {
       Alert.alert('Load Error', 'Failed to retrieve home dashboard statistics.');
     } finally {
       setLoading(false);
@@ -371,10 +371,12 @@ export default function PlayHomeScreen() {
         <View style={styles.ctaContainer}>
           <TouchableOpacity
             style={styles.ctaPrimary}
-            onPress={() => navigation.navigate('StartRound')}
+            onPress={() => navigation.navigate(activeRound ? 'ActiveRound' : 'StartRound')}
             activeOpacity={0.8}
           >
-            <Text style={styles.ctaPrimaryText}>START ROUND</Text>
+            <Text style={styles.ctaPrimaryText}>
+              {activeRound ? `RESUME HOLE ${activeRound.currentHoleNumber}` : 'START ROUND'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.ctaSecondary}

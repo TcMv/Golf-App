@@ -214,7 +214,11 @@ export async function processRoundFinish(
   const streak = await updateActivityStreak(userId, activityDate);
   const [{ data: current }, { count: roundCount }, { data: courses }, { count: clubCount }, { data: recentRounds }] =
     await Promise.all([
-      supabase.from('user_stats').select('*').eq('user_id', userId).maybeSingle(),
+      supabase
+        .from('user_stats')
+        .select('xp, level, streak_days, last_round_date, total_rounds, total_birdies, total_eagles')
+        .eq('user_id', userId)
+        .maybeSingle(),
       supabase.from('rounds').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('completed', true),
       supabase.from('rounds').select('course_id').eq('user_id', userId).eq('completed', true),
       supabase.from('user_clubs').select('id', { count: 'exact', head: true }).eq('user_id', userId).not('carry_distance_metres', 'is', null),

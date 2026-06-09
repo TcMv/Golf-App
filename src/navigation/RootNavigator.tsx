@@ -24,8 +24,10 @@ import RoundsScreen from '../screens/rounds/RoundsScreen';
 import RoundDetailScreen from '../screens/rounds/RoundDetailScreen';
 
 import StatsScreen from '../screens/stats/StatsScreen';
+import CaddieHomeScreen from '../screens/caddie/CaddieHomeScreen';
 
 import SettingsScreen from '../screens/settings/SettingsScreen';
+import ProfileScreen from '../screens/profile/ProfileScreen';
 import MyBagScreen from '../screens/settings/MyBagScreen';
 import AdminMapScreen from '../screens/admin/AdminMapScreen';
 
@@ -54,10 +56,11 @@ function MainTabs() {
         },
         tabBarIcon: ({ focused, color, size }) => {
           const icons: Record<string, [string, string]> = {
-            Play: ['golf', 'golf-outline'],
-            Rounds: ['list', 'list-outline'],
+            Home: ['home', 'home-outline'],
+            Round: ['golf', 'golf-outline'],
             Stats: ['stats-chart', 'stats-chart-outline'],
-            Settings: ['settings', 'settings-outline'],
+            Caddie: ['compass', 'compass-outline'],
+            Profile: ['person', 'person-outline'],
           };
           const [active, inactive] = icons[route.name] ?? ['circle', 'circle-outline'];
           return (
@@ -70,10 +73,11 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Play" component={PlayHomeScreen} />
-      <Tab.Screen name="Rounds" component={RoundsScreen} />
+      <Tab.Screen name="Home" component={PlayHomeScreen} />
+      <Tab.Screen name="Round" component={RoundsScreen} />
       <Tab.Screen name="Stats" component={StatsScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Caddie" component={CaddieHomeScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }
@@ -94,6 +98,7 @@ function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
       <Stack.Screen name="EndRound" component={EndRoundScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="RoundDetail" component={RoundDetailScreen} />
       <Stack.Screen name="MyBag" component={MyBagScreen} />
+      <Stack.Screen name="SettingsDetail" component={SettingsScreen} />
       <Stack.Screen name="AdminMap" component={AdminMapScreen} options={{ presentation: 'fullScreenModal' }} />
     </Stack.Navigator>
   );

@@ -1,12 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
-  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
+  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -15,325 +14,200 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { useUserStats } from '../../hooks/useUserStats';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
-type RootStackParamList = {
-  PlayHome: undefined;
-  MyBag: undefined;
-  Settings: undefined;
+type Nav = NativeStackNavigationProp<{
+  MyBagSetup: { returnTo?: 'HandicapSetup' | 'StartRound' | 'Main' } | undefined;
   AdminMap: undefined;
-};
-type Nav = NativeStackNavigationProp<RootStackParamList>;
+}>;
 
-function SettingsRow({
+function Row({
   label,
   value,
   onPress,
-  chevron = true,
+  danger = false,
 }: {
   label: string;
   value?: string;
   onPress?: () => void;
-  chevron?: boolean;
+  danger?: boolean;
 }) {
   return (
-    <TouchableOpacity
-      style={styles.row}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-    >
-      <Text style={styles.rowLabel}>{label}</Text>
+    <TouchableOpacity style={styles.row} onPress={onPress} disabled={!onPress}>
+      <Text style={[styles.rowLabel, danger && styles.dangerText]}>{label}</Text>
       <View style={styles.rowRight}>
         {value && <Text style={styles.rowValue}>{value}</Text>}
-        {chevron && <Text style={styles.chevron}>›</Text>}
+        {onPress && <Text style={styles.chevron}>›</Text>}
       </View>
     </TouchableOpacity>
   );
 }
 
+function ToggleRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: Colors.surface3, true: Colors.greenDark }}
+        thumbColor={value ? Colors.green : Colors.textMuted}
+      />
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const navigation = useNavigation<Nav>();
-  const { user, profile, signOut } = useAuth();
-  const { badges } = useUserStats();
-  const [handicapIndex, setHandicapIndex] = useState<string>('');
-  const [handicapModalVisible, setHandicapModalVisible] = useState(false);
-  const [handicapInput, setHandicapInput] = useState('');
+  const { user, profile, refreshProfile, signOut } = useAuth();
+  const [saving, setSaving] = useState(false);
 
-  const loadHandicap = useCallback(async () => {
-    const { data } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'handicap_index')
-      .maybeSingle();
-    setHandicapIndex(data?.value ?? '');
-  }, []);
-
-  useEffect(() => { loadHandicap(); }, [loadHandicap]);
-
-  const saveHandicap = useCallback(async () => {
-    const val = parseFloat(handicapInput);
-    if (isNaN(val) || val < 0 || val > 54) {
-      Alert.alert('Invalid', 'Enter a handicap between 0 and 54.0');
+  const updateProfile = useCallback(async (changes: Record<string, unknown>) => {
+    if (!user?.id || saving) return;
+    setSaving(true);
+    const { error } = await supabase.from('profiles').update(changes).eq('id', user.id);
+    setSaving(false);
+    if (error) {
+      Alert.alert('Save Error', error.message);
       return;
     }
-    await supabase.from('app_settings').upsert({ key: 'handicap_index', value: val.toFixed(1) });
-    setHandicapIndex(val.toFixed(1));
-    setHandicapModalVisible(false);
-  }, [handicapInput]);
+    await refreshProfile();
+  }, [refreshProfile, saving, user?.id]);
+
+  const deleteAccount = useCallback(() => {
+    Alert.alert(
+      'Delete Account',
+      'This permanently deletes your profile, rounds, scores, achievements, and club data.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.rpc('delete_own_account');
+            if (error) {
+              Alert.alert('Delete Failed', error.message);
+              return;
+            }
+            await signOut();
+          },
+        },
+      ],
+    );
+  }, [signOut]);
+
+  const units = profile?.units_preference ?? 'metres';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Text style={styles.backText}>‹</Text>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
+        <View style={styles.backButton} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        {/* Profile */}
-        <Text style={styles.sectionLabel}>Profile</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.sectionLabel}>Units</Text>
         <View style={styles.card}>
-          <SettingsRow
-            label="Handicap Index"
-            value={handicapIndex ? `${handicapIndex}` : 'Not set'}
-            onPress={() => {
-              setHandicapInput(handicapIndex);
-              setHandicapModalVisible(true);
-            }}
-          />
-        </View>
-
-        <Text style={styles.sectionLabel}>Achievements</Text>
-        <View style={styles.achievementGrid}>
-          {badges.length === 0 ? (
-            <Text style={styles.achievementEmpty}>Complete rounds and log practice to earn badges.</Text>
-          ) : badges.map(badge => (
-            <View key={badge.badge_key} style={styles.achievementCard}>
-              <Text style={styles.achievementIcon}>{badge.icon}</Text>
-              <Text style={styles.achievementName}>{badge.name}</Text>
-              <Text style={styles.achievementDescription}>{badge.description}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Bag */}
-        <Text style={styles.sectionLabel}>Bag & Equipment</Text>
-        <View style={styles.card}>
-          <SettingsRow
-            label="My Bag"
-            value="14 clubs"
-            onPress={() => navigation.navigate('MyBag')}
-          />
-        </View>
-
-        {/* Courses */}
-        <Text style={styles.sectionLabel}>Courses</Text>
-        <View style={styles.card}>
-          <View style={styles.row}>
-            <View style={styles.courseInfo}>
-              <View style={styles.activeDot} />
-              <Text style={styles.rowLabel}>Nambour Golf Club</Text>
-            </View>
-            <Text style={styles.rowValue}>18 holes</Text>
+          <View style={styles.segmented}>
+            {(['metres', 'yards'] as const).map(unit => (
+              <TouchableOpacity
+                key={unit}
+                style={[styles.segment, units === unit && styles.segmentActive]}
+                onPress={() => updateProfile({ units_preference: unit })}
+              >
+                <Text style={[styles.segmentText, units === unit && styles.segmentTextActive]}>
+                  {unit === 'metres' ? 'Metres' : 'Yards'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-          <View style={styles.rowDivider} />
-          <View style={styles.rowDivider} />
-          <SettingsRow
-            label="Course Editor"
-            value="Map & hazards"
-            onPress={() => navigation.navigate('AdminMap')}
+        </View>
+
+        <Text style={styles.sectionLabel}>Notifications</Text>
+        <View style={styles.card}>
+          <ToggleRow
+            label="Round reminders"
+            value={profile?.notify_round_reminders ?? true}
+            onChange={value => updateProfile({ notify_round_reminders: value })}
+          />
+          <View style={styles.divider} />
+          <ToggleRow
+            label="Streak alerts"
+            value={profile?.notify_streak_alerts ?? true}
+            onChange={value => updateProfile({ notify_streak_alerts: value })}
+          />
+          <View style={styles.divider} />
+          <ToggleRow
+            label="Achievement unlocks"
+            value={profile?.notify_achievement_unlocks ?? true}
+            onChange={value => updateProfile({ notify_achievement_unlocks: value })}
           />
         </View>
 
-        {/* Account */}
+        <Text style={styles.sectionLabel}>Golf Setup</Text>
+        <View style={styles.card}>
+          <Row
+            label="Club distances"
+            value="Open setup"
+            onPress={() => navigation.navigate('MyBagSetup', { returnTo: 'Main' })}
+          />
+          <View style={styles.divider} />
+          <Row label="Course editor" value="Maps & hazards" onPress={() => navigation.navigate('AdminMap')} />
+        </View>
+
         <Text style={styles.sectionLabel}>Account</Text>
         <View style={styles.card}>
-          <SettingsRow label={profile?.display_name ?? 'Golfer'} value={user?.email ?? ''} chevron={false} />
-          <View style={styles.rowDivider} />
-          <SettingsRow
-            label="Sign Out"
-            chevron={false}
-            onPress={() =>
-              Alert.alert('Sign Out', 'Are you sure?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Sign Out', style: 'destructive', onPress: signOut },
-              ])
-            }
+          <Row label="Email" value={user?.email ?? ''} />
+          <View style={styles.divider} />
+          <Row
+            label="Sign out"
+            onPress={() => Alert.alert('Sign Out', 'Sign out of GolfCaddie?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign Out', style: 'destructive', onPress: signOut },
+            ])}
           />
+          <View style={styles.divider} />
+          <Row label="Delete account" danger onPress={deleteAccount} />
         </View>
 
-        {/* Data */}
-        <Text style={styles.sectionLabel}>Data</Text>
-        <View style={styles.card}>
-          <SettingsRow
-            label="Export Data"
-            onPress={() => Alert.alert('Coming Soon', 'Data export will be available in a future update.')}
-          />
-        </View>
-
-        {/* About */}
-        <Text style={styles.sectionLabel}>About</Text>
-        <View style={styles.card}>
-          <SettingsRow label="GolfCaddie" value="v1.0.0" chevron={false} />
-          <View style={styles.rowDivider} />
-          <SettingsRow label="Nambour Golf Club" value="White 4910m · 66.0/113" chevron={false} />
-        </View>
+        <Text style={styles.appVersion}>GolfCaddie · Version 1.0.0 · Build 1</Text>
       </ScrollView>
-
-      {/* Handicap modal */}
-      <Modal visible={handicapModalVisible} transparent animationType="fade" onRequestClose={() => setHandicapModalVisible(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>Handicap Index</Text>
-            <Text style={styles.modalSub}>Enter your current GA handicap index</Text>
-            <TextInput
-              style={styles.input}
-              value={handicapInput}
-              onChangeText={setHandicapInput}
-              keyboardType="decimal-pad"
-              placeholder="e.g. 14.5"
-              placeholderTextColor={Colors.textMuted}
-              autoFocus
-            />
-            <View style={styles.modalBtns}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setHandicapModalVisible(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={saveHandicap}>
-                <Text style={styles.modalSaveText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
-  header: {
-    paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text },
-  scroll: { flex: 1 },
-  content: { padding: Spacing.base, gap: Spacing.sm, paddingBottom: Spacing.xxl },
-  sectionLabel: {
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.semibold,
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xs,
-    marginLeft: Spacing.xs,
-  },
-  card: {
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: 'hidden',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.md,
-  },
-  rowDivider: { height: 1, backgroundColor: Colors.border, marginHorizontal: Spacing.base },
-  rowLabel: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Colors.text },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  rowValue: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  chevron: { fontSize: FontSize.xl, color: Colors.textMuted, lineHeight: FontSize.xl },
-  courseInfo: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  activeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.green,
-  },
-  achievementGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  achievementCard: {
-    width: '48%',
-    minHeight: 132,
-    padding: Spacing.md,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface1,
-  },
-  achievementIcon: { color: Colors.green, fontFamily: Font.black, fontSize: FontSize.xl },
-  achievementName: {
-    color: Colors.text,
-    fontFamily: Font.bold,
-    fontWeight: FontWeight.bold,
-    fontSize: FontSize.sm,
-    marginTop: Spacing.sm,
-  },
-  achievementDescription: {
-    color: Colors.textMuted,
-    fontFamily: Font.regular,
-    fontSize: FontSize.xs,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  achievementEmpty: { color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.sm },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: Colors.backdrop,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.xxl,
-  },
-  modal: {
-    width: '100%',
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.xl,
-    gap: Spacing.md,
-  },
-  modalTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
-  modalSub: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  input: {
-    height: 52,
-    backgroundColor: Colors.surface3,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.borderStrong,
-    paddingHorizontal: Spacing.base,
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.semibold,
-    color: Colors.text,
-  },
-  modalBtns: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
-  modalCancelBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surface3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCancelText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.textSecondary },
-  modalSaveBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalSaveText: {
-    fontSize: FontSize.base,
-    fontWeight: FontWeight.bold,
-    fontFamily: Font.bold,
-    color: Colors.bg,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  backButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  backText: { color: Colors.text, fontSize: FontSize.xxl },
+  headerTitle: { color: Colors.text, fontFamily: Font.bold, fontWeight: FontWeight.bold, fontSize: FontSize.lg },
+  content: { padding: Spacing.base, paddingBottom: Spacing.xxl },
+  sectionLabel: { color: Colors.textMuted, fontFamily: Font.bold, fontSize: FontSize.xs, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: Spacing.lg, marginBottom: Spacing.sm },
+  card: { borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface1, overflow: 'hidden' },
+  row: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.base },
+  rowLabel: { color: Colors.text, fontFamily: Font.medium, fontSize: FontSize.base },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexShrink: 1 },
+  rowValue: { color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.sm, flexShrink: 1 },
+  chevron: { color: Colors.textMuted, fontSize: FontSize.xl },
+  dangerText: { color: Colors.red },
+  divider: { height: 1, marginHorizontal: Spacing.base, backgroundColor: Colors.border },
+  segmented: { flexDirection: 'row', padding: Spacing.xs, gap: Spacing.xs },
+  segment: { flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md },
+  segmentActive: { backgroundColor: Colors.green },
+  segmentText: { color: Colors.textSecondary, fontFamily: Font.semibold, fontSize: FontSize.sm },
+  segmentTextActive: { color: Colors.bg },
+  appVersion: { color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.xs, textAlign: 'center', marginTop: Spacing.xxl },
 });

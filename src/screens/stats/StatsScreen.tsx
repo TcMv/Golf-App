@@ -26,6 +26,7 @@ import {
 } from '../../utils/statsAnalytics';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { HoleScore, Round, Club } from '../../types';
+import { convertDistance, distanceUnitLabel } from '../../utils/units';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -431,7 +432,8 @@ const gridStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 
 export default function StatsScreen() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const units = profile?.units_preference ?? 'metres';
 
   // Navigation & Tabs
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
@@ -562,8 +564,8 @@ export default function StatsScreen() {
       });
       setGpsAverages(gpsAvgs);
 
-    } catch (e) {
-      console.error(e);
+    } catch {
+      Alert.alert('Load Error', 'Could not load your statistics. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -1007,13 +1009,14 @@ export default function StatsScreen() {
                 <View style={styles.clubDistances}>
                   <View style={styles.distanceColumn}>
                     <Text style={[styles.distanceVal, gpsStats && { color: Colors.green }]}>
-                      {effectiveCarry ?? '—'}m
+                      {effectiveCarry != null ? convertDistance(effectiveCarry, units) : '—'}
+                      {effectiveCarry != null ? distanceUnitLabel(units, true) : ''}
                     </Text>
                     <Text style={styles.distanceLabel}>{gpsStats ? 'GPS Carry' : 'Manual Carry'}</Text>
                   </View>
                   <View style={styles.distanceColumn}>
                     <Text style={styles.distanceVal}>
-                      {gpsStats ? `±${gpsStats.stddev}m` : '—'}
+                      {gpsStats ? `±${convertDistance(gpsStats.stddev, units)}${distanceUnitLabel(units, true)}` : '—'}
                     </Text>
                     <Text style={styles.distanceLabel}>
                       {gpsStats ? `${gpsStats.samples} shots` : 'Dispersion'}

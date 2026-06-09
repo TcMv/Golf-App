@@ -35,6 +35,8 @@ import {
 } from '../../lib/offlineScores';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Club, ClubType, Coordinate, Hazard, HazardType, Hole, HoleScore } from '../../types';
+import { convertDistance, distanceUnitLabel } from '../../utils/units';
+import type { DistanceUnits } from '../../utils/units';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -49,6 +51,7 @@ const HAZARD_COLORS: Record<HazardType, string> = {
 const MAP_HEIGHT = 240;
 
 type Nav = NativeStackNavigationProp<{
+  Main: undefined;
   PlayHome: undefined;
   StartRound: undefined;
   ActiveRound: undefined;
@@ -130,6 +133,7 @@ type DistanceBlockProps = {
   fallback: number | null;
   stale: boolean;
   error: string | null;
+  units: DistanceUnits;
 };
 
 const DistanceBlock = React.memo(function DistanceBlock({
@@ -139,13 +143,16 @@ const DistanceBlock = React.memo(function DistanceBlock({
   fallback,
   stale,
   error,
+  units,
 }: DistanceBlockProps) {
+  const display = (value: number | null) => value == null ? '—' : convertDistance(value, units);
+  const unit = distanceUnitLabel(units);
   return (
     <View style={styles.distanceBlock}>
       {mid != null ? (
         <>
-          <Text style={styles.distBig}>{mid}</Text>
-          <Text style={styles.distUnit}>metres</Text>
+          <Text style={styles.distBig}>{display(mid)}</Text>
+          <Text style={styles.distUnit}>{unit}</Text>
           {(stale || error) && (
             <Text style={styles.gpsStatus}>
               {error ? 'GPS unavailable - using last known position' : 'GPS signal stale'}
@@ -154,22 +161,22 @@ const DistanceBlock = React.memo(function DistanceBlock({
         </>
       ) : (
         <>
-          <Text style={styles.distBig}>{fallback ?? '—'}</Text>
-          <Text style={styles.distUnit}>metres (hole length)</Text>
+          <Text style={styles.distBig}>{display(fallback)}</Text>
+          <Text style={styles.distUnit}>{unit} (hole length)</Text>
         </>
       )}
       {(front != null || mid != null || back != null) && (
         <View style={styles.distRow}>
           <View style={styles.distRowItem}>
-            <Text style={styles.distRowVal}>{front ?? '—'}</Text>
+            <Text style={styles.distRowVal}>{display(front)}</Text>
             <Text style={styles.distRowLabel}>FRONT</Text>
           </View>
           <View style={styles.distRowItem}>
-            <Text style={[styles.distRowVal, styles.distRowValMid]}>{mid ?? '—'}</Text>
+            <Text style={[styles.distRowVal, styles.distRowValMid]}>{display(mid)}</Text>
             <Text style={[styles.distRowLabel, styles.distRowLabelMid]}>MID</Text>
           </View>
           <View style={styles.distRowItem}>
-            <Text style={styles.distRowVal}>{back ?? '—'}</Text>
+            <Text style={styles.distRowVal}>{display(back)}</Text>
             <Text style={styles.distRowLabel}>BACK</Text>
           </View>
         </View>
@@ -182,13 +189,21 @@ type CaddieStripProps = {
   advice: CaddieAdvice | null;
   hasLocation: boolean;
   onMore: () => void;
+  units: DistanceUnits;
 };
 
 const CaddieStrip = React.memo(function CaddieStrip({
   advice,
   hasLocation,
   onMore,
+  units,
 }: CaddieStripProps) {
+  const clubLabel = advice
+    ? advice.recommended.club.custom_name ?? advice.recommended.club.name
+    : null;
+  const summary = advice
+    ? `${advice.windLabel}. Play ${convertDistance(advice.playingDistance, units)}${distanceUnitLabel(units, true)}. ${clubLabel}.`
+    : (hasLocation ? 'Computing…' : 'GPS required');
   return (
     <View style={styles.caddieStrip}>
       <View style={styles.caddieStripLeft}>
@@ -196,7 +211,7 @@ const CaddieStrip = React.memo(function CaddieStrip({
         <View style={styles.caddieTextBlock}>
           <Text style={styles.caddieStripTitle}>AI CADDIE</Text>
           <Text style={styles.caddieStripText} numberOfLines={2}>
-            {advice ? advice.shortText : (hasLocation ? 'Computing…' : 'GPS required')}
+            {summary}
           </Text>
         </View>
       </View>
@@ -385,7 +400,8 @@ export default function ActiveRoundScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { activeRound, updateScore, setCurrentHole } = useRound();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const units = profile?.units_preference ?? 'metres';
   const { location, stale: locationStale, error: locationError } = useLocation();
   const mapRef = useRef<MapView>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -766,7 +782,7 @@ export default function ActiveRoundScreen() {
     return (
       <View style={styles.noRound}>
         <Text style={styles.noRoundText}>No active round</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('PlayHome')}>
+        <TouchableOpacity onPress={() => navigation.navigate('Main')}>
           <Text style={styles.noRoundLink}>Go to Play</Text>
         </TouchableOpacity>
       </View>
@@ -796,11 +812,13 @@ export default function ActiveRoundScreen() {
           fallback={hole.white_metres}
           stale={locationStale}
           error={locationError}
+          units={units}
         />
         <CaddieStrip
           advice={caddieAdvice}
           hasLocation={location != null}
           onMore={handleCaddieMoreInfo}
+          units={units}
         />
         <RoundMap
           mapRef={mapRef}
@@ -834,6 +852,7 @@ export default function ActiveRoundScreen() {
             <CaddiePanel
               advice={caddieAdvice}
               onDismiss={() => setCaddieModalOpen(false)}
+              units={units}
             />
           </View>
         </View>

@@ -37,6 +37,7 @@ export default function RoundDetailScreen() {
   const [holes, setHoles] = useState<{ number: number; par: number }[]>([]);
   const [scores, setScores] = useState<HoleScore[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) {
@@ -44,19 +45,23 @@ export default function RoundDetailScreen() {
       return;
     }
     setLoading(true);
+    setError(null);
     try {
-      const { data: roundData } = await supabase
+      const { data: roundData, error: roundError } = await supabase
         .from('rounds')
         .select('id, course_id, tee_set_id, date, holes_played, scoring_mode, starting_hole, exclude_from_handicap, gross_total, net_total, handicap_differential, completed, courses(name)')
         .eq('id', roundId)
         .eq('user_id', user.id)
         .single();
 
-      if (!roundData) return;
+      if (roundError || !roundData) {
+        setError('Could not load this round.');
+        return;
+      }
       setRound(roundData as Round);
       setCourseName((roundData as any).courses?.name ?? '');
 
-      const [{ data: holesData }, { data: scoresData }] = await Promise.all([
+      const [{ data: holesData, error: holesError }, { data: scoresData, error: scoresError }] = await Promise.all([
         supabase.from('holes').select('number, par').eq('course_id', roundData.course_id).order('number'),
         supabase
           .from('hole_scores')
@@ -64,6 +69,10 @@ export default function RoundDetailScreen() {
           .eq('round_id', roundId)
           .order('hole_number'),
       ]);
+      if (holesError || scoresError) {
+        setError('Could not load the round scorecard.');
+        return;
+      }
 
       const startingHole = roundData.starting_hole ?? 1;
       const endingHole = startingHole + 8;
@@ -93,7 +102,12 @@ export default function RoundDetailScreen() {
   if (!round) {
     return (
       <View style={styles.loading}>
-        <Text style={styles.loadingText}>Round not found</Text>
+        <Text style={styles.loadingText}>{error ?? 'Round not found'}</Text>
+        {error && (
+          <TouchableOpacity style={styles.retryButton} onPress={fetchData}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -276,6 +290,14 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
   loading: { flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: Colors.textMuted, fontSize: FontSize.base },
+  retryButton: {
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.green,
+  },
+  retryText: { color: Colors.bg, fontWeight: FontWeight.bold },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

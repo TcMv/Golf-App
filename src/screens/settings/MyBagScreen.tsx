@@ -47,7 +47,10 @@ export default function MyBagScreen() {
 
   const fetchClubs = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from('clubs').select('*').order('sort_order');
+    const { data } = await supabase
+      .from('clubs')
+      .select('id, name, type, loft, custom_name, sort_order, carry_metres, carry_stddev_metres')
+      .order('sort_order');
     setClubs((data ?? []) as Club[]);
     setLoading(false);
   }, []);
@@ -84,7 +87,7 @@ export default function MyBagScreen() {
         carry_metres: newCarry ? parseInt(newCarry, 10) : null,
         sort_order: maxOrder + 1,
       })
-      .select()
+      .select('id, name, type, loft, custom_name, sort_order, carry_metres, carry_stddev_metres')
       .single();
     setSaving(false);
     if (error || !data) { Alert.alert('Error', 'Failed to add club.'); return; }

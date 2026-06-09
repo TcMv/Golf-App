@@ -8,15 +8,29 @@ import {
 } from 'react-native';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { CaddieAdvice } from '../../utils/caddie';
+import { convertDistance, distanceUnitLabel } from '../../utils/units';
+import type { DistanceUnits } from '../../utils/units';
 
 type Props = {
   advice: CaddieAdvice;
   onDismiss: () => void;
+  units: DistanceUnits;
 };
 
-export default function CaddiePanel({ advice, onDismiss }: Props) {
+export default function CaddiePanel({ advice, onDismiss, units }: Props) {
   const { recommended, alternatives, distToPin, playingDistance, history } = advice;
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
+  const unit = distanceUnitLabel(units, true);
+  const primaryWarning = recommended.warnings[0];
+  const displayStrategy = [
+    `Play this as ${convertDistance(playingDistance, units)}${unit} with ${clubLabel}.`,
+    primaryWarning
+      ? `${primaryWarning.type} is in play at ${convertDistance(primaryWarning.distanceMetres, units)}${unit} ${primaryWarning.side}.`
+      : 'No mapped hazard blocks the direct line to the green.',
+    history
+      ? `You average ${history.avg.toFixed(1)} here with ${history.girPct}% GIR.`
+      : 'Commit to the centre of the green and accept the safe miss.',
+  ];
 
   return (
     <View style={styles.card}>
@@ -32,22 +46,22 @@ export default function CaddiePanel({ advice, onDismiss }: Props) {
 
       <View style={styles.metrics}>
         <View style={styles.metric}>
-          <Text style={styles.metricValue}>{distToPin}m</Text>
+          <Text style={styles.metricValue}>{convertDistance(distToPin, units)}{unit}</Text>
           <Text style={styles.metricLabel}>TO PIN</Text>
         </View>
         <View style={styles.metric}>
-          <Text style={[styles.metricValue, styles.metricAccent]}>{playingDistance}m</Text>
+          <Text style={[styles.metricValue, styles.metricAccent]}>{convertDistance(playingDistance, units)}{unit}</Text>
           <Text style={styles.metricLabel}>PLAYS LIKE</Text>
         </View>
         <View style={styles.metric}>
-          <Text style={styles.metricValue}>{recommended.adjustedCarry}m</Text>
+          <Text style={styles.metricValue}>{convertDistance(recommended.adjustedCarry, units)}{unit}</Text>
           <Text style={styles.metricLabel}>EXPECTED</Text>
         </View>
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionLabel}>SHOT PLAN</Text>
-        {advice.strategy.map((line, index) => (
+        {displayStrategy.map((line, index) => (
           <View key={`${index}-${line}`} style={styles.strategyRow}>
             <Text style={styles.strategyNumber}>{index + 1}</Text>
             <Text style={styles.strategyText}>{line}</Text>
@@ -58,10 +72,10 @@ export default function CaddiePanel({ advice, onDismiss }: Props) {
         <View style={styles.conditionCard}>
           <Text style={styles.conditionText}>Wind: {advice.windLabel}</Text>
           <Text style={styles.conditionText}>
-            Wind effect: {advice.windAdjustment === 0 ? 'neutral' : `${advice.windAdjustment > 0 ? '+' : ''}${advice.windAdjustment}m carry`}
+            Wind effect: {advice.windAdjustment === 0 ? 'neutral' : `${advice.windAdjustment > 0 ? '+' : '-'}${convertDistance(Math.abs(advice.windAdjustment), units)}${unit} carry`}
           </Text>
           <Text style={styles.conditionText}>
-            Elevation: {advice.elevDiff === 0 ? 'level' : `${advice.elevDiff > 0 ? '+' : ''}${advice.elevDiff}m`}
+            Elevation: {advice.elevDiff === 0 ? 'level' : `${advice.elevDiff > 0 ? '+' : '-'}${convertDistance(Math.abs(advice.elevDiff), units)}${unit}`}
           </Text>
         </View>
 
@@ -70,7 +84,7 @@ export default function CaddiePanel({ advice, onDismiss }: Props) {
             <Text style={styles.sectionLabel}>HAZARDS</Text>
             {recommended.warnings.map(warning => (
               <Text key={warning.label} style={styles.warningText}>
-                {warning.type.toUpperCase()} · {warning.distanceMetres}m · {warning.side}
+                {warning.type.toUpperCase()} · {convertDistance(warning.distanceMetres, units)}{unit} · {warning.side}
               </Text>
             ))}
           </>
@@ -85,7 +99,7 @@ export default function CaddiePanel({ advice, onDismiss }: Props) {
                   <Text style={styles.alternativeClub}>
                     {option.club.custom_name ?? option.club.name}
                   </Text>
-                  <Text style={styles.alternativeCarry}>{option.adjustedCarry}m</Text>
+                  <Text style={styles.alternativeCarry}>{convertDistance(option.adjustedCarry, units)}{unit}</Text>
                 </View>
               ))}
             </View>

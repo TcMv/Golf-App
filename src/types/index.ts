@@ -158,6 +158,10 @@ export type Profile = {
   home_course_id: string | null;
   units_preference: 'metres' | 'yards';
   handicap_index: number | null;
+  avatar_url: string | null;
+  notify_round_reminders: boolean;
+  notify_streak_alerts: boolean;
+  notify_achievement_unlocks: boolean;
   created_at: string;
 };
 

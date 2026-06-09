@@ -33,7 +33,11 @@ export function useUserStats() {
   const refresh = useCallback(async () => {
     if (!user?.id) { setLoading(false); return; }
     const [{ data: s }, { data: streak }, { data: achievements }] = await Promise.all([
-      supabase.from('user_stats').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase
+        .from('user_stats')
+        .select('xp, level, streak_days, last_round_date, total_rounds, total_birdies, total_eagles')
+        .eq('user_id', user.id)
+        .maybeSingle(),
       supabase
         .from('user_streaks')
         .select('current_streak, longest_streak, last_activity_date')

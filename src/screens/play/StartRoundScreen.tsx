@@ -21,6 +21,7 @@ import { fetchWind } from '../../utils/wind';
 import { buildPreRoundBriefing } from '../../utils/caddie';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Course, Hole, Round, TeeSet } from '../../types';
+import { convertDistance, distanceUnitLabel } from '../../utils/units';
 
 type RootStackParamList = {
   PlayHome: undefined;
@@ -157,6 +158,7 @@ export default function StartRoundScreen() {
   }, [selectedCourse?.id, selectedTeeSet?.id]);
 
   const holesPlayed = roundType === '18' ? 18 : 9;
+  const units = profile?.units_preference ?? 'metres';
 
   const handleGetBriefing = useCallback(async () => {
     if (!selectedTeeSet || !selectedCourse) return;
@@ -378,7 +380,10 @@ export default function StartRoundScreen() {
               <View style={[styles.teeColorDot, { backgroundColor: TEE_DOT_COLORS[tee.colour] ?? Colors.text }]} />
               <View style={styles.teeInfo}>
                 <Text style={styles.teeName}>{tee.name}</Text>
-                <Text style={styles.teeDetails}>{tee.total_metres}m  ·  Slope {tee.slope_rating}  ·  Rating {tee.course_rating}</Text>
+                <Text style={styles.teeDetails}>
+                  {convertDistance(tee.total_metres, units)}{distanceUnitLabel(units, true)}
+                  {'  ·  '}Slope {tee.slope_rating}  ·  Rating {tee.course_rating}
+                </Text>
               </View>
               {isSelected && (
                 <View style={styles.teeCheck}>

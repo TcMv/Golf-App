@@ -102,7 +102,10 @@ export default function AdminMapScreen() {
         .select('id,number,tee_lat,tee_lng,green_front_lat,green_front_lng,green_mid_lat,green_mid_lng,green_back_lat,green_back_lng')
         .eq('course_id', COURSE_ID)
         .order('number'),
-      supabase.from('hazards').select('*').eq('course_id', COURSE_ID),
+      supabase
+        .from('hazards')
+        .select('id, course_id, hole_number, hole_numbers, type, label, coordinates, created_at')
+        .eq('course_id', COURSE_ID),
     ]);
     if (holesData) setHoles(holesData as HoleMarker[]);
     if (hazardsData) setHazards(hazardsData as Hazard[]);

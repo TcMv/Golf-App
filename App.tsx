@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Text, TextInput, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -9,6 +9,7 @@ import { AuthProvider } from './src/context/AuthContext';
 import { RoundProvider } from './src/context/RoundContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { Colors } from './src/constants/theme';
+import OfflineScoreSync from './src/components/system/OfflineScoreSync';
 
 (Text as any).defaultProps = {
   ...(Text as any).defaultProps,
@@ -30,13 +31,18 @@ export default function App() {
   });
 
   if (!fontsLoaded) {
-    return <View style={{ flex: 1, backgroundColor: Colors.bg }} />;
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={Colors.green} />
+      </View>
+    );
   }
 
   return (
     <SafeAreaProvider>
       <AuthProvider>
         <RoundProvider>
+          <OfflineScoreSync />
           <NavigationContainer>
             <StatusBar style="light" />
             <RootNavigator />
