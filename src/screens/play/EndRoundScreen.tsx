@@ -18,6 +18,7 @@ import { useRound } from '../../context/RoundContext';
 import { useAuth } from '../../context/AuthContext';
 import { calcDifferential } from '../../lib/handicap';
 import { callOpenAI, buildDebriefPrompt } from '../../utils/anthropic';
+import { processRoundFinish, type NewBadge } from '../../utils/gamification';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type RootStackParamList = {
@@ -49,12 +50,14 @@ function ScoreCell({ score, par }: { score: number | null; par: number }) {
 export default function EndRoundScreen() {
   const navigation = useNavigation<Nav>();
   const { activeRound, endRound } = useRound();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
 
   const [roundSaved, setRoundSaved] = useState(false);
   const [finishLoading, setFinishLoading] = useState(false);
   const [debriefLoading, setDebriefLoading] = useState(false);
   const [debriefTips, setDebriefTips] = useState<string | null>(null);
+  const [xpGained, setXpGained] = useState<number | null>(null);
+  const [newBadges, setNewBadges] = useState<NewBadge[]>([]);
 
   const holes = activeRound?.holes ?? [];
   const scores = activeRound?.scores ?? {};
@@ -144,6 +147,27 @@ export default function EndRoundScreen() {
       }
 
       setRoundSaved(true);
+
+      // Gamification: XP + badges
+      if (user?.id) {
+        try {
+          const girPct2 = stats.girTotal > 0 ? Math.round((stats.gir / stats.girTotal) * 100) : 0;
+          const result = await processRoundFinish(user.id, activeRound.round.date, {
+            birdies: stats.birdie,
+            eagles: 0,
+            pars: stats.parCount,
+            bogeys: stats.bogey,
+            doublePlus: stats.doublePlus,
+            girPct: girPct2,
+            totalPutts: stats.totalPutts,
+            holesPlayed: holes.length,
+          });
+          setXpGained(result.xpGained);
+          setNewBadges(result.newBadges);
+        } catch {
+          // non-critical — swallow silently
+        }
+      }
 
       // Fetch AI debrief tips
       setDebriefLoading(true);
@@ -325,6 +349,30 @@ export default function EndRoundScreen() {
           </View>
         )}
 
+        {/* XP gained */}
+        {roundSaved && xpGained != null && (
+          <View style={styles.xpCard}>
+            <Text style={styles.xpLabel}>XP EARNED</Text>
+            <Text style={styles.xpValue}>+{xpGained} XP</Text>
+          </View>
+        )}
+
+        {/* New badges */}
+        {newBadges.length > 0 && (
+          <View style={styles.badgesCard}>
+            <Text style={styles.badgesTitle}>🏅 ACHIEVEMENT UNLOCKED</Text>
+            {newBadges.map(b => (
+              <View key={b.key} style={styles.badgeRow}>
+                <Text style={styles.badgeIcon}>{b.icon}</Text>
+                <View style={styles.badgeText}>
+                  <Text style={styles.badgeName}>{b.name}</Text>
+                  <Text style={styles.badgeDesc}>{b.description}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* AI Debrief */}
         {roundSaved && (
           <View style={styles.debriefCard}>
@@ -492,6 +540,66 @@ const styles = StyleSheet.create({
   },
   practiceNoteText: { fontSize: FontSize.sm, color: Colors.textMuted, fontFamily: Font.regular },
 
+  xpCard: {
+    backgroundColor: Colors.greenMuted,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.green + '55',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  xpLabel: {
+    fontSize: FontSize.xs,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    color: Colors.green,
+    letterSpacing: 0.8,
+  },
+  xpValue: {
+    fontSize: FontSize.lg,
+    fontFamily: Font.black,
+    fontWeight: FontWeight.black,
+    color: Colors.green,
+  },
+  badgesCard: {
+    backgroundColor: Colors.surface2,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.yellow + '44',
+    padding: Spacing.base,
+    marginBottom: Spacing.sm,
+    gap: Spacing.md,
+  },
+  badgesTitle: {
+    fontSize: 10,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    color: Colors.yellow,
+    letterSpacing: 0.8,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  badgeIcon: { fontSize: 28 },
+  badgeText: { flex: 1 },
+  badgeName: {
+    fontSize: FontSize.base,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+  },
+  badgeDesc: {
+    fontSize: FontSize.xs,
+    fontFamily: Font.regular,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
   debriefCard: {
     backgroundColor: Colors.surface2,
     borderRadius: Radius.lg,

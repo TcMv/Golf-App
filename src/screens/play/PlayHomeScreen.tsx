@@ -14,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { useUserStats, xpProgress } from '../../hooks/useUserStats';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Round } from '../../types';
 
@@ -93,6 +94,7 @@ function ScoreToParLabel({ gross, par }: { gross: number | null; par: number }) 
 
 export default function PlayHomeScreen() {
   const navigation = useNavigation<Nav>();
+  const { stats: userStats, badges, loading: statsLoading } = useUserStats();
 
   const [stats, setStats] = useState<CourseStats>({ roundsPlayed: 0, avgScore: null, bestScore: null });
   const [recentRounds, setRecentRounds] = useState<RecentRound[]>([]);
@@ -225,6 +227,52 @@ export default function PlayHomeScreen() {
             </View>
           )}
         </View>
+
+        {/* ── Progress card (XP + streak) ── */}
+        {!statsLoading && userStats && (() => {
+          const prog = xpProgress(userStats.xp);
+          return (
+            <View style={styles.progressCard}>
+              <View style={styles.progressTop}>
+                <View style={styles.levelBadge}>
+                  <Text style={styles.levelBadgeText}>LVL {prog.level}</Text>
+                </View>
+                <View style={styles.progressMid}>
+                  <View style={styles.xpBarBg}>
+                    <View style={[styles.xpBarFill, { width: `${Math.round(prog.pct * 100)}%` as any }]} />
+                  </View>
+                  <Text style={styles.xpBarLabel}>{prog.currentXp} / {prog.neededXp} XP</Text>
+                </View>
+                {userStats.streak_days > 0 && (
+                  <View style={styles.streakBadge}>
+                    <Text style={styles.streakIcon}>🔥</Text>
+                    <Text style={styles.streakText}>{userStats.streak_days}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          );
+        })()}
+
+        {/* ── Badges shelf ── */}
+        {!statsLoading && badges.length > 0 && (
+          <>
+            <SectionTitle title="Badges" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.badgesShelf}
+              style={styles.badgesScroll}
+            >
+              {badges.slice(0, 8).map(b => (
+                <View key={b.badge_key} style={styles.badgeChip}>
+                  <Text style={styles.badgeChipIcon}>{b.icon}</Text>
+                  <Text style={styles.badgeChipName} numberOfLines={1}>{b.name}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </>
+        )}
 
         {/* ── Recent Rounds ── */}
         <SectionTitle
@@ -436,6 +484,90 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+  },
+
+  // Progress card
+  progressCard: {
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.base,
+    marginBottom: Spacing.base,
+  },
+  progressTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  levelBadge: {
+    backgroundColor: Colors.green,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
+  levelBadgeText: {
+    fontSize: FontSize.xs,
+    fontFamily: Font.black,
+    fontWeight: FontWeight.black,
+    color: '#000',
+    letterSpacing: 0.4,
+  },
+  progressMid: { flex: 1, gap: 4 },
+  xpBarBg: {
+    height: 6,
+    backgroundColor: Colors.surface3,
+    borderRadius: Radius.full,
+    overflow: 'hidden',
+  },
+  xpBarFill: {
+    height: '100%',
+    backgroundColor: Colors.green,
+    borderRadius: Radius.full,
+  },
+  xpBarLabel: {
+    fontSize: 10,
+    fontFamily: Font.regular,
+    color: Colors.textMuted,
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.surface3,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
+  streakIcon: { fontSize: 14 },
+  streakText: {
+    fontSize: FontSize.sm,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+  },
+
+  // Badges shelf
+  badgesScroll: { marginBottom: Spacing.base },
+  badgesShelf: { gap: Spacing.sm, paddingRight: Spacing.base },
+  badgeChip: {
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+    gap: 4,
+    minWidth: 72,
+  },
+  badgeChipIcon: { fontSize: 24 },
+  badgeChipName: {
+    fontSize: 10,
+    fontFamily: Font.medium,
+    fontWeight: FontWeight.medium,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
 
   // Section header
