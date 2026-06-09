@@ -86,7 +86,7 @@ export default function AdminMapScreen() {
   const [drawVertices, setDrawVertices] = useState<LatLng[]>([]);
   const [tagModalVisible, setTagModalVisible] = useState(false);
   const [hazardType, setHazardType] = useState<HazardType>('bunker');
-  const [hazardHole, setHazardHole] = useState<number | null>(null);
+  const [hazardHoles, setHazardHoles] = useState<number[]>([]);
   const [hazardLabel, setHazardLabel] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -138,7 +138,7 @@ export default function AdminMapScreen() {
     setDrawVertices([]);
     setTagModalVisible(false);
     setHazardLabel('');
-    setHazardHole(null);
+    setHazardHoles([]);
     setHazardType('bunker');
   }, []);
 
@@ -202,12 +202,19 @@ export default function AdminMapScreen() {
     ]);
   }, [editingVertices]);
 
+  const toggleHazardHole = useCallback((n: number) => {
+    setHazardHoles(prev =>
+      prev.includes(n) ? prev.filter(h => h !== n) : [...prev, n].sort((a, b) => a - b)
+    );
+  }, []);
+
   const saveHazard = useCallback(async () => {
     if (drawVertices.length < 3) return;
     setSaving(true);
     const { error } = await supabase.from('hazards').insert({
       course_id: COURSE_ID,
-      hole_number: hazardHole,
+      hole_number: hazardHoles.length === 1 ? hazardHoles[0] : null,
+      hole_numbers: hazardHoles.length > 0 ? hazardHoles : null,
       type: hazardType,
       label: hazardLabel || null,
       coordinates: drawVertices.map(v => ({ lat: v.latitude, lng: v.longitude })),
@@ -216,7 +223,7 @@ export default function AdminMapScreen() {
     if (error) { Alert.alert('Error', error.message); return; }
     clearDraw();
     loadData();
-  }, [drawVertices, hazardHole, hazardType, hazardLabel, clearDraw, loadData]);
+  }, [drawVertices, hazardHoles, hazardType, hazardLabel, clearDraw, loadData]);
 
   const isVertexEditing = editingHazardId !== null;
   const canDeleteVertex = selectedVertexIdx !== null && editingVertices.length > 3;
@@ -517,24 +524,31 @@ export default function AdminMapScreen() {
               ))}
             </View>
 
-            <Text style={styles.modalSectionLabel}>Hole (optional)</Text>
+            <View style={styles.holeLabelRow}>
+              <Text style={styles.modalSectionLabel}>Holes (optional)</Text>
+              {hazardHoles.length > 0 && (
+                <TouchableOpacity onPress={() => setHazardHoles([])}>
+                  <Text style={styles.clearHolesText}>Clear ({hazardHoles.length} selected)</Text>
+                </TouchableOpacity>
+              )}
+              {hazardHoles.length === 0 && (
+                <Text style={styles.holeHintText}>none = applies to all holes</Text>
+              )}
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.holeRow}>
-                <TouchableOpacity
-                  style={[styles.holePip, hazardHole === null && styles.holePipActive]}
-                  onPress={() => setHazardHole(null)}
-                >
-                  <Text style={[styles.holePipText, hazardHole === null && styles.holePipTextActive]}>All</Text>
-                </TouchableOpacity>
-                {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
-                  <TouchableOpacity
-                    key={n}
-                    style={[styles.holePip, hazardHole === n && styles.holePipActive]}
-                    onPress={() => setHazardHole(n)}
-                  >
-                    <Text style={[styles.holePipText, hazardHole === n && styles.holePipTextActive]}>{n}</Text>
-                  </TouchableOpacity>
-                ))}
+                {Array.from({ length: 18 }, (_, i) => i + 1).map(n => {
+                  const selected = hazardHoles.includes(n);
+                  return (
+                    <TouchableOpacity
+                      key={n}
+                      style={[styles.holePip, selected && styles.holePipActive]}
+                      onPress={() => toggleHazardHole(n)}
+                    >
+                      <Text style={[styles.holePipText, selected && styles.holePipTextActive]}>{n}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </ScrollView>
 
@@ -718,6 +732,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface2,
   },
   typeBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.text },
+  holeLabelRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  clearHolesText: { fontSize: FontSize.xs, color: Colors.green, fontWeight: FontWeight.semibold },
+  holeHintText: { fontSize: FontSize.xs, color: Colors.textMuted },
   holeRow: { flexDirection: 'row', gap: Spacing.xs, paddingVertical: Spacing.xs },
   holePip: {
     width: 40, height: 36, borderRadius: Radius.sm,

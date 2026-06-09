@@ -370,7 +370,12 @@ export default function ActiveRoundScreen() {
 
         {/* Hazard polygons — course-wide (OB) + current hole */}
         {hazards
-          .filter(h => h.hole_number == null || h.hole_number === activeRound.currentHoleNumber)
+          .filter(h => {
+            const noRestriction = h.hole_number == null && (!h.hole_numbers || h.hole_numbers.length === 0);
+            return noRestriction ||
+              h.hole_number === activeRound.currentHoleNumber ||
+              h.hole_numbers?.includes(activeRound.currentHoleNumber);
+          })
           .map(hazard => (
             <Polygon
               key={hazard.id}

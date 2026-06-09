@@ -142,6 +142,7 @@ export type Hazard = {
   id: string;
   course_id: string;
   hole_number: number | null;
+  hole_numbers: number[] | null;
   type: HazardType;
   label: string | null;
   coordinates: { lat: number; lng: number }[];
