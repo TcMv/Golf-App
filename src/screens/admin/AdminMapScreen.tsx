@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -502,8 +504,9 @@ export default function AdminMapScreen() {
         animationType="slide"
         onRequestClose={() => setTagModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Tag Polygon</Text>
 
             <Text style={styles.modalSectionLabel}>Type</Text>
@@ -576,8 +579,9 @@ export default function AdminMapScreen() {
                 <Text style={styles.modalSaveText}>{saving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

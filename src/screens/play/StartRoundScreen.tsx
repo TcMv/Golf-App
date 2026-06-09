@@ -277,7 +277,7 @@ export default function StartRoundScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Course */}
         <Text style={styles.sectionLabel}>Course</Text>
         <TextInput

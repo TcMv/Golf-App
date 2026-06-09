@@ -4,7 +4,9 @@ import {
   Alert,
   Dimensions,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -1098,7 +1100,7 @@ export default function StatsScreen() {
         animationType="fade"
         onRequestClose={() => setEditingClub(null)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>Edit {editingClub?.club_name} Carry</Text>
             <Text style={styles.modalDesc}>Set your manual carry distance (metres).</Text>
@@ -1134,7 +1136,7 @@ export default function StatsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

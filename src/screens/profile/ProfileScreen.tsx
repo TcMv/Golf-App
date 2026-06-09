@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -127,8 +129,14 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalBackdrop}>
+            <ScrollView
+              style={styles.modal}
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <Text style={styles.modalTitle}>Edit Profile</Text>
             <Text style={styles.inputLabel}>Display Name</Text>
             <TextInput style={styles.input} value={displayName} onChangeText={setDisplayName} />
@@ -164,8 +172,9 @@ export default function ProfileScreen() {
                 {saving ? <ActivityIndicator color={Colors.bg} /> : <Text style={styles.saveText}>Save</Text>}
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -191,7 +200,8 @@ const styles = StyleSheet.create({
   statValue: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.md },
   statLabel: { color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.xs, marginTop: 2 },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: Colors.backdrop },
-  modal: { maxHeight: '88%', padding: Spacing.xl, paddingBottom: Spacing.xxl, gap: Spacing.sm, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, backgroundColor: Colors.surface1 },
+  modal: { maxHeight: '88%', borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, backgroundColor: Colors.surface1 },
+  modalScrollContent: { padding: Spacing.xl, paddingBottom: Spacing.xxl, gap: Spacing.sm },
   modalTitle: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.lg, marginBottom: Spacing.sm },
   inputLabel: { color: Colors.textMuted, fontFamily: Font.bold, fontSize: FontSize.xs, textTransform: 'uppercase' },
   input: { height: 48, paddingHorizontal: Spacing.base, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface3, color: Colors.text },
