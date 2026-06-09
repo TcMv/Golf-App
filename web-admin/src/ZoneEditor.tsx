@@ -1,10 +1,29 @@
 import {
+  Component,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import type { ReactNode } from 'react';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(e: Error) { return { error: e.message }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0f0f0f', flexDirection: 'column', gap: 12 }}>
+          <div style={{ color: '#f87171', fontSize: 16, fontWeight: 700 }}>Map error</div>
+          <div style={{ color: '#888', fontSize: 13, maxWidth: 480, textAlign: 'center' }}>{this.state.error}</div>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 8, padding: '8px 20px', background: '#4caf50', border: 'none', color: '#fff', borderRadius: 6, cursor: 'pointer' }}>Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import {
   DrawingManager,
   GoogleMap,
@@ -56,6 +75,7 @@ export default function ZoneEditor() {
   const [allZones, setAllZones] = useState<HoleZone[]>([]);
   const [drawing, setDrawing] = useState<ZoneType | null>(null);
   const [saving, setSaving] = useState(false);
+  const [mapsReady, setMapsReady] = useState(false);
 
   const mapRef = useRef<google.maps.Map | null>(null);
   // Always-current ref so polygon edit listeners never capture stale saveZone
@@ -210,7 +230,8 @@ export default function ZoneEditor() {
   // ── Render ───────────────────────────────────────────────────────
 
   return (
-    <LoadScript googleMapsApiKey={API_KEY} libraries={LIBS}>
+    <ErrorBoundary>
+    <LoadScript googleMapsApiKey={API_KEY} libraries={LIBS} onLoad={() => setMapsReady(true)}>
       <div style={S.root}>
 
         {/* ── Sidebar ──────────────────────────────────────────── */}
@@ -378,7 +399,7 @@ export default function ZoneEditor() {
                 }}
               />
             )}
-            {drawing && (
+            {mapsReady && drawing && (
               <DrawingManager
                 drawingMode={'polygon' as google.maps.drawing.OverlayType}
                 options={{
@@ -399,6 +420,7 @@ export default function ZoneEditor() {
         </div>
       </div>
     </LoadScript>
+    </ErrorBoundary>
   );
 }
 
