@@ -18,7 +18,7 @@ import { supabase } from '../../lib/supabase';
 import { useRound } from '../../context/RoundContext';
 import { useLocation } from '../../hooks/useLocation';
 import { haversineMetres } from '../../utils/distance';
-import { fetchWind } from '../../utils/wind';
+import { fetchWind, fetchElevation } from '../../utils/wind';
 import { buildCaddieAdvice } from '../../utils/caddie';
 import type { CaddieAdvice } from '../../utils/caddie';
 import CaddiePanel from '../../components/caddie/CaddiePanel';
@@ -224,7 +224,10 @@ export default function ActiveRoundScreen() {
 
   const handleCaddie = useCallback(async () => {
     if (!location || !greenMid) return;
-    const wind = await fetchWind(location.latitude, location.longitude);
+    const [wind, greenElev] = await Promise.all([
+      fetchWind(location.latitude, location.longitude),
+      fetchElevation(greenMid.latitude, greenMid.longitude),
+    ]);
     const advice = buildCaddieAdvice({
       playerPos: location,
       greenMid,
@@ -233,6 +236,8 @@ export default function ActiveRoundScreen() {
       windSpeed: wind?.speed_kmh ?? 0,
       windDir: wind?.direction_deg ?? 0,
       windLabel: wind?.label ?? 'Calm',
+      playerElevation: wind?.elevation_metres ?? 0,
+      greenElevation: greenElev ?? wind?.elevation_metres ?? 0,
     });
     setCaddieAdvice(advice);
   }, [location, greenMid, hazards, clubs]);

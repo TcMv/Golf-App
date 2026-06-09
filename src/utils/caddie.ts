@@ -1,5 +1,5 @@
 import { haversineMetres, bearing as calcBearing } from './distance';
-import { windCarryAdjustment } from './wind';
+import { windCarryAdjustment, elevationCarryAdjustment } from './wind';
 import type { Club, Coordinate, Hazard } from '../types';
 
 type LatLng = Coordinate;
@@ -31,8 +31,8 @@ export type CaddieAdvice = {
   alternatives: ClubOption[];
   windLabel: string;
   windAdjustment: number;
+  elevDiff: number;
   shortText: string;
-  // full context string for Claude "More Info"
   context: string;
 };
 
@@ -44,8 +44,11 @@ export function buildCaddieAdvice(params: {
   windSpeed: number;
   windDir: number;
   windLabel: string;
+  playerElevation: number;
+  greenElevation: number;
 }): CaddieAdvice | null {
-  const { playerPos, greenMid, hazards, clubs, windSpeed, windDir, windLabel } = params;
+  const { playerPos, greenMid, hazards, clubs, windSpeed, windDir, windLabel, playerElevation, greenElevation } = params;
+  const elevDiff = Math.round(greenElevation - playerElevation);
 
   const distToPin = haversineMetres(playerPos, greenMid);
   const bToGreen = calcBearing(playerPos, greenMid);
@@ -76,7 +79,8 @@ export function buildCaddieAdvice(params: {
   // Score each club
   function evaluateClub(club: Club): ClubOption {
     const stddev = club.carry_stddev_metres ?? 12;
-    const adjusted = windCarryAdjustment(club.carry_metres!, windSpeed, windDir, bToGreen);
+    const windAdj = windCarryAdjustment(club.carry_metres!, windSpeed, windDir, bToGreen);
+    const adjusted = elevationCarryAdjustment(windAdj, playerElevation, greenElevation);
     const warnings: HazardWarning[] = [];
 
     for (const { hazard, dist, side } of activeHazards) {
@@ -136,8 +140,11 @@ export function buildCaddieAdvice(params: {
   const hazardLines = activeHazards
     .map(({ hazard, dist, side }) => `  - ${hazard.type} ${dist}m ${side}`)
     .join('\n');
+  const elevLine = elevDiff !== 0
+    ? `Elevation: ${elevDiff > 0 ? '+' : ''}${elevDiff}m (${elevDiff > 0 ? 'uphill' : 'downhill'}).\n`
+    : '';
   const context =
-    `Hole: ${distToPin}m to pin. Wind: ${windLabel}.\n` +
+    `Hole: ${distToPin}m to pin. Wind: ${windLabel}. ${elevLine}` +
     `Recommended: ${clubLabel} (carries ${recommended.club.carry_metres}m, adjusted ${recommended.adjustedCarry}m).\n` +
     (activeHazards.length > 0 ? `Hazards in play:\n${hazardLines}\n` : 'No hazards in play.\n') +
     (recommended.warnings.length > 0
@@ -145,5 +152,5 @@ export function buildCaddieAdvice(params: {
       : '') +
     `Other options: ${alternatives.map(o => `${o.club.custom_name ?? o.club.name} (${o.adjustedCarry}m)`).join(', ') || 'none'}.`;
 
-  return { distToPin, recommended, alternatives, windLabel, windAdjustment: windAdj, shortText, context };
+  return { distToPin, recommended, alternatives, windLabel, windAdjustment: windAdj, elevDiff, shortText, context };
 }

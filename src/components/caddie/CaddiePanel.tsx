@@ -121,6 +121,13 @@ export default function CaddiePanel({ advice, onDismiss }: Props) {
           </Text>
         )}
 
+        {/* Elevation */}
+        {Math.abs(advice.elevDiff) >= 3 && (
+          <Text style={styles.metaLine}>
+            {advice.elevDiff > 0 ? '⬆' : '⬇'} {Math.abs(advice.elevDiff)}m {advice.elevDiff > 0 ? 'uphill' : 'downhill'}
+          </Text>
+        )}
+
         {/* Hazard warnings */}
         {recommended.warnings.map((w, i) => (
           <Text key={i} style={styles.warningLine}>⚠ {w.type} {w.distanceMetres}m {w.side}</Text>

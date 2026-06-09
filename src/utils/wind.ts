@@ -2,6 +2,7 @@ export type WindData = {
   speed_kmh: number;
   direction_deg: number;
   label: string; // e.g. "12km/h NE"
+  elevation_metres: number;
 };
 
 const COMPASS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
@@ -21,11 +22,34 @@ export async function fetchWind(lat: number, lng: number): Promise<WindData | nu
     const json = await res.json();
     const speed: number = json.current?.wind_speed_10m ?? 0;
     const dir: number = json.current?.wind_direction_10m ?? 0;
+    const elevation: number = json.elevation ?? 0;
     const label = speed < 3 ? 'Calm' : `${Math.round(speed)}km/h ${compassPoint(dir)}`;
-    return { speed_kmh: Math.round(speed), direction_deg: dir, label };
+    return { speed_kmh: Math.round(speed), direction_deg: dir, label, elevation_metres: elevation };
   } catch {
     return null;
   }
+}
+
+// Fetch terrain elevation at a single point via OpenTopoData (free, no key)
+export async function fetchElevation(lat: number, lng: number): Promise<number | null> {
+  try {
+    const res = await fetch(
+      `https://api.opentopodata.org/v1/srtm30m?locations=${lat.toFixed(6)},${lng.toFixed(6)}`
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.results?.[0]?.elevation ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Effective carry adjustment for elevation change.
+// Rule of thumb: ~1m of carry adjustment per 2m of elevation change.
+// Uphill (positive elevDiff) = need more club; downhill = need less.
+export function elevationCarryAdjustment(carry: number, playerElevM: number, greenElevM: number): number {
+  const diff = greenElevM - playerElevM; // positive = uphill
+  return Math.round(carry + diff * 0.5);
 }
 
 // How much wind affects carry: headwind reduces, tailwind adds.
