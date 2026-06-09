@@ -502,7 +502,7 @@ export default function StatsScreen() {
           .order('sort_order'),
         supabase
           .from('shots')
-          .select('club_id, distance_metres')
+          .select('club_id, club_name, distance_metres')
           .not('distance_metres', 'is', null),
       ]);
 
@@ -549,8 +549,7 @@ export default function StatsScreen() {
 
       const shotDistancesGrouped: Record<string, number[]> = {};
       (shotsData ?? []).forEach(s => {
-        if (!s.club_id) return;
-        const name = clubIdToName[s.club_id];
+        const name = s.club_name ?? (s.club_id ? clubIdToName[s.club_id] : null);
         if (name) {
           if (!shotDistancesGrouped[name]) shotDistancesGrouped[name] = [];
           shotDistancesGrouped[name].push(s.distance_metres);

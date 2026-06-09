@@ -12,6 +12,7 @@ export type QueuedHoleScore = {
   gross_score: number | null;
   putts: number;
   fairway_hit: string;
+  gir: boolean | null;
   gir_miss_direction: string;
   chips: number;
   sand_shots: number;

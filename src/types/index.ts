@@ -45,6 +45,10 @@ export type Hole = {
 export type FairwayResult = 'left' | 'hit' | 'right' | 'na';
 export type GIRMissDirection = 'left' | 'right' | 'short' | 'long' | 'na';
 export type Lie = 'tee' | 'fairway' | 'rough' | 'bunker' | 'recovery' | 'green';
+export type ShotTarget = 'fairway' | 'green' | 'layup' | 'recovery';
+export type ShotOutcome = 'hit' | 'miss' | 'no_chance';
+export type ShotMissDirection = 'left' | 'right' | 'short' | 'long';
+export type StrikeQuality = 'pure' | 'fat' | 'thin' | 'hosel' | 'toe';
 export type ClubType = 'driver' | 'wood' | 'hybrid' | 'iron' | 'wedge' | 'putter';
 export type RoundType = '18' | 'front9' | 'back9';
 export type ScoringMode = 'classic';
@@ -91,7 +95,13 @@ export type Shot = {
   end_lng: number | null;
   distance_metres: number | null;
   club_id: string | null;
+  club_name: string | null;
   lie: Lie;
+  end_lie: Exclude<Lie, 'tee'> | null;
+  target_type: ShotTarget | null;
+  outcome: ShotOutcome | null;
+  miss_direction: ShotMissDirection | null;
+  strike_quality: StrikeQuality | null;
   created_at: string;
 };
 

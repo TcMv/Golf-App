@@ -250,6 +250,13 @@ export default function HoleScoringSheet({
             <Text style={styles.backBtnText}>Back</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            style={[styles.saveBtn, !grossScore && styles.saveNextBtnDisabled]}
+            onPress={() => grossScore !== null && onSave(buildScore())}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.saveBtnText}>Save</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.saveNextBtn, !grossScore && styles.saveNextBtnDisabled]}
             onPress={() => grossScore !== null && onSaveAndNext(buildScore())}
             activeOpacity={0.8}
@@ -494,6 +501,20 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xl,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+  },
+  saveBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnText: {
+    color: Colors.green,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.base,
   },
   backBtn: {
     flex: 1,
