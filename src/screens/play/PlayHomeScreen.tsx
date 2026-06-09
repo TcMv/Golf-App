@@ -36,6 +36,7 @@ type RootStackParamList = {
   ActiveRound: undefined;
   EndRound: undefined;
   RoundDetail: { roundId: string };
+  SettingsDetail: undefined;
 };
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -341,10 +342,10 @@ export default function PlayHomeScreen() {
         </View>
         <TouchableOpacity
           style={styles.settingsBtn}
-          onPress={() => navigation.navigate('StartRound')}
-          accessibilityLabel="Start New Round Quick Settings"
+          onPress={() => navigation.navigate('SettingsDetail')}
+          accessibilityLabel="Open Settings"
         >
-          <Ionicons name="golf-outline" size={24} color={Colors.green} />
+          <Ionicons name="settings-outline" size={22} color={Colors.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -541,12 +542,12 @@ export default function PlayHomeScreen() {
             </Text>
 
             <View style={styles.practiceOptions}>
-              {[
-                { type: 'Driving Range (50+ balls)', icon: '⛳' },
-                { type: 'Putting Green (30+ mins)', icon: '⛳' },
-                { type: 'Chipping & Short Game', icon: '⛳' },
-                { type: 'Practice Round (9 Holes)', icon: '⛳' },
-              ].map(opt => (
+              {([
+                { type: 'Driving Range (50+ balls)', icon: 'golf-outline' },
+                { type: 'Putting Green (30+ mins)', icon: 'flag-outline' },
+                { type: 'Chipping & Short Game', icon: 'layers-outline' },
+                { type: 'Practice Round (9 Holes)', icon: 'time-outline' },
+              ] as { type: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[]).map(opt => (
                 <TouchableOpacity
                   key={opt.type}
                   style={styles.practiceBtn}
@@ -554,7 +555,7 @@ export default function PlayHomeScreen() {
                   disabled={practiceLogging}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.practiceBtnIcon}>{opt.icon}</Text>
+                  <Ionicons name={opt.icon} size={18} color={Colors.green} />
                   <Text style={styles.practiceBtnText}>{opt.type}</Text>
                 </TouchableOpacity>
               ))}
@@ -963,7 +964,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
   },
-  practiceBtnIcon: { fontSize: 16 },
   practiceBtnText: {
     fontSize: FontSize.sm,
     fontWeight: FontWeight.semibold,

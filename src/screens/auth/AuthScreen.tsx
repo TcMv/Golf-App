@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type Mode = 'signin' | 'signup';
@@ -24,6 +25,7 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -56,6 +58,24 @@ export default function AuthScreen() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setError(null);
+    setSuccess(null);
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setError('Enter your email address above to receive a reset link.');
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
+      if (resetError) setError(resetError.message);
+      else setSuccess('Password reset email sent. Check your inbox and follow the link.');
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -148,6 +168,20 @@ export default function AuthScreen() {
                 : <Text style={styles.submitBtnText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
               }
             </TouchableOpacity>
+
+            {mode === 'signin' && (
+              <TouchableOpacity
+                style={styles.forgotBtn}
+                onPress={handleForgotPassword}
+                disabled={forgotLoading}
+                activeOpacity={0.7}
+              >
+                {forgotLoading
+                  ? <ActivityIndicator color={Colors.green} size="small" />
+                  : <Text style={styles.forgotText}>Forgot password?</Text>
+                }
+              </TouchableOpacity>
+            )}
           </View>
 
           {mode === 'signin' && (
@@ -258,6 +292,17 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.bold,
     fontFamily: Font.bold,
     color: Colors.bg,
+  },
+  forgotBtn: {
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  forgotText: {
+    fontSize: FontSize.sm,
+    fontFamily: Font.medium,
+    color: Colors.green,
   },
   hint: {
     marginTop: Spacing.xl,

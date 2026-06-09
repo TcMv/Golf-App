@@ -14,7 +14,8 @@ import type { RouteProp } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { HoleScore, Round } from '../../types';
 
 type RouteParams = { roundId: string };
@@ -195,7 +196,7 @@ export default function RoundDetailScreen() {
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>‹</Text>
+          <Ionicons name="chevron-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <View>
           <Text style={styles.headerDate}>{dateLabel}</Text>
@@ -308,9 +309,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backBtnText: { fontSize: FontSize.xxl, color: Colors.text, lineHeight: FontSize.xxl + 4 },
-  headerDate: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text },
-  headerCourse: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 1 },
+  headerDate: { fontSize: FontSize.md, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.text },
+  headerCourse: { fontSize: FontSize.sm, fontFamily: Font.regular, color: Colors.textMuted, marginTop: 1 },
   scroll: { flex: 1 },
   content: { padding: Spacing.base, gap: Spacing.base, paddingBottom: Spacing.xxl },
 
@@ -324,8 +324,8 @@ const styles = StyleSheet.create({
   },
   heroScore: { flex: 1, alignItems: 'center', paddingVertical: Spacing.base, borderRightWidth: 1, borderRightColor: Colors.border },
   heroTopar: {},
-  heroScoreValue: { fontSize: FontSize.xxl, fontWeight: FontWeight.black, color: Colors.text },
-  heroScoreLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
+  heroScoreValue: { fontSize: FontSize.xxl, fontWeight: FontWeight.black, fontFamily: Font.black, color: Colors.text },
+  heroScoreLabel: { fontSize: FontSize.xs, fontFamily: Font.regular, color: Colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
 
   tableCard: {
     backgroundColor: Colors.surface1,
@@ -350,13 +350,13 @@ const styles = StyleSheet.create({
   },
   subtotalRow: { backgroundColor: Colors.surface2 },
   totalRow: { backgroundColor: Colors.surface3 },
-  colHole: { width: 28, fontSize: FontSize.xs, fontWeight: FontWeight.medium, color: Colors.textSecondary },
-  colPar: { width: 28, fontSize: FontSize.xs, color: Colors.textMuted },
-  colScore: { width: 40, fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text, textAlign: 'center' },
-  colDiff: { width: 32, fontSize: FontSize.xs, fontWeight: FontWeight.medium, textAlign: 'center' },
-  colFir: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center' },
-  colGir: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center' },
-  colPutts: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center' },
+  colHole: { width: 28, fontSize: FontSize.xs, fontWeight: FontWeight.medium, fontFamily: Font.medium, color: Colors.textSecondary },
+  colPar: { width: 28, fontSize: FontSize.xs, fontFamily: Font.regular, color: Colors.textMuted },
+  colScore: { width: 40, fontSize: FontSize.sm, fontWeight: FontWeight.semibold, fontFamily: Font.semibold, color: Colors.text, textAlign: 'center' },
+  colDiff: { width: 32, fontSize: FontSize.xs, fontWeight: FontWeight.medium, fontFamily: Font.medium, textAlign: 'center' },
+  colFir: { flex: 1, fontSize: FontSize.xs, fontFamily: Font.regular, color: Colors.textSecondary, textAlign: 'center' },
+  colGir: { flex: 1, fontSize: FontSize.xs, fontFamily: Font.regular, color: Colors.textSecondary, textAlign: 'center' },
+  colPutts: { flex: 1, fontSize: FontSize.xs, fontFamily: Font.regular, color: Colors.textSecondary, textAlign: 'center' },
 
   statsCard: {
     backgroundColor: Colors.surface1,
@@ -368,6 +368,7 @@ const styles = StyleSheet.create({
   statsTitle: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
@@ -375,6 +376,6 @@ const styles = StyleSheet.create({
   },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   statItem: { width: '25%', alignItems: 'center', paddingVertical: Spacing.md },
-  statValue: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
-  statLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.3 },
+  statValue: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.text },
+  statLabel: { fontSize: FontSize.xs, fontFamily: Font.regular, color: Colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.3 },
 });

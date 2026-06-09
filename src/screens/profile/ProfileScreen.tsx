@@ -19,6 +19,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useUserStats } from '../../hooks/useUserStats';
 import AchievementGrid from '../../components/profile/AchievementGrid';
+import { Ionicons } from '@expo/vector-icons';
 import { normalizeGhin, profileInitials } from '../../utils/profile';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Course } from '../../types';
@@ -81,8 +82,12 @@ export default function ProfileScreen() {
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('SettingsDetail')}>
-          <Text style={styles.settingsLink}>Settings</Text>
+        <TouchableOpacity
+          style={styles.settingsIconBtn}
+          onPress={() => navigation.navigate('SettingsDetail')}
+          accessibilityLabel="Open Settings"
+        >
+          <Ionicons name="settings-outline" size={22} color={Colors.textMuted} />
         </TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
@@ -170,7 +175,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.border },
   headerTitle: { color: Colors.text, fontFamily: Font.bold, fontWeight: FontWeight.bold, fontSize: FontSize.xl },
-  settingsLink: { color: Colors.green, fontFamily: Font.semibold, fontSize: FontSize.sm },
+  settingsIconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   content: { padding: Spacing.base, paddingBottom: Spacing.xxl },
   hero: { alignItems: 'center', padding: Spacing.xl, borderRadius: Radius.xl, backgroundColor: Colors.surface1, borderWidth: 1, borderColor: Colors.border },
   avatar: { width: 92, height: 92, borderRadius: Radius.full, backgroundColor: Colors.greenMuted, alignItems: 'center', justifyContent: 'center' },

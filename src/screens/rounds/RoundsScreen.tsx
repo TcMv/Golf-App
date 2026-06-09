@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { format, isThisMonth, isThisYear } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Round } from '../../types';
 
 // ---------------------------------------------------------------------------
@@ -263,6 +263,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: FontSize.xl,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
   },
   filterRow: {
@@ -286,11 +287,13 @@ const styles = StyleSheet.create({
   filterTabText: {
     fontSize: FontSize.sm,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
     color: Colors.textSecondary,
   },
   filterTabTextActive: {
     color: Colors.bg,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
   },
   listContent: {
     paddingHorizontal: Spacing.base,
@@ -309,11 +312,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: Colors.textSecondary,
     marginBottom: Spacing.xs,
   },
   emptySubText: {
     fontSize: FontSize.sm,
+    fontFamily: Font.regular,
     color: Colors.textMuted,
   },
   center: {
@@ -331,6 +336,7 @@ const styles = StyleSheet.create({
   retryText: {
     color: Colors.bg,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
   },
   card: {
     backgroundColor: Colors.surface1,
@@ -350,14 +356,17 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textSecondary,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
   },
   cardCourse: {
     fontSize: FontSize.base,
     fontWeight: FontWeight.semibold,
+    fontFamily: Font.semibold,
     color: Colors.text,
   },
   cardDiff: {
     fontSize: FontSize.xs,
+    fontFamily: Font.regular,
     color: Colors.textMuted,
   },
   cardRight: {
@@ -367,6 +376,7 @@ const styles = StyleSheet.create({
   cardScore: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.bold,
+    fontFamily: Font.bold,
     color: Colors.text,
   },
   practiceBadge: {
@@ -379,5 +389,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     color: Colors.textMuted,
     fontWeight: FontWeight.medium,
+    fontFamily: Font.medium,
   },
 });

@@ -19,7 +19,8 @@ export const Colors = {
   redMuted: 'rgba(255,92,92,0.15)',
   yellow: '#ffc940',
   yellowMuted: 'rgba(255,201,64,0.15)',
-  blue: '#6a8a72',
+  blue: '#4a90e2',
+  blueMuted: 'rgba(74,144,226,0.15)',
   orange: '#ff9940',
   orangeMuted: 'rgba(255,153,64,0.15)',
 
@@ -52,7 +53,7 @@ export const Radius = {
   sm: 8,
   md: 12,   // buttons
   lg: 16,   // cards
-  xl: 16,   // elevated cards / sheets
+  xl: 20,   // elevated sheets / modals
   full: 999,
 } as const;
 
