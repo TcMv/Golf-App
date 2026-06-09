@@ -1,27 +1,17 @@
-const OPENAI_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? '';
+import { supabase } from '../lib/supabase';
 
 export async function callOpenAI(system: string, userMessage: string): Promise<string> {
-  if (!OPENAI_KEY) {
-    return 'Add EXPO_PUBLIC_OPENAI_API_KEY to your .env file to enable AI tips.';
-  }
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_KEY}`,
+  const { data, error } = await supabase.functions.invoke('golf-coach', {
+    body: {
+      system,
+      userMessage,
     },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 400,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userMessage },
-      ],
-    }),
   });
-  if (!res.ok) throw new Error(`OpenAI API error ${res.status}`);
-  const json = await res.json();
-  return (json.choices?.[0]?.message?.content as string) ?? 'No response.';
+  if (error) throw error;
+  if (!data?.text || typeof data.text !== 'string') {
+    throw new Error('AI coach returned an invalid response');
+  }
+  return data.text;
 }
 
 export function buildDebriefPrompt(stats: {
