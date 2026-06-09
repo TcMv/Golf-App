@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
+import { isAdminEmail } from './lib/admin';
 import ZoneEditor from './ZoneEditor';
 
 export default function App() {
@@ -11,8 +12,23 @@ export default function App() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setSession(s));
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session || isAdminEmail(data.session.user.email)) {
+        setSession(data.session);
+        return;
+      }
+      setError('This account does not have administrator access.');
+      setSession(null);
+      await supabase.auth.signOut();
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, nextSession) => {
+      if (nextSession && !isAdminEmail(nextSession.user.email)) {
+        setError('This account does not have administrator access.');
+        setSession(null);
+        return;
+      }
+      setSession(nextSession);
+    });
     return () => subscription.unsubscribe();
   }, []);
 
@@ -26,9 +42,17 @@ export default function App() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (err) setError(err.message);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    if (!isAdminEmail(data.session?.user.email)) {
+      await supabase.auth.signOut();
+      setSession(null);
+      setError('This account does not have administrator access.');
+    }
   };
 
   return (
