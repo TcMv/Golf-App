@@ -13,7 +13,7 @@ import { Colors, Font, FontSize, FontWeight, Radius, Spacing, Typography } from 
 
 type RootStackParamList = {
   Welcome: undefined;
-  MyBagSetup: undefined;
+  MyBagSetup: { returnTo?: 'StartRound' | 'Main' } | undefined;
   HandicapSetup: undefined;
   Main: undefined;
 };
@@ -48,7 +48,7 @@ export default function WelcomeScreen() {
 
         <TouchableOpacity
           style={styles.startBtn}
-          onPress={() => navigation.navigate('MyBagSetup')}
+          onPress={() => navigation.navigate('MyBagSetup', { returnTo: 'Main' })}
           activeOpacity={0.85}
         >
           <Text style={styles.startBtnText}>Get Started</Text>

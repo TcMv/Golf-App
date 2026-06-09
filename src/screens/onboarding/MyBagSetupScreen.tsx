@@ -21,19 +21,18 @@ import type { RouteProp } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
-import { isValidClubCarry, SETUP_CLUBS } from '../../utils/clubSetup';
+import { clubSetupExitAction, isValidClubCarry, SETUP_CLUBS } from '../../utils/clubSetup';
 
 type RootStackParamList = {
   Welcome: undefined;
-  MyBagSetup: undefined;
-  HandicapSetup: undefined;
+  MyBagSetup: { returnTo?: 'StartRound' | 'Main' } | undefined;
   Main: undefined;
   StartRound: undefined;
 };
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type SetupRoute = RouteProp<{
   MyBagSetup: {
-    returnTo?: 'HandicapSetup' | 'StartRound' | 'Main';
+    returnTo?: 'StartRound' | 'Main';
   } | undefined;
 }, 'MyBagSetup'>;
 
@@ -41,7 +40,7 @@ export default function MyBagSetupScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<SetupRoute>();
   const { user } = useAuth();
-  const returnTo = route.params?.returnTo ?? 'HandicapSetup';
+  const returnTo = route.params?.returnTo ?? 'Main';
 
   // Wizard state: 0 = Splash, 1-N = Wizard Club Steps
   const [step, setStep] = useState(0);
@@ -110,22 +109,24 @@ export default function MyBagSetupScreen() {
   };
 
   const continueAfterSetup = () => {
-    if (returnTo === 'StartRound') {
+    if (clubSetupExitAction(returnTo, navigation.canGoBack()) === 'back') {
       navigation.goBack();
-    } else if (returnTo === 'Main') {
-      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
-    } else {
-      navigation.navigate('HandicapSetup');
+      return;
     }
+    navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
   };
 
   const handleFinish = async (skipAll = false) => {
+    if (saving) return;
+    Keyboard.dismiss();
+
     if (!user) {
       continueAfterSetup();
       return;
     }
 
     if (skipAll) {
+      setSaving(true);
       continueAfterSetup();
       return;
     }
@@ -269,7 +270,12 @@ export default function MyBagSetupScreen() {
               />
             ))}
           </View>
-          <TouchableOpacity onPress={() => handleFinish(true)} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={() => handleFinish(true)}
+            activeOpacity={0.7}
+            disabled={saving}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
             <Text style={styles.skipBtnText}>Skip All</Text>
           </TouchableOpacity>
         </View>
@@ -354,13 +360,18 @@ export default function MyBagSetupScreen() {
             <Text style={styles.backBtnText}>← Back</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.nextBtn}
+            style={[styles.nextBtn, saving && styles.nextBtnDisabled]}
             onPress={handleNext}
             activeOpacity={0.8}
+            disabled={saving}
           >
-            <Text style={styles.nextBtnText}>
-              {step === SETUP_CLUBS.length ? 'Finish & Save →' : 'Next →'}
-            </Text>
+            {saving ? (
+              <ActivityIndicator color={Colors.bg} />
+            ) : (
+              <Text style={styles.nextBtnText}>
+                {step === SETUP_CLUBS.length ? 'Finish & Save →' : 'Next →'}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -672,6 +683,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  nextBtnDisabled: {
+    opacity: 0.65,
   },
   nextBtnText: {
     fontSize: FontSize.base,

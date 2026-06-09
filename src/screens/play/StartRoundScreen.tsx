@@ -29,7 +29,7 @@ type RootStackParamList = {
   ActiveRound: undefined;
   EndRound: undefined;
   RoundDetail: { roundId: string };
-  MyBagSetup: { returnTo?: 'HandicapSetup' | 'StartRound' | 'Main' } | undefined;
+  MyBagSetup: { returnTo?: 'StartRound' | 'Main' } | undefined;
 };
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;

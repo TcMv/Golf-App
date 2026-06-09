@@ -25,3 +25,10 @@ export function isValidClubCarry(club: SetupClub, carry: number): boolean {
   if (!Number.isFinite(carry)) return false;
   return carry >= 20 && carry <= 400;
 }
+
+export function clubSetupExitAction(
+  returnTo: 'StartRound' | 'Main' | undefined,
+  canGoBack: boolean,
+): 'back' | 'main' {
+  return returnTo === 'StartRound' && canGoBack ? 'back' : 'main';
+}

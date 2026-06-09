@@ -7,7 +7,7 @@ import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../const
 
 type Nav = NativeStackNavigationProp<{
   StartRound: undefined;
-  MyBagSetup: { returnTo?: 'HandicapSetup' | 'StartRound' | 'Main' } | undefined;
+  MyBagSetup: { returnTo?: 'StartRound' | 'Main' } | undefined;
 }>;
 
 export default function CaddieHomeScreen() {

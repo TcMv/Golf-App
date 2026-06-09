@@ -17,7 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type Nav = NativeStackNavigationProp<{
-  MyBagSetup: { returnTo?: 'HandicapSetup' | 'StartRound' | 'Main' } | undefined;
+  MyBagSetup: { returnTo?: 'StartRound' | 'Main' } | undefined;
   AdminMap: undefined;
 }>;
 
