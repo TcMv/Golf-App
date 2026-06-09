@@ -13,33 +13,34 @@ import type { CaddieAdvice } from '../../utils/caddie';
 
 type Message = { role: 'user' | 'assistant'; text: string };
 
-const ANTHROPIC_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? '';
+const OPENAI_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? '';
 
-async function askClaude(messages: Message[], context: string): Promise<string> {
+async function askGPT(messages: Message[], context: string): Promise<string> {
   const systemPrompt =
     `You are a golf caddie assistant. Be concise and practical — this is mid-round advice. ` +
     `Max 3 sentences per response. No filler phrases. Use metres, not yards.\n\nShot context:\n${context}`;
 
   const body = {
-    model: 'claude-haiku-4-5-20251001',
+    model: 'gpt-4o-mini',
     max_tokens: 200,
-    system: systemPrompt,
-    messages: messages.map(m => ({ role: m.role, content: m.text })),
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages.map(m => ({ role: m.role, content: m.text })),
+    ],
   };
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
+      'Authorization': `Bearer ${OPENAI_KEY}`,
     },
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error(`Anthropic API error ${res.status}`);
+  if (!res.ok) throw new Error(`OpenAI API error ${res.status}`);
   const json = await res.json();
-  return json.content?.[0]?.text ?? 'No response.';
+  return json.choices?.[0]?.message?.content ?? 'No response.';
 }
 
 type Props = {
@@ -54,8 +55,8 @@ export default function CaddiePanel({ advice, onDismiss }: Props) {
   const [followUp, setFollowUp] = useState('');
 
   const openMoreInfo = useCallback(async () => {
-    if (!ANTHROPIC_KEY) {
-      setMessages([{ role: 'assistant', text: 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY to enable AI advice.' }]);
+    if (!OPENAI_KEY) {
+      setMessages([{ role: 'assistant', text: 'Set EXPO_PUBLIC_OPENAI_API_KEY in eas.json to enable AI advice.' }]);
       setMoreInfoOpen(true);
       return;
     }
@@ -67,7 +68,7 @@ export default function CaddiePanel({ advice, onDismiss }: Props) {
         role: 'user',
         text: `Give me the full breakdown for this shot.`,
       };
-      const reply = await askClaude([initialMsg], advice.context);
+      const reply = await askGPT([initialMsg], advice.context);
       setMessages([initialMsg, { role: 'assistant', text: reply }]);
     } catch {
       setMessages([{ role: 'assistant', text: 'Could not connect. Check your internet connection.' }]);
@@ -84,7 +85,7 @@ export default function CaddiePanel({ advice, onDismiss }: Props) {
     setFollowUp('');
     setLoading(true);
     try {
-      const reply = await askClaude(newMessages, advice.context);
+      const reply = await askGPT(newMessages, advice.context);
       setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', text: 'Could not connect.' }]);
