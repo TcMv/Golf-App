@@ -345,6 +345,45 @@ assert.ok(offCentreWaterAdvice);
 assert.equal(offCentreWaterAdvice.recommended.clearsHazards, false);
 assert.equal(offCentreWaterAdvice.recommended.warnings[0].type, 'water');
 
+const beyondShotWaterAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.00263, longitude: 0 },
+  hazards: [{
+    id: 'water-crosses-extended-bearing',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'water',
+    label: null,
+    coordinates: [
+      { lat: 0.0009, lng: 0.001 },
+      { lat: 0.0011, lng: 0.001 },
+      { lat: 0.0082, lng: -0.001 },
+      { lat: 0.008, lng: -0.001 },
+    ],
+    created_at: '',
+  }],
+  clubs: [{
+    ...clubs[0],
+    id: 'driver-clean-line',
+    name: 'Driver',
+    type: 'driver',
+    carry_metres: 210,
+    carry_stddev_metres: 12,
+  }],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+
+assert.ok(beyondShotWaterAdvice);
+assert.equal(beyondShotWaterAdvice.recommended.clearsHazards, true);
+assert.ok(beyondShotWaterAdvice.strategy.includes('No mapped hazard blocks the direct line to the green.'));
+assert.match(beyondShotWaterAdvice.context, /No hazards on planned line/);
+assert.doesNotMatch(beyondShotWaterAdvice.context, /876m|water \d{3}-\d{3}m/);
+
 const square = (lat, lng, size = 0.0001) => [
   { lat: lat - size, lng: lng - size },
   { lat: lat + size, lng: lng - size },

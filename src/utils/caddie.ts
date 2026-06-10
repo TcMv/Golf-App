@@ -203,14 +203,18 @@ export function buildCaddieAdvice(params: {
 
   if (usable.length === 0) return null;
 
-  // Convert polygon geometry into along-shot distances. This catches long,
-  // narrow hazards that centroid-only checks miss.
+  // Inspect only the finite shot corridor. Polygon projection bounds can
+  // invent crossings for large or concave hazards well beyond the shot.
   const activeHazards = hazards
     .map(h => {
       if (h.coordinates.length < 3) return null;
-      const geometry = polygonShotGeometry(playerPos, bToGreen, h.coordinates);
-      if (geometry.farDistance < 5 || geometry.nearDistance > distToObjective + 35) return null;
-      if (!geometry.crossesShotCorridor && geometry.minimumLateralDistance > 35) return null;
+      const geometry = hazardAlongShot(
+        playerPos,
+        bToGreen,
+        distToObjective + 35,
+        h.coordinates,
+      );
+      if (!geometry || geometry.farDistance < 5) return null;
       return {
         hazard: h,
         nearDistance: geometry.nearDistance,
@@ -326,9 +330,6 @@ export function buildCaddieAdvice(params: {
 
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
   const primaryHazard = recommended.warnings[0] ?? null;
-  const visibleHazard = activeHazards
-    .filter(item => item.crossesShotCorridor)
-    .sort((left, right) => left.nearDistance - right.nearDistance)[0] ?? null;
   const targetDistance = customTarget
     ? Math.max(1, distToObjective)
     : Math.min(recommended.adjustedCarry, Math.max(1, distToObjective));
@@ -344,6 +345,28 @@ export function buildCaddieAdvice(params: {
       });
   const target = targetPlan.coordinate;
   const remainingDistance = haversineMetres(target, greenMid);
+  const targetBearing = calcBearing(playerPos, target);
+  const plannedHazards = hazards
+    .map(hazard => {
+      if (hazard.coordinates.length < 3) return null;
+      const geometry = hazardAlongShot(
+        playerPos,
+        targetBearing,
+        targetDistance + 35,
+        hazard.coordinates,
+      );
+      if (!geometry || geometry.farDistance < 5) return null;
+      return {
+        hazard,
+        nearDistance: geometry.nearDistance,
+        farDistance: geometry.farDistance,
+        side: geometry.side,
+        crossesShotCorridor: true,
+      };
+    })
+    .filter(Boolean) as ActiveHazard[];
+  const visibleHazard = plannedHazards
+    .sort((left, right) => left.nearDistance - right.nearDistance)[0] ?? null;
   const aimInstruction = !customTarget && (lie === 'trees' || lie === 'recovery')
     ? 'Select a clear recovery target on the map before choosing the shot.'
     : customTarget
@@ -408,7 +431,7 @@ export function buildCaddieAdvice(params: {
   }
 
   // Context string for Claude
-  const hazardLines = activeHazards
+  const hazardLines = plannedHazards
     .map(({ hazard, nearDistance, farDistance, side }) =>
       `  - ${hazard.type} ${Math.round(nearDistance)}-${Math.round(farDistance)}m ${side}`
     )
@@ -420,7 +443,7 @@ export function buildCaddieAdvice(params: {
     `Hole ${holeNumber ?? ''}: ${distToPin}m to pin. Lie: ${lie}. Wind: ${windLabel}. ${elevLine}` +
     `Shot plan: ${shotType}; target ${targetDistance}m away, leaving ${remainingDistance}m. ${aimInstruction}\n` +
     `Recommended: ${clubLabel} (carries ${recommended.club.carry_metres}m, adjusted ${recommended.adjustedCarry}m).\n` +
-    (activeHazards.length > 0 ? `Hazards in play:\n${hazardLines}\n` : 'No hazards in play.\n') +
+    (plannedHazards.length > 0 ? `Hazards on planned line:\n${hazardLines}\n` : 'No hazards on planned line.\n') +
     (recommended.warnings.length > 0
       ? `Warning: ${clubLabel} may land in ${recommended.warnings.map(w => w.label).join(', ')}.\n`
       : '') +
@@ -570,51 +593,47 @@ function distanceToPolygonMetres(point: LatLng, polygon: Hazard['coordinates']):
   return minimum;
 }
 
-function polygonShotGeometry(
+function hazardAlongShot(
   player: LatLng,
   shotBearing: number,
+  shotDistance: number,
   polygon: Hazard['coordinates'],
 ): {
   nearDistance: number;
   farDistance: number;
-  minimumLateralDistance: number;
   crossesShotCorridor: boolean;
   side: HazardWarning['side'];
-} {
-  const latitudeScale = 111_320;
-  const longitudeScale = latitudeScale * Math.cos(player.latitude * Math.PI / 180);
-  const bearingRadians = shotBearing * Math.PI / 180;
-  const alongEast = Math.sin(bearingRadians);
-  const alongNorth = Math.cos(bearingRadians);
-  const rightEast = Math.cos(bearingRadians);
-  const rightNorth = -Math.sin(bearingRadians);
-  const projected = polygon.map(point => {
-    const east = (point.lng - player.longitude) * longitudeScale;
-    const north = (point.lat - player.latitude) * latitudeScale;
-    return {
-      along: east * alongEast + north * alongNorth,
-      lateral: east * rightEast + north * rightNorth,
-    };
-  });
-  const alongDistances = projected.map(point => point.along);
-  const lateralDistances = projected.map(point => point.lateral);
-  const nearDistance = Math.min(...alongDistances);
-  const farDistance = Math.max(...alongDistances);
-  const minimumLateral = Math.min(...lateralDistances);
-  const maximumLateral = Math.max(...lateralDistances);
-  const averageLateral = lateralDistances.reduce((sum, value) => sum + value, 0)
-    / lateralDistances.length;
-  const minimumLateralDistance = minimumLateral <= 0 && maximumLateral >= 0
-    ? 0
-    : Math.min(Math.abs(minimumLateral), Math.abs(maximumLateral));
+} | null {
+  const sampleStep = 3;
+  const corridorRadius = 18;
+  const hits: number[] = [];
+  const lineHits: number[] = [];
 
+  for (let distance = 0; distance <= shotDistance; distance += sampleStep) {
+    const point = destinationPoint(player, shotBearing, distance);
+    const polygonDistance = distanceToPolygonMetres(point, polygon);
+    if (polygonDistance <= corridorRadius) hits.push(distance);
+    if (polygonDistance <= 0.25) lineHits.push(distance);
+  }
+
+  if (hits.length === 0) return null;
+  const distanceHits = lineHits.length > 0 ? lineHits : hits;
   return {
-    nearDistance,
-    farDistance,
-    minimumLateralDistance,
-    crossesShotCorridor: minimumLateral <= 18 && maximumLateral >= -18,
-    side: averageLateral < -8 ? 'left' : averageLateral > 8 ? 'right' : 'centre',
+    nearDistance: Math.max(0, Math.min(...distanceHits) - sampleStep),
+    farDistance: Math.min(shotDistance, Math.max(...distanceHits) + sampleStep),
+    crossesShotCorridor: true,
+    side: lineHits.length > 0 ? 'centre' : hazardSide(player, shotBearing, polygon),
   };
+}
+
+function hazardSide(
+  player: LatLng,
+  shotBearing: number,
+  polygon: Hazard['coordinates'],
+): HazardWarning['side'] {
+  const centroid = polygonCentroid(polygon);
+  const angle = ((calcBearing(player, centroid) - shotBearing + 540) % 360) - 180;
+  return angle < -3 ? 'left' : angle > 3 ? 'right' : 'centre';
 }
 
 function pointInPolygon(point: LatLng, polygon: Hazard['coordinates']): boolean {
