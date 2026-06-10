@@ -83,6 +83,9 @@ type Hazard = {
   label: string | null;
   coordinates: LatLng[];
 };
+type SelectedPolygon =
+  | { kind: 'zone'; id: string; type: PrimaryZoneType }
+  | { kind: 'hazard'; id: string; type: HazardType };
 
 const ZONE_CONFIG: Record<DrawingType, {
   label: string;
@@ -103,6 +106,16 @@ const HAZARD_TYPES: HazardType[] = ['bunker', 'water', 'red_zone', 'ob', 'trees'
 
 function isPrimaryZone(type: DrawingType): type is PrimaryZoneType {
   return type === 'green' || type === 'fairway';
+}
+
+function hazardDeleteScope(hazard: Hazard) {
+  if (hazard.hole_number == null && (!hazard.hole_numbers || hazard.hole_numbers.length === 0)) {
+    return ' It is course-wide and will disappear from every hole.';
+  }
+  if (hazard.hole_numbers && hazard.hole_numbers.length > 1) {
+    return ` It will disappear from all ${hazard.hole_numbers.length} assigned holes.`;
+  }
+  return '';
 }
 
 const MAP_OPTIONS: google.maps.MapOptions = {
@@ -137,6 +150,8 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
   const [traceMode, setTraceMode] = useState(false);
   const [traceTolerance, setTraceTolerance] = useState(45);
   const [traceMessage, setTraceMessage] = useState('');
+  const [selectedPolygon, setSelectedPolygon] = useState<SelectedPolygon | null>(null);
+  const [deletingPolygon, setDeletingPolygon] = useState(false);
 
   const mapRef = useRef<google.maps.Map | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -219,6 +234,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
     setDrawing(null);
     setDraftCoords([]);
     setHazardHoleNumbers([]);
+    setSelectedPolygon(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hole?.id]);
 
@@ -285,16 +301,49 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
   const clearZone = useCallback(async (type: PrimaryZoneType) => {
     const z = allZones.find(x => x.hole_number === holeNumber && x.zone_type === type);
     if (!z) return;
-    await supabase.from('hole_zones').delete().eq('id', z.id);
+    if (!confirm(`Delete this ${ZONE_CONFIG[type].label.toLowerCase()} polygon?`)) return;
+    const { error } = await supabase.from('hole_zones').delete().eq('id', z.id);
+    if (error) { alert('Delete failed: ' + error.message); return; }
     setAllZones(prev => prev.filter(x => x.id !== z.id));
+    setSelectedPolygon(current => current?.id === z.id ? null : current);
   }, [allZones, holeNumber]);
 
   const deleteHazard = useCallback(async (hazard: Hazard) => {
-    if (!confirm(`Delete this ${ZONE_CONFIG[hazard.type].label.toLowerCase()} polygon?`)) return;
+    if (!confirm(
+      `Delete this ${ZONE_CONFIG[hazard.type].label.toLowerCase()} polygon?`
+      + hazardDeleteScope(hazard)
+    )) return;
     const { error } = await supabase.from('hazards').delete().eq('id', hazard.id);
     if (error) { alert('Delete failed: ' + error.message); return; }
     setHazards(prev => prev.filter(item => item.id !== hazard.id));
+    setSelectedPolygon(current => current?.id === hazard.id ? null : current);
   }, []);
+
+  const deleteSelectedPolygon = useCallback(async () => {
+    if (!selectedPolygon || deletingPolygon) return;
+    const label = ZONE_CONFIG[selectedPolygon.type].label.toLowerCase();
+    const selectedHazard = selectedPolygon.kind === 'hazard'
+      ? hazards.find(hazard => hazard.id === selectedPolygon.id)
+      : null;
+    const scope = selectedHazard ? hazardDeleteScope(selectedHazard) : '';
+    if (!confirm(`Delete this ${label} polygon?${scope} This cannot be undone.`)) return;
+
+    setDeletingPolygon(true);
+    const table = selectedPolygon.kind === 'zone' ? 'hole_zones' : 'hazards';
+    const { error } = await supabase.from(table).delete().eq('id', selectedPolygon.id);
+    setDeletingPolygon(false);
+    if (error) {
+      alert('Delete failed: ' + error.message);
+      return;
+    }
+
+    if (selectedPolygon.kind === 'zone') {
+      setAllZones(prev => prev.filter(zone => zone.id !== selectedPolygon.id));
+    } else {
+      setHazards(prev => prev.filter(hazard => hazard.id !== selectedPolygon.id));
+    }
+    setSelectedPolygon(null);
+  }, [deletingPolygon, hazards, selectedPolygon]);
 
   const toggleHazardHole = useCallback((number: number) => {
     setHazardHoleNumbers(current => {
@@ -691,6 +740,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                         setDrawing(current => current === type ? null : type);
                         setDraftCoords([]);
                         setHazardHoleNumbers([]);
+                        setSelectedPolygon(null);
                       }}
                     >
                       {drawing === type
@@ -734,6 +784,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                         return next;
                       });
                       setDraftCoords([]);
+                      setSelectedPolygon(null);
                     }}
                   >
                     {drawing === type
@@ -859,6 +910,31 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
             </div>
           )}
           {traceMessage && <div style={S.traceMessage}>{traceMessage}</div>}
+          {selectedPolygon && !drawing && (
+            <div style={S.selectionBar}>
+              <span style={{
+                ...S.selectionDot,
+                background: ZONE_CONFIG[selectedPolygon.type].color,
+              }} />
+              <span style={S.selectionText}>
+                <strong>{ZONE_CONFIG[selectedPolygon.type].label}</strong> polygon selected
+              </span>
+              <span style={S.selectionHint}>Click another polygon to change selection</span>
+              <button
+                style={S.cancelSelection}
+                onClick={() => setSelectedPolygon(null)}
+              >
+                Cancel
+              </button>
+              <button
+                style={S.deleteSelection}
+                disabled={deletingPolygon}
+                onClick={() => void deleteSelectedPolygon()}
+              >
+                {deletingPolygon ? 'Deleting...' : 'Delete polygon'}
+              </button>
+            </div>
+          )}
 
           <GoogleMap
             mapContainerStyle={{ flex: 1 }}
@@ -882,12 +958,19 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
               <Polygon
                 key={`green-${greenZone.id}`}
                 paths={greenZone.coordinates}
-                editable
+                editable={!selectedPolygon || selectedPolygon.id === greenZone.id}
                 onLoad={onGreenLoad}
+                onClick={() => {
+                  if (!drawing) {
+                    setSelectedPolygon({ kind: 'zone', id: greenZone.id, type: 'green' });
+                  }
+                }}
                 options={{
                   fillColor: '#4caf50', fillOpacity: 0.25,
-                  strokeColor: '#4caf50', strokeWeight: 2,
+                  strokeColor: selectedPolygon?.id === greenZone.id ? '#ffffff' : '#4caf50',
+                  strokeWeight: selectedPolygon?.id === greenZone.id ? 4 : 2,
                   strokeOpacity: 0.9,
+                  zIndex: selectedPolygon?.id === greenZone.id ? 20 : 3,
                 }}
               />
             )}
@@ -895,12 +978,19 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
               <Polygon
                 key={`fairway-${fairwayZone.id}`}
                 paths={fairwayZone.coordinates}
-                editable
+                editable={!selectedPolygon || selectedPolygon.id === fairwayZone.id}
                 onLoad={onFairwayLoad}
+                onClick={() => {
+                  if (!drawing) {
+                    setSelectedPolygon({ kind: 'zone', id: fairwayZone.id, type: 'fairway' });
+                  }
+                }}
                 options={{
                   fillColor: '#ffc107', fillOpacity: 0.15,
-                  strokeColor: '#ffc107', strokeWeight: 2,
+                  strokeColor: selectedPolygon?.id === fairwayZone.id ? '#ffffff' : '#ffc107',
+                  strokeWeight: selectedPolygon?.id === fairwayZone.id ? 4 : 2,
                   strokeOpacity: 0.9,
+                  zIndex: selectedPolygon?.id === fairwayZone.id ? 20 : 2,
                 }}
               />
             )}
@@ -910,15 +1000,28 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 <Polygon
                   key={`hazard-${hazard.id}`}
                   paths={hazard.coordinates}
-                  editable
+                  editable={!selectedPolygon || selectedPolygon.id === hazard.id}
                   onLoad={polygon => attachHazardEditListeners(polygon, hazard.id)}
+                  onClick={() => {
+                    if (!drawing) {
+                      setSelectedPolygon({
+                        kind: 'hazard',
+                        id: hazard.id,
+                        type: hazard.type,
+                      });
+                    }
+                  }}
                   options={{
                     fillColor: config.color,
                     fillOpacity: config.fillOpacity,
-                    strokeColor: config.color,
-                    strokeWeight: hazard.type === 'ob' ? 3 : 2,
+                    strokeColor: selectedPolygon?.id === hazard.id ? '#ffffff' : config.color,
+                    strokeWeight: selectedPolygon?.id === hazard.id
+                      ? 4
+                      : hazard.type === 'ob' ? 3 : 2,
                     strokeOpacity: 0.95,
-                    zIndex: hazard.type === 'trees' ? 1 : 2,
+                    zIndex: selectedPolygon?.id === hazard.id
+                      ? 20
+                      : hazard.type === 'trees' ? 1 : 2,
                   }}
                 />
               );
@@ -1250,6 +1353,49 @@ const S: Record<string, React.CSSProperties> = {
     color: '#64b5f6',
     fontSize: 11,
     flexShrink: 0,
+  },
+  selectionBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '8px 16px',
+    background: '#201514',
+    borderBottom: '1px solid #58302c',
+    flexShrink: 0,
+  },
+  selectionDot: {
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    boxShadow: '0 0 0 2px rgba(255,255,255,0.18)',
+  },
+  selectionText: {
+    color: '#f1e7e4',
+    fontSize: 12,
+  },
+  selectionHint: {
+    flex: 1,
+    color: '#816b68',
+    fontSize: 10,
+  },
+  cancelSelection: {
+    padding: '6px 11px',
+    borderRadius: 6,
+    background: 'transparent',
+    border: '1px solid #493634',
+    color: '#b9a5a2',
+    cursor: 'pointer',
+    fontSize: 11,
+  },
+  deleteSelection: {
+    padding: '7px 12px',
+    borderRadius: 6,
+    background: '#c84338',
+    border: '1px solid #dc5a4e',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: 11,
+    fontWeight: 700,
   },
   holeAssignment: {
     display: 'flex',
