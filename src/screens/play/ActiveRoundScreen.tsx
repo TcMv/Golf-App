@@ -232,9 +232,12 @@ export default function ActiveRoundScreen() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const shotQuery = supabase
-        .from('shots')
-        .select('club_name, distance_metres, target_type, outcome, miss_direction, strike_quality');
+      const shotQuery = user?.id
+        ? supabase
+            .from('shots')
+            .select('club_name, distance_metres, target_type, outcome, miss_direction, strike_quality, rounds!inner(user_id)')
+            .eq('rounds.user_id', user.id)
+        : Promise.resolve({ data: null });
       const [shotsResult, userClubsResult, globalClubsResult] = await Promise.all([
         shotQuery,
         user?.id
@@ -250,7 +253,7 @@ export default function ActiveRoundScreen() {
           .order('sort_order'),
       ]);
       if (cancelled) return;
-      setShotLearningRows((shotsResult.data ?? []) as ShotLearningRow[]);
+      setShotLearningRows((shotsResult.data ?? []) as unknown as ShotLearningRow[]);
       const userClubs = userClubsResult.data ?? [];
       if (userClubs.length > 0) {
         setClubs(userClubs.map((club: any, index: number) => ({
@@ -547,7 +550,7 @@ export default function ActiveRoundScreen() {
         .invoke('golf-coach', { body: { system, userMessage } })
         .then(({ data, error }) => {
           if (!error && typeof data?.text === 'string' && data.text.trim().length > 0) {
-            setCaddieLlmText(validatedCaddieFactor(data.text));
+            setCaddieLlmText(validatedCaddieFactor(data.text, advice));
           }
         })
         .catch(() => { /* fall back to deterministic lines */ })

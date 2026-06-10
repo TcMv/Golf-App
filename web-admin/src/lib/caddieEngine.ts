@@ -39,6 +39,14 @@ type HazardWarning = {
   label: string;
 };
 
+export type HazardRead = {
+  type: HazardType;
+  nearDistanceMetres: number;
+  farDistanceMetres: number;
+  side: HazardWarning['side'];
+  status: 'clear' | 'warning';
+};
+
 type ActiveHazard = {
   hazard: Hazard;
   nearDistance: number;
@@ -70,6 +78,7 @@ export type CaddieAdvice = {
   windAdjustment: number;
   elevDiff: number;
   strategy: string[];
+  hazards: HazardRead[];
   shortText: string;
   context: string;
 };
@@ -196,6 +205,7 @@ export function buildCaddieAdvice(params: {
         `Putt ${distToPin}m toward the hole.`,
         'Prioritise pace and leave the next putt below the hole where possible.',
       ],
+      hazards: [],
       shortText: `${distToPin}m putt. Read the break and commit to pace.`,
       context: `On the green, ${distToPin}m from the hole. Recommend putter and pace control.`,
     };
@@ -221,6 +231,7 @@ export function buildCaddieAdvice(params: {
         bearingToGreen,
         distToObjective + 35,
         hazard.coordinates,
+        isCourseBoundary(hazard, playerPos, shotObjective),
       );
       if (!geometry || geometry.farDistance < 5) return null;
       return {
@@ -247,40 +258,7 @@ export function buildCaddieAdvice(params: {
       playerElevation,
       greenElevation,
     ) * lieFactor);
-    const warnings: HazardWarning[] = [];
-    for (const {
-      hazard,
-      nearDistance,
-      farDistance,
-      side,
-      crossesShotCorridor,
-    } of activeHazards) {
-      const landMin = adjustedCarry - deviation;
-      const landMax = adjustedCarry + deviation * 0.5;
-      const landingOverlap = crossesShotCorridor
-        && farDistance >= landMin
-        && nearDistance <= landMax;
-      const reliableCarry = adjustedCarry - deviation;
-      const requiresCarry = crossesShotCorridor
-        && (hazard.type === 'water' || hazard.type === 'red_zone' || hazard.type === 'ob')
-        && nearDistance <= landMax
-        && reliableCarry < farDistance + 5;
-      const blocksFlight = crossesShotCorridor
-        && hazard.type === 'trees'
-        && nearDistance <= landMax;
-
-      if (landingOverlap || requiresCarry || blocksFlight) {
-        const distance = Math.max(1, Math.round(
-          requiresCarry || blocksFlight ? farDistance : (nearDistance + farDistance) / 2,
-        ));
-        warnings.push({
-          type: hazard.type,
-          distanceMetres: distance,
-          side,
-          label: `${hazard.type} ${distance}m ${side}`,
-        });
-      }
-    }
+    const warnings = warningsForShot(activeHazards, adjustedCarry, deviation);
     return {
       club,
       adjustedCarry,
@@ -292,8 +270,11 @@ export function buildCaddieAdvice(params: {
   const safeOptions = options.filter(option => option.clearsHazards);
   const reachableOptions = safeOptions.filter(option => {
     const allowance = Math.max(8, option.club.carry_stddev_metres ?? 12);
-    return option.adjustedCarry >= distToObjective - allowance
-      && option.adjustedCarry <= distToObjective + 20;
+    const miss = clubMisses[(option.club.custom_name ?? option.club.name).toLowerCase()];
+    const shortProtection = miss === 'short' ? Math.min(8, allowance) : 0;
+    const longLimit = miss === 'long' ? 10 : 20;
+    return option.adjustedCarry >= distToObjective - allowance + shortProtection
+      && option.adjustedCarry <= distToObjective + longLimit;
   });
   const shotType: CaddieAdvice['shotType'] = customTarget || lie === 'trees' || lie === 'recovery'
     ? 'recovery'
@@ -341,7 +322,6 @@ export function buildCaddieAdvice(params: {
 
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
   const selectedMiss = clubMisses[clubLabel.toLowerCase()] ?? null;
-  const primaryHazard = recommended.warnings[0] ?? null;
   const targetDistance = customTarget
     ? Math.max(1, distToObjective)
     : Math.min(recommended.adjustedCarry, Math.max(1, distToObjective));
@@ -355,6 +335,8 @@ export function buildCaddieAdvice(params: {
         hazards,
         shotType,
         missDirection: selectedMiss,
+        reliableCarry: recommended.adjustedCarry
+          - (recommended.club.carry_stddev_metres ?? 12),
       });
   const target = targetPlan.coordinate;
   const remainingDistance = haversineMetres(target, greenMid);
@@ -367,6 +349,7 @@ export function buildCaddieAdvice(params: {
         targetBearing,
         targetDistance + 35,
         hazard.coordinates,
+        isCourseBoundary(hazard, playerPos, greenMid),
       );
       if (!geometry || geometry.farDistance < 5) return null;
       return {
@@ -378,6 +361,28 @@ export function buildCaddieAdvice(params: {
       };
     })
     .filter(Boolean) as ActiveHazard[];
+  const finalWarnings = warningsForShot(
+    plannedHazards,
+    recommended.adjustedCarry,
+    recommended.club.carry_stddev_metres ?? 12,
+  );
+  const finalRecommended: ClubOption = {
+    ...recommended,
+    clearsHazards: finalWarnings.length === 0,
+    warnings: finalWarnings,
+  };
+  const hazardReads: HazardRead[] = plannedHazards.map(item => ({
+    type: item.hazard.type,
+    nearDistanceMetres: Math.round(item.nearDistance),
+    farDistanceMetres: Math.round(item.farDistance),
+    side: item.side,
+    status: finalWarnings.some(warning =>
+      warning.type === item.hazard.type
+      && warning.distanceMetres >= item.nearDistance - 5
+      && warning.distanceMetres <= item.farDistance + 5
+    ) ? 'warning' : 'clear',
+  }));
+  const primaryHazard = finalWarnings[0] ?? null;
   const visibleHazard = plannedHazards
     .sort((left, right) => left.nearDistance - right.nearDistance)[0] ?? null;
   const aimInstruction = !customTarget && (lie === 'trees' || lie === 'recovery')
@@ -421,7 +426,7 @@ export function buildCaddieAdvice(params: {
       );
     }
   } else {
-    strategy.push('No mapped hazard blocks the direct line to the green.');
+    strategy.push('No mapped hazard blocks the selected shot line.');
   }
   if (holeIndex != null) {
     strategy.push(
@@ -444,8 +449,8 @@ export function buildCaddieAdvice(params: {
     + `Shot plan: ${shotType}; target ${targetDistance}m away, leaving ${remainingDistance}m. ${aimInstruction}\n`
     + `Recommended: ${clubLabel} (carries ${baseCarry}m, adjusted ${recommended.adjustedCarry}m).\n`
     + (plannedHazards.length > 0 ? `Hazards on planned line:\n${hazardLines}\n` : 'No hazards on planned line.\n')
-    + (recommended.warnings.length > 0
-      ? `Warning: ${clubLabel} may land in ${recommended.warnings.map(warning => warning.label).join(', ')}.\n`
+    + (finalWarnings.length > 0
+      ? `Warning: ${clubLabel} may land in ${finalWarnings.map(warning => warning.label).join(', ')}.\n`
       : '')
     + `Other options: ${alternatives.map(option =>
       `${option.club.custom_name ?? option.club.name} (${option.adjustedCarry}m)`
@@ -461,12 +466,13 @@ export function buildCaddieAdvice(params: {
     lie,
     customTarget: customTarget != null,
     aimInstruction,
-    recommended,
+    recommended: finalRecommended,
     alternatives,
     windLabel,
     windAdjustment,
     elevDiff,
     strategy,
+    hazards: hazardReads,
     shortText: shotType === 'recovery'
       ? customTarget
         ? `${windLabel}. Recovery with ${clubLabel} to the selected ${targetDistance}m target.`
@@ -532,6 +538,7 @@ function chooseTarget(params: {
   hazards: Hazard[];
   shotType: CaddieAdvice['shotType'];
   missDirection?: 'left' | 'right' | 'short' | 'long' | null;
+  reliableCarry: number;
 }): { coordinate: Coordinate; offsetDegrees: number; hazardType: HazardType | null } {
   const offsets = [0, -2, 2, -4, 4, -6, 6, -8, 8];
   const directTarget = destinationPoint(
@@ -543,7 +550,11 @@ function chooseTarget(params: {
     .filter(hazard => hazard.coordinates.length >= 3)
     .map(hazard => ({
       hazard,
-      distance: distanceToPolygonMetres(directTarget, hazard.coordinates),
+      distance: distanceToHazardMetres(
+        directTarget,
+        hazard.coordinates,
+        isCourseBoundary(hazard, params.playerPos, params.greenMid),
+      ),
     }))
     .filter(item => item.distance < 15)
     .sort((left, right) => left.distance - right.distance)[0]?.hazard.type ?? null;
@@ -558,7 +569,8 @@ function chooseTarget(params: {
     let nearestHazardDistance = Number.POSITIVE_INFINITY;
     for (const hazard of params.hazards) {
       if (hazard.coordinates.length < 3) continue;
-      const distance = distanceToPolygonMetres(coordinate, hazard.coordinates);
+      const boundary = isCourseBoundary(hazard, params.playerPos, params.greenMid);
+      const distance = distanceToHazardMetres(coordinate, hazard.coordinates, boundary);
       if (distance < nearestHazardDistance) {
         nearestHazardDistance = distance;
         nearestHazard = hazard;
@@ -566,6 +578,21 @@ function chooseTarget(params: {
       if (distance === 0) hazardPenalty += 100_000;
       else if (distance < 8) hazardPenalty += (8 - distance) * 2_000;
       else if (distance < 15) hazardPenalty += (15 - distance) * 200;
+      const geometry = hazardAlongShot(
+        params.playerPos,
+        params.bearingToGreen + offsetDegrees,
+        params.targetDistance,
+        hazard.coordinates,
+        boundary,
+      );
+      if (!geometry) continue;
+      if (hazard.type === 'trees') hazardPenalty += 40_000;
+      if (
+        (hazard.type === 'water' || hazard.type === 'red_zone')
+        && params.reliableCarry < geometry.farDistance + 5
+      ) {
+        hazardPenalty += 80_000;
+      }
     }
     const greenDistance = haversineMetres(coordinate, params.greenMid);
     const preferredOffset = params.missDirection === 'left'
@@ -585,8 +612,56 @@ function chooseTarget(params: {
   }).reduce((best, candidate) => candidate.score < best.score ? candidate : best);
 }
 
+function warningsForShot(
+  activeHazards: ActiveHazard[],
+  adjustedCarry: number,
+  stddev: number,
+): HazardWarning[] {
+  const warnings: HazardWarning[] = [];
+  for (const {
+    hazard,
+    nearDistance,
+    farDistance,
+    side,
+    crossesShotCorridor,
+  } of activeHazards) {
+    const landMin = adjustedCarry - stddev;
+    const landMax = adjustedCarry + stddev * 0.5;
+    const landingOverlap = crossesShotCorridor
+      && farDistance >= landMin
+      && nearDistance <= landMax;
+    const reliableCarry = adjustedCarry - stddev;
+    const requiresCarry = crossesShotCorridor
+      && (hazard.type === 'water' || hazard.type === 'red_zone')
+      && nearDistance <= landMax
+      && reliableCarry < farDistance + 5;
+    const blocksFlight = crossesShotCorridor
+      && hazard.type === 'trees'
+      && nearDistance <= landMax;
+    if (landingOverlap || requiresCarry || blocksFlight) {
+      const distance = Math.max(1, Math.round(
+        requiresCarry || blocksFlight ? farDistance : (nearDistance + farDistance) / 2,
+      ));
+      warnings.push({
+        type: hazard.type,
+        distanceMetres: distance,
+        side,
+        label: `${hazard.type} ${distance}m ${side}`,
+      });
+    }
+  }
+  return warnings;
+}
+
 function distanceToPolygonMetres(point: Coordinate, polygon: Hazard['coordinates']): number {
   if (pointInPolygon(point, polygon)) return 0;
+  return distanceToPolygonBoundaryMetres(point, polygon);
+}
+
+function distanceToPolygonBoundaryMetres(
+  point: Coordinate,
+  polygon: Hazard['coordinates'],
+): number {
   const latitudeScale = 111_320;
   const longitudeScale = latitudeScale * Math.cos(point.latitude * Math.PI / 180);
   let minimum = Number.POSITIVE_INFINITY;
@@ -605,11 +680,29 @@ function distanceToPolygonMetres(point: Coordinate, polygon: Hazard['coordinates
   return minimum;
 }
 
+function distanceToHazardMetres(
+  point: Coordinate,
+  polygon: Hazard['coordinates'],
+  safeInside: boolean,
+): number {
+  if (!safeInside) return distanceToPolygonMetres(point, polygon);
+  return pointInPolygon(point, polygon)
+    ? distanceToPolygonBoundaryMetres(point, polygon)
+    : 0;
+}
+
+function isCourseBoundary(hazard: Hazard, player: Coordinate, objective: Coordinate): boolean {
+  return hazard.type === 'ob'
+    && pointInPolygon(player, hazard.coordinates)
+    && pointInPolygon(objective, hazard.coordinates);
+}
+
 function hazardAlongShot(
   player: Coordinate,
   shotBearing: number,
   shotDistance: number,
   polygon: Hazard['coordinates'],
+  safeInside = false,
 ): {
   nearDistance: number;
   farDistance: number;
@@ -623,9 +716,12 @@ function hazardAlongShot(
 
   for (let distance = 0; distance <= shotDistance; distance += sampleStep) {
     const point = destinationPoint(player, shotBearing, distance);
-    const polygonDistance = distanceToPolygonMetres(point, polygon);
+    const inside = pointInPolygon(point, polygon);
+    const polygonDistance = safeInside
+      ? inside ? distanceToPolygonBoundaryMetres(point, polygon) : 0
+      : inside ? 0 : distanceToPolygonBoundaryMetres(point, polygon);
     if (polygonDistance <= corridorRadius) hits.push(distance);
-    if (polygonDistance <= 0.25) lineHits.push(distance);
+    if (safeInside ? !inside : inside) lineHits.push(distance);
   }
 
   if (hits.length === 0) return null;
@@ -685,9 +781,25 @@ function distanceToSegment(
 }
 
 export function buildCaddiePrompt(advice: CaddieAdvice, courseName: string) {
+  const clubLabel = advice.recommended.club.custom_name ?? advice.recommended.club.name;
+  const tendency = advice.context.match(/Player tendency:[^\n]+/)?.[0] ?? 'none';
+  const plan = {
+    club: clubLabel,
+    configuredCarryMetres: advice.recommended.club.carry_metres,
+    adjustedCarryMetres: advice.recommended.adjustedCarry,
+    shotType: advice.shotType,
+    targetDistanceMetres: advice.targetDistance,
+    remainingDistanceMetres: advice.remainingDistance,
+    aimInstruction: advice.aimInstruction,
+    lie: advice.lie,
+    wind: advice.windLabel,
+    windAdjustmentMetres: advice.windAdjustment,
+    hazards: advice.hazards,
+    trackedTendency: tendency,
+  };
   return {
     system: `You are an experienced golf caddie at ${courseName}. The app's shot engine has already chosen the club, distance, landing point, and aim line. Give exactly one short sentence describing only the single most important execution factor: mapped hazard, wind, lie, or tracked miss tendency. Do not name or suggest a club. Do not include any number or distance. Do not alter the shot plan. Be direct and specific.`,
-    userMessage: `AUTHORITATIVE SHOT PLAN — DO NOT CHANGE:\n${advice.context}\n\nReturn only the execution-factor sentence.`,
+    userMessage: `AUTHORITATIVE_SHOT_PLAN_JSON:\n${JSON.stringify(plan, null, 2)}\n\nReturn only the execution-factor sentence.`,
   };
 }
 
@@ -707,7 +819,10 @@ export function authoritativeShotLine(advice: CaddieAdvice): string {
   return `Play ${clubLabel} to the marked target; it plays ${advice.playingDistance}m with ${advice.recommended.adjustedCarry}m expected carry.`;
 }
 
-export function validatedCaddieFactor(text: string | null | undefined): string | null {
+export function validatedCaddieFactor(
+  text: string | null | undefined,
+  advice?: CaddieAdvice,
+): string | null {
   if (!text) return null;
   const sentence = text
     .replace(/\s+/g, ' ')
@@ -718,6 +833,30 @@ export function validatedCaddieFactor(text: string | null | undefined): string |
   if (/\d/.test(sentence)) return null;
   if (/\b(driver|putter|wood|hybrid|iron|wedge|[1-9]\s*[- ]?(?:wood|iron)|[1-9]\s*[hiw]|pw|gw|sw|lw)\b/i.test(sentence)) {
     return null;
+  }
+  if (/\b(club\s+(?:up|down)|lay\s*up|aim\s+(?:left|right)|favou?r\s+(?:left|right))\b/i.test(sentence)) {
+    return null;
+  }
+  if (advice) {
+    const context = advice.context.toLowerCase();
+    const hazardChecks: Array<[RegExp, HazardType]> = [
+      [/\bwater\b/i, 'water'],
+      [/\bbunker\b/i, 'bunker'],
+      [/\btrees?\b/i, 'trees'],
+      [/\b(?:out of bounds|ob)\b/i, 'ob'],
+      [/\b(?:red|penalty area)\b/i, 'red_zone'],
+    ];
+    for (const [pattern, type] of hazardChecks) {
+      if (
+        pattern.test(sentence)
+        && !advice.hazards.some(hazard => hazard.type === type)
+        && !context.includes(`- ${type} `)
+      ) return null;
+    }
+    if (/\bwind\b/i.test(sentence) && advice.windAdjustment === 0) return null;
+    if (/\b(?:miss|tendency)\b/i.test(sentence) && !context.includes('player tendency:')) {
+      return null;
+    }
   }
   return sentence;
 }

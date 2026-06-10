@@ -44,7 +44,7 @@ export default function CaddiePanel({ advice, onDismiss, units, llmText, llmLoad
         : null,
   ].filter((line): line is string => line != null);
 
-  const aiFactor = validatedCaddieFactor(llmText);
+  const aiFactor = validatedCaddieFactor(llmText, advice);
   const shotLines = aiFactor
     ? [fallbackLines[0], aiFactor]
     : fallbackLines;

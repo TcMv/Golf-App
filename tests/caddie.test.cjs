@@ -89,16 +89,50 @@ assert.ok(missBiasedAdvice);
 assert.match(missBiasedAdvice.aimInstruction, /Aim right/);
 assert.ok(missBiasedAdvice.target.longitude > 0);
 
+const shortMissAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.001285, longitude: 0 },
+  hazards: [],
+  clubs: [
+    {
+      ...clubs[0],
+      id: 'short-miss-seven',
+      name: '7 Iron',
+      carry_metres: 135,
+      carry_stddev_metres: 8,
+    },
+    {
+      ...clubs[0],
+      id: 'steady-six',
+      name: '6 Iron',
+      carry_metres: 145,
+      carry_stddev_metres: 8,
+    },
+  ],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  clubMisses: { '7 iron': 'short' },
+});
+assert.ok(shortMissAdvice);
+assert.equal(shortMissAdvice.recommended.club.id, 'steady-six');
+
 const prompt = buildCaddiePrompt(advice, 'Test Links');
 assert.match(prompt.system, /Test Links/);
 assert.doesNotMatch(prompt.system, /Nambour Golf Club/);
 assert.match(prompt.system, /Do not name or suggest a club/);
-assert.match(prompt.userMessage, /AUTHORITATIVE SHOT PLAN/);
+assert.match(prompt.userMessage, /AUTHORITATIVE_SHOT_PLAN_JSON/);
+assert.match(prompt.userMessage, /"club": "7 Iron"/);
 assert.equal(validatedCaddieFactor('Hit 3H 210m toward the green.'), null);
 assert.equal(validatedCaddieFactor('Use Driver and favour the left side.'), null);
+assert.equal(validatedCaddieFactor('Aim right and avoid the trouble.', advice), null);
+assert.equal(validatedCaddieFactor('Keep it below the wind.', advice), null);
+assert.equal(validatedCaddieFactor('Avoid the water on the left.', advice), null);
 assert.equal(
-  validatedCaddieFactor('Protect against your usual miss and commit to the marked line.'),
-  'Protect against your usual miss and commit to the marked line.',
+  validatedCaddieFactor('Commit fully to the marked line.', advice),
+  'Commit fully to the marked line.',
 );
 
 const longHoleAdvice = buildCaddieAdvice({
@@ -216,7 +250,8 @@ const rightHazardAdvice = buildCaddieAdvice({
 
 assert.ok(rightHazardAdvice);
 assert.equal(rightHazardAdvice.recommended.club.id, 'wood');
-assert.match(rightHazardAdvice.aimInstruction, /centre of the fairway/);
+assert.match(rightHazardAdvice.aimInstruction, /Aim left/);
+assert.ok(rightHazardAdvice.target.longitude < 0);
 
 const bunkerShortAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },
@@ -338,6 +373,13 @@ assert.equal(forcedWaterLayupAdvice.shotType, 'layup');
 assert.equal(forcedWaterLayupAdvice.recommended.club.id, 'tracked-seven');
 assert.equal(forcedWaterLayupAdvice.targetDistance, 135);
 assert.ok(forcedWaterLayupAdvice.strategy.some(line => line.includes('short of water')));
+assert.ok(forcedWaterLayupAdvice.hazards.some(hazard =>
+  hazard.type === 'water' && hazard.status === 'clear'
+));
+assert.match(
+  buildCaddiePrompt(forcedWaterLayupAdvice, 'Test Links').userMessage,
+  /"type": "water"/,
+);
 
 const offCentreWaterAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },
@@ -410,7 +452,7 @@ const beyondShotWaterAdvice = buildCaddieAdvice({
 
 assert.ok(beyondShotWaterAdvice);
 assert.equal(beyondShotWaterAdvice.recommended.clearsHazards, true);
-assert.ok(beyondShotWaterAdvice.strategy.includes('No mapped hazard blocks the direct line to the green.'));
+assert.ok(beyondShotWaterAdvice.strategy.includes('No mapped hazard blocks the selected shot line.'));
 assert.match(beyondShotWaterAdvice.context, /No hazards on planned line/);
 assert.doesNotMatch(beyondShotWaterAdvice.context, /876m|water \d{3}-\d{3}m/);
 
@@ -420,6 +462,54 @@ const square = (lat, lng, size = 0.0001) => [
   { lat: lat + size, lng: lng + size },
   { lat: lat - size, lng: lng + size },
 ];
+
+const boundaryObAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.001, longitude: 0 },
+  hazards: [{
+    id: 'course-boundary',
+    course_id: 'course',
+    hole_number: null,
+    hole_numbers: null,
+    type: 'ob',
+    label: 'Course boundary',
+    coordinates: square(0.0005, 0, 0.001),
+    created_at: '',
+  }],
+  clubs,
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+assert.ok(boundaryObAdvice);
+assert.equal(boundaryObAdvice.recommended.clearsHazards, true);
+assert.match(boundaryObAdvice.context, /No hazards on planned line/);
+
+const conventionalObAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.001, longitude: 0 },
+  hazards: [{
+    id: 'ob-patch',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'ob',
+    label: null,
+    coordinates: square(0.00098, 0, 0.00008),
+    created_at: '',
+  }],
+  clubs,
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+assert.ok(conventionalObAdvice);
+assert.equal(conventionalObAdvice.recommended.clearsHazards, false);
+assert.equal(conventionalObAdvice.recommended.warnings[0].type, 'ob');
 
 assert.equal(detectCaddieLie({
   playerPos: { latitude: 0, longitude: 0 },

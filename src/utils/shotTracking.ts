@@ -34,6 +34,14 @@ function mostCommon<T extends string>(values: T[]): T | null {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
 }
 
+function establishedPattern<T extends string>(values: T[]): T | null {
+  if (values.length < 2) return null;
+  const counts = new Map<T, number>();
+  values.forEach(value => counts.set(value, (counts.get(value) ?? 0) + 1));
+  const [value, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  return count >= 2 && count / values.length >= 0.5 ? value : null;
+}
+
 export function summarizeClubLearning(
   clubName: string,
   rows: ShotLearningRow[],
@@ -66,7 +74,7 @@ export function summarizeClubLearning(
     sampleCount: clubRows.length,
     averageCarry,
     reliableCarry,
-    commonMiss: mostCommon(
+    commonMiss: establishedPattern(
       clubRows
         .map(row => row.miss_direction)
         .filter((value): value is ShotMissDirection => value != null),

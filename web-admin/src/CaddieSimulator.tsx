@@ -45,6 +45,10 @@ type UserClub = {
   club_name: string;
   carry_distance_metres: number | null;
 };
+type ShotTendencyRow = {
+  club_name: string | null;
+  miss_direction: 'left' | 'right' | 'short' | 'long' | null;
+};
 
 type Props = {
   courseId: string;
@@ -87,11 +91,31 @@ function compassPoint(degrees: number) {
   return labels[Math.round(degrees / 45) % 8];
 }
 
+function buildClubMisses(rows: ShotTendencyRow[]) {
+  const grouped = new Map<string, Array<NonNullable<ShotTendencyRow['miss_direction']>>>();
+  rows.forEach(row => {
+    if (!row.club_name || !row.miss_direction) return;
+    const key = row.club_name.toLowerCase();
+    grouped.set(key, [...(grouped.get(key) ?? []), row.miss_direction]);
+  });
+  return Object.fromEntries(
+    [...grouped.entries()].flatMap(([clubName, misses]) => {
+      const counts = new Map<string, number>();
+      misses.forEach(miss => counts.set(miss, (counts.get(miss) ?? 0) + 1));
+      const [miss, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      return count >= 2 && count / misses.length >= 0.5
+        ? [[clubName, miss]]
+        : [];
+    }),
+  ) as Record<string, 'left' | 'right' | 'short' | 'long'>;
+}
+
 export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
   const [course, setCourse] = useState<Course | null>(null);
   const [holes, setHoles] = useState<Hole[]>([]);
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [clubs, setClubs] = useState<Club[]>([]);
+  const [clubMisses, setClubMisses] = useState<Record<string, 'left' | 'right' | 'short' | 'long'>>({});
   const [zones, setZones] = useState<CaddieZone[]>([]);
   const [holeNumber, setHoleNumber] = useState<number | null>(null);
   const [playerPosition, setPlayerPosition] = useState<Coordinate | null>(null);
@@ -130,7 +154,19 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
         .from('clubs')
         .select('id, name, type, loft, custom_name, sort_order, carry_metres, carry_stddev_metres')
         .order('sort_order'),
-    ]).then(([courseResult, holesResult, hazardsResult, zonesResult, userClubsResult, globalClubsResult]) => {
+      supabase
+        .from('shots')
+        .select('club_name, miss_direction, rounds!inner(user_id)')
+        .eq('rounds.user_id', userId),
+    ]).then(([
+      courseResult,
+      holesResult,
+      hazardsResult,
+      zonesResult,
+      userClubsResult,
+      globalClubsResult,
+      shotsResult,
+    ]) => {
       const firstError = courseResult.error || holesResult.error || hazardsResult.error;
       if (firstError) {
         setError(firstError.message);
@@ -143,6 +179,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
       setHazards((hazardsResult.data ?? []) as Hazard[]);
       setZones((zonesResult.data ?? []) as (CaddieZone & { hole_number: number })[]);
       setHoleNumber(loadedHoles[0]?.number ?? null);
+      setClubMisses(buildClubMisses((shotsResult.data ?? []) as unknown as ShotTendencyRow[]));
       setClubs(personalClubs.length > 0
         ? personalClubs.map((club, index) => ({
             id: club.id,
@@ -212,9 +249,11 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
       holeIndex: hole.stroke_index,
       lie: playerLie,
       customTarget,
+      clubMisses,
     });
   }, [
     clubs,
+    clubMisses,
     elevationDifference,
     greenMid,
     hole,
@@ -248,6 +287,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
     }
     const factor = validatedCaddieFactor(
       typeof data?.text === 'string' ? data.text : null,
+      advice,
     );
     setAiText(factor ?? 'AI wording conflicted with the engine plan, so it was not used.');
   }, [advice, aiLoading, course]);
