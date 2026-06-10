@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const {
   buildCaddieAdvice,
+  buildCaddiePrompt,
   buildPreRoundBriefing,
 } = require('/tmp/golf-caddie-test/utils/caddie.js');
 
@@ -68,6 +69,10 @@ assert.equal(advice.history, history);
 assert.ok(advice.strategy.some(line => line.includes('stroke index 3')));
 assert.ok(advice.strategy.some(line => line.includes('average is 4.8')));
 assert.ok(!advice.alternatives.some(option => option.club.type === 'putter'));
+
+const prompt = buildCaddiePrompt(advice, 'Test Links');
+assert.match(prompt.system, /Test Links/);
+assert.doesNotMatch(prompt.system, /Nambour Golf Club/);
 
 const briefing = buildPreRoundBriefing({
   courseName: 'Test Links',

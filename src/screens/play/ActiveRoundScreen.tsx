@@ -498,7 +498,10 @@ export default function ActiveRoundScreen() {
       setCaddieLlmLoading(true);
       setCaddieOpen(true);
       // Fire LLM read in background — panel shows spinner until it resolves
-      const { system, userMessage } = buildCaddiePrompt(advice);
+      const { system, userMessage } = buildCaddiePrompt(
+        advice,
+        activeRound?.course.name ?? 'the course',
+      );
       supabase.functions
         .invoke('golf-coach', { body: { system, userMessage } })
         .then(({ data, error }) => {
@@ -509,7 +512,7 @@ export default function ActiveRoundScreen() {
         .catch(() => { /* fall back to deterministic lines */ })
         .finally(() => setCaddieLlmLoading(false));
     }
-  }, [greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location]);
+  }, [activeRound?.course.name, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location]);
 
   if (!activeRound || !hole) {
     return (

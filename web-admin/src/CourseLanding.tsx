@@ -21,7 +21,7 @@ type CourseIdRow = {
 
 type CourseLandingProps = {
   user: User;
-  onSelectCourse: (courseId: string) => void;
+  onSelectCourse: (courseId: string, mode: 'edit' | 'test') => void;
 };
 
 export default function CourseLanding({ user, onSelectCourse }: CourseLandingProps) {
@@ -122,10 +122,9 @@ export default function CourseLanding({ user, onSelectCourse }: CourseLandingPro
               const mappedHoles = Math.min(course.holes, Math.floor(summary.zones / 2));
               const progress = course.holes > 0 ? mappedHoles / course.holes * 100 : 0;
               return (
-                <button
+                <article
                   key={course.id}
                   style={S.card}
-                  onClick={() => onSelectCourse(course.id)}
                 >
                   <div style={{
                     ...S.courseArt,
@@ -152,7 +151,7 @@ export default function CourseLanding({ user, onSelectCourse }: CourseLandingPro
                           {Math.abs(course.lat).toFixed(4)}°S · {course.lng.toFixed(4)}°E
                         </p>
                       </div>
-                      <span style={S.arrow}>↗</span>
+                      <span style={S.arrow}>F</span>
                     </div>
 
                     <div style={S.stats}>
@@ -177,8 +176,22 @@ export default function CourseLanding({ user, onSelectCourse }: CourseLandingPro
                     <div style={S.progressTrack}>
                       <span style={{ ...S.progressFill, width: `${progress}%` }} />
                     </div>
+                    <div style={S.cardActions}>
+                      <button
+                        style={S.editButton}
+                        onClick={() => onSelectCourse(course.id, 'edit')}
+                      >
+                        Edit course map
+                      </button>
+                      <button
+                        style={S.testButton}
+                        onClick={() => onSelectCourse(course.id, 'test')}
+                      >
+                        Test caddie
+                      </button>
+                    </div>
                   </div>
-                </button>
+                </article>
               );
             })}
           </div>
@@ -312,7 +325,6 @@ const S: Record<string, React.CSSProperties> = {
     background: '#0d2119',
     color: 'inherit',
     textAlign: 'left',
-    cursor: 'pointer',
     boxShadow: '0 24px 70px rgba(0,0,0,0.2)',
   },
   courseArt: {
@@ -438,6 +450,32 @@ const S: Record<string, React.CSSProperties> = {
     height: '100%',
     borderRadius: 4,
     background: '#a7c78b',
+  },
+  cardActions: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 9,
+    marginTop: 22,
+  },
+  editButton: {
+    padding: '11px 12px',
+    borderRadius: 9,
+    border: '1px solid rgba(167,199,139,0.3)',
+    background: 'rgba(167,199,139,0.1)',
+    color: '#c8dcb5',
+    cursor: 'pointer',
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  testButton: {
+    padding: '11px 12px',
+    borderRadius: 9,
+    border: '1px solid #a7c78b',
+    background: '#a7c78b',
+    color: '#0b2117',
+    cursor: 'pointer',
+    fontSize: 11,
+    fontWeight: 800,
   },
   message: {
     padding: 28,

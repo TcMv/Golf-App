@@ -4,6 +4,12 @@ import { supabase } from './lib/supabase';
 import { isAdminEmail } from './lib/admin';
 import ZoneEditor from './ZoneEditor';
 import CourseLanding from './CourseLanding';
+import CaddieSimulator from './CaddieSimulator';
+
+type CourseWorkspace = {
+  courseId: string;
+  mode: 'edit' | 'test';
+};
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -11,7 +17,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<CourseWorkspace | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -25,7 +31,7 @@ export default function App() {
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, nextSession) => {
       if (!nextSession) {
-        setSelectedCourseId(null);
+        setWorkspace(null);
       }
       if (nextSession && !isAdminEmail(nextSession.user.email)) {
         setError('This account does not have administrator access.');
@@ -42,18 +48,27 @@ export default function App() {
   }
 
   if (session) {
-    if (selectedCourseId) {
+    if (workspace?.mode === 'edit') {
       return (
         <ZoneEditor
-          initialCourseId={selectedCourseId}
-          onBack={() => setSelectedCourseId(null)}
+          initialCourseId={workspace.courseId}
+          onBack={() => setWorkspace(null)}
+        />
+      );
+    }
+    if (workspace?.mode === 'test') {
+      return (
+        <CaddieSimulator
+          courseId={workspace.courseId}
+          userId={session.user.id}
+          onBack={() => setWorkspace(null)}
         />
       );
     }
     return (
       <CourseLanding
         user={session.user}
-        onSelectCourse={setSelectedCourseId}
+        onSelectCourse={(courseId, mode) => setWorkspace({ courseId, mode })}
       />
     );
   }
