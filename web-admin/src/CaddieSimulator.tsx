@@ -6,9 +6,17 @@ import {
   Polygon,
   Polyline,
 } from '@react-google-maps/api';
-import { buildCaddieAdvice, buildCaddiePrompt } from '../../src/utils/caddie';
-import type { CaddieAdvice } from '../../src/utils/caddie';
-import type { Club, Coordinate, Hazard, HazardType } from '../../src/types';
+import {
+  buildCaddieAdvice,
+  buildCaddiePrompt,
+} from './lib/caddieEngine';
+import type {
+  CaddieAdvice,
+  Club,
+  Coordinate,
+  Hazard,
+  HazardType,
+} from './lib/caddieEngine';
 import { supabase } from './lib/supabase';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
