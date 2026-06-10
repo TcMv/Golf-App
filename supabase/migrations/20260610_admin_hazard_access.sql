@@ -1,6 +1,12 @@
 -- Hazard geometry is public-read for the mobile caddie, but only approved
 -- administrator accounts may create, edit, or delete polygons.
 
+ALTER TABLE hazards
+  ADD COLUMN IF NOT EXISTS hole_numbers integer[];
+
+CREATE INDEX IF NOT EXISTS idx_hazards_hole_numbers
+  ON hazards USING GIN (hole_numbers);
+
 ALTER TABLE hazards ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public read hazards" ON hazards;
