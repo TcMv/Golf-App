@@ -74,6 +74,93 @@ const prompt = buildCaddiePrompt(advice, 'Test Links');
 assert.match(prompt.system, /Test Links/);
 assert.doesNotMatch(prompt.system, /Nambour Golf Club/);
 
+const longHoleAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.002275, longitude: 0 },
+  hazards: [],
+  clubs: [
+    {
+      ...clubs[0],
+      id: 'driver',
+      name: 'Driver',
+      type: 'driver',
+      carry_metres: 210,
+      carry_stddev_metres: 12,
+    },
+    {
+      ...clubs[0],
+      id: 'wood',
+      name: '3 Wood',
+      type: 'wood',
+      carry_metres: 190,
+      carry_stddev_metres: 10,
+    },
+  ],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  holeNumber: 1,
+  holePar: 4,
+});
+
+assert.ok(longHoleAdvice);
+assert.equal(longHoleAdvice.shotType, 'layup');
+assert.equal(longHoleAdvice.recommended.club.id, 'driver');
+assert.equal(longHoleAdvice.targetDistance, 210);
+assert.ok(longHoleAdvice.remainingDistance >= 40 && longHoleAdvice.remainingDistance <= 45);
+assert.match(longHoleAdvice.strategy[0], /landing area/);
+assert.match(longHoleAdvice.shortText, /210m target/);
+
+const rightHazardAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.002275, longitude: 0 },
+  hazards: [{
+    id: 'water-right',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'water',
+    label: null,
+    coordinates: [
+      { lat: 0.00185, lng: 0.00035 },
+      { lat: 0.00195, lng: 0.00035 },
+      { lat: 0.00195, lng: 0.00045 },
+      { lat: 0.00185, lng: 0.00045 },
+    ],
+    created_at: '',
+  }],
+  clubs: [
+    {
+      ...clubs[0],
+      id: 'driver',
+      name: 'Driver',
+      type: 'driver',
+      carry_metres: 210,
+      carry_stddev_metres: 12,
+    },
+    {
+      ...clubs[0],
+      id: 'wood',
+      name: '3 Wood',
+      type: 'wood',
+      carry_metres: 190,
+      carry_stddev_metres: 10,
+    },
+  ],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+
+assert.ok(rightHazardAdvice);
+assert.equal(rightHazardAdvice.recommended.club.id, 'wood');
+assert.match(rightHazardAdvice.aimInstruction, /left.*water/);
+assert.ok(rightHazardAdvice.target.longitude < 0);
+
 const briefing = buildPreRoundBriefing({
   courseName: 'Test Links',
   courseRating: 73.2,

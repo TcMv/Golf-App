@@ -562,12 +562,32 @@ export default function ActiveRoundScreen() {
           </Marker>
         )}
         {location && greenMid && (
-          <Polyline
-            coordinates={[location, greenMid]}
-            strokeColor="rgba(255,255,255,0.55)"
-            strokeWidth={2}
-            lineDashPattern={[8, 6]}
-          />
+          <>
+            <Polyline
+              coordinates={[location, caddieAdvice?.target ?? greenMid]}
+              strokeColor={caddieAdvice ? Colors.green : 'rgba(255,255,255,0.55)'}
+              strokeWidth={caddieAdvice ? 4 : 2}
+            />
+            {caddieAdvice && (
+              <>
+                <Polyline
+                  coordinates={[caddieAdvice.target, greenMid]}
+                  strokeColor="rgba(255,255,255,0.65)"
+                  strokeWidth={2}
+                  lineDashPattern={[8, 6]}
+                />
+                <Marker coordinate={caddieAdvice.target}>
+                  <View style={styles.caddieTarget}>
+                    <View style={styles.caddieTargetInner} />
+                    <Text style={styles.caddieTargetText}>
+                      {convertDistance(caddieAdvice.targetDistance, units)}
+                      {distanceUnitLabel(units, true)}
+                    </Text>
+                  </View>
+                </Marker>
+              </>
+            )}
+          </>
         )}
         {holeHazards.map(hazard => (
           <Polygon
@@ -664,7 +684,9 @@ export default function ActiveRoundScreen() {
             <Text style={styles.caddieLabel}>CADDIE</Text>
             <Text style={styles.caddieText} numberOfLines={1}>
               {caddieAdvice
-                ? `${recommendedClub} · play ${convertDistance(caddieAdvice.playingDistance, units)}${distanceUnitLabel(units, true)}`
+                ? caddieAdvice.shotType === 'layup'
+                  ? `${recommendedClub} · target ${convertDistance(caddieAdvice.targetDistance, units)}${distanceUnitLabel(units, true)} · ${convertDistance(caddieAdvice.remainingDistance, units)} left`
+                  : `${recommendedClub} · play ${convertDistance(caddieAdvice.playingDistance, units)}${distanceUnitLabel(units, true)}`
                 : location ? 'Calculating recommendation...' : 'Waiting for GPS...'}
             </Text>
             {learnedNote && <Text style={styles.learnedText} numberOfLines={1}>{learnedNote}</Text>}
@@ -951,6 +973,30 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.yellow,
     borderWidth: 4,
     borderColor: Colors.text,
+  },
+  caddieTarget: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.text,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  caddieTargetInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.green,
+    borderWidth: 2,
+    borderColor: Colors.text,
+  },
+  caddieTargetText: {
+    marginTop: 2,
+    color: Colors.text,
+    fontFamily: Font.black,
+    fontSize: 10,
   },
   caddieModal: { justifyContent: 'flex-end', backgroundColor: Colors.backdrop },
   caddieModalInner: { maxHeight: '88%' },

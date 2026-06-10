@@ -385,22 +385,63 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
                 />
               )}
               {playerPosition && greenMid && (
-                <Polyline
-                  path={[
-                    { lat: playerPosition.latitude, lng: playerPosition.longitude },
-                    { lat: greenMid.latitude, lng: greenMid.longitude },
-                  ]}
-                  options={{
-                    strokeColor: '#ffffff',
-                    strokeOpacity: 0.75,
-                    strokeWeight: 2,
-                    icons: [{
-                      icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
-                      offset: '0',
-                      repeat: '16px',
-                    }],
-                  }}
-                />
+                <>
+                  <Polyline
+                    path={[
+                      { lat: playerPosition.latitude, lng: playerPosition.longitude },
+                      {
+                        lat: advice?.target.latitude ?? greenMid.latitude,
+                        lng: advice?.target.longitude ?? greenMid.longitude,
+                      },
+                    ]}
+                    options={{
+                      strokeColor: advice ? '#b7d29e' : '#ffffff',
+                      strokeOpacity: 0.95,
+                      strokeWeight: advice ? 4 : 2,
+                    }}
+                  />
+                  {advice && (
+                    <>
+                      <Polyline
+                        path={[
+                          { lat: advice.target.latitude, lng: advice.target.longitude },
+                          { lat: greenMid.latitude, lng: greenMid.longitude },
+                        ]}
+                        options={{
+                          strokeColor: '#ffffff',
+                          strokeOpacity: 0.7,
+                          strokeWeight: 2,
+                          icons: [{
+                            icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
+                            offset: '0',
+                            repeat: '16px',
+                          }],
+                        }}
+                      />
+                      <Marker
+                        position={{
+                          lat: advice.target.latitude,
+                          lng: advice.target.longitude,
+                        }}
+                        title={`Recommended landing area: ${advice.targetDistance}m`}
+                        label={{
+                          text: `${advice.targetDistance}m`,
+                          color: '#ffffff',
+                          fontWeight: '800',
+                          fontSize: '12px',
+                        }}
+                        icon={{
+                          path: google.maps.SymbolPath.CIRCLE,
+                          scale: 24,
+                          fillColor: '#13251b',
+                          fillOpacity: 0.82,
+                          strokeColor: '#b7d29e',
+                          strokeWeight: 4,
+                        }}
+                      />
+                    </>
+                  )}
+                </>
               )}
             </GoogleMap>
             <div style={S.mapInstruction}>CLICK MAP TO MOVE PLAYER</div>
@@ -433,6 +474,13 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
                 </div>
 
                 <div style={S.shortAdvice}>{advice.shortText}</div>
+                <div style={S.shotPlan}>
+                  <span>{advice.shotType === 'layup' ? 'LAYUP PLAN' : 'ATTACK PLAN'}</span>
+                  <strong>{advice.aimInstruction}</strong>
+                  <small>
+                    Target {advice.targetDistance}m · {advice.remainingDistance}m remaining
+                  </small>
+                </div>
 
                 <div style={S.metrics}>
                   <Metric label="Wind effect" value={`${advice.windAdjustment > 0 ? '+' : ''}${advice.windAdjustment}m`} />
@@ -544,6 +592,11 @@ const S: Record<string, React.CSSProperties> = {
   clubName: { fontFamily: 'Georgia, serif', fontSize: 25 },
   actualDistance: { color: '#6e8478', fontSize: 10, marginTop: 5 },
   shortAdvice: { padding: 14, borderRadius: 9, background: '#14271e', color: '#cfdbd3', fontSize: 12, lineHeight: 1.55 },
+  shotPlan: {
+    display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, padding: 13,
+    borderRadius: 9, border: '1px solid #39523f', background: '#101f17',
+    color: '#aab9b0', fontSize: 11, lineHeight: 1.45,
+  },
   metrics: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, margin: '14px 0 22px' },
   metric: { padding: 9, borderRadius: 7, background: '#111f19', display: 'flex', flexDirection: 'column', gap: 5, color: '#64786e', fontSize: 8 },
   strategyList: { margin: '0 0 22px', paddingLeft: 20, color: '#aebdb5', fontSize: 11, lineHeight: 1.55 },

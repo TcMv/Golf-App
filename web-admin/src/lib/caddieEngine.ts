@@ -44,6 +44,11 @@ type ClubOption = {
 export type CaddieAdvice = {
   distToPin: number;
   playingDistance: number;
+  target: Coordinate;
+  targetDistance: number;
+  remainingDistance: number;
+  shotType: 'attack' | 'layup';
+  aimInstruction: string;
   recommended: ClubOption;
   alternatives: ClubOption[];
   windLabel: string;
@@ -196,15 +201,27 @@ export function buildCaddieAdvice(params: {
     };
   });
 
+  const longestAdjustedCarry = Math.max(...options.map(option => option.adjustedCarry));
+  const shotType: CaddieAdvice['shotType'] =
+    distToPin > longestAdjustedCarry + 20 ? 'layup' : 'attack';
   const safeOptions = options.filter(option =>
     option.clearsHazards && option.adjustedCarry <= distToPin + 30
   );
-  const candidates = safeOptions.length > 0 ? safeOptions : options;
-  const recommended = candidates.reduce((best, option) =>
-    Math.abs(option.adjustedCarry - distToPin) < Math.abs(best.adjustedCarry - distToPin)
-      ? option
-      : best
-  );
+  const recommended = safeOptions.length > 0
+    ? shotType === 'layup'
+      ? safeOptions.reduce((best, option) =>
+          option.adjustedCarry > best.adjustedCarry ? option : best
+        )
+      : safeOptions.reduce((best, option) =>
+          Math.abs(option.adjustedCarry - distToPin) < Math.abs(best.adjustedCarry - distToPin)
+            ? option
+            : best
+        )
+    : options.reduce((best, option) =>
+        Math.abs(option.adjustedCarry - distToPin) < Math.abs(best.adjustedCarry - distToPin)
+          ? option
+          : best
+      );
   const baseCarry = recommended.club.carry_metres!;
   const windAdjustedCarry = windCarryAdjustment(baseCarry, windSpeed, windDir, bearingToGreen);
   const windAdjustment = windAdjustedCarry - baseCarry;
@@ -231,13 +248,27 @@ export function buildCaddieAdvice(params: {
         }
       : null
   );
+  const aimOffset = primaryHazard
+    ? primaryHazard.side === 'left' ? 8 : primaryHazard.side === 'right' ? -8 : 10
+    : 0;
+  const targetDistance = Math.min(recommended.adjustedCarry, Math.max(1, distToPin));
+  const target = destinationPoint(playerPos, bearingToGreen + aimOffset, targetDistance);
+  const remainingDistance = haversineMetres(target, greenMid);
+  const aimInstruction = primaryHazard
+    ? `Aim ${primaryHazard.side === 'left' ? 'right' : 'left'} of the direct line, away from ${primaryHazard.type}.`
+    : shotType === 'layup'
+      ? `Aim at the centre of the fairway and leave about ${remainingDistance}m.`
+      : 'Aim at the centre of the green.';
   const missLine = primaryHazard
     ? `Miss ${primaryHazard.side === 'centre'
       ? 'away from'
       : primaryHazard.side === 'left' ? 'right of' : 'left of'} ${primaryHazard.type}.`
     : 'Commit to the centre of the green.';
   const strategy = [
-    `Play this as ${playingDistance}m with ${clubLabel}; expected carry is ${recommended.adjustedCarry}m.`,
+    shotType === 'layup'
+      ? `Hit ${clubLabel} toward the marked landing area, carrying about ${targetDistance}m and leaving ${remainingDistance}m.`
+      : `Play this as ${playingDistance}m with ${clubLabel}; expected carry is ${recommended.adjustedCarry}m.`,
+    aimInstruction,
     primaryHazard
       ? `${primaryHazard.type} is in play at ${primaryHazard.distanceMetres}m ${primaryHazard.side}; favour the opposite side.`
       : 'No mapped hazard blocks the direct line to the green.',
@@ -258,6 +289,7 @@ export function buildCaddieAdvice(params: {
     : `Elevation: ${elevDiff > 0 ? '+' : ''}${elevDiff}m (${elevDiff > 0 ? 'uphill' : 'downhill'}).\n`;
   const context =
     `Hole ${holeNumber ?? ''}: ${distToPin}m to pin. Wind: ${windLabel}. ${elevationLine}`
+    + `Shot plan: ${shotType}; target ${targetDistance}m away, leaving ${remainingDistance}m. ${aimInstruction}\n`
     + `Recommended: ${clubLabel} (carries ${baseCarry}m, adjusted ${recommended.adjustedCarry}m).\n`
     + (activeHazards.length > 0 ? `Hazards in play:\n${hazardLines}\n` : 'No hazards in play.\n')
     + (recommended.warnings.length > 0
@@ -270,14 +302,44 @@ export function buildCaddieAdvice(params: {
   return {
     distToPin,
     playingDistance,
+    target,
+    targetDistance,
+    remainingDistance,
+    shotType,
+    aimInstruction,
     recommended,
     alternatives,
     windLabel,
     windAdjustment,
     elevDiff,
     strategy,
-    shortText: `${windLabel}. Play ${playingDistance}m. ${clubLabel}. ${missLine}`,
+    shortText: shotType === 'layup'
+      ? `${windLabel}. Hit ${clubLabel} to the ${targetDistance}m target. ${aimInstruction}`
+      : `${windLabel}. Play ${playingDistance}m. ${clubLabel}. ${missLine}`,
     context,
+  };
+}
+
+function destinationPoint(
+  from: Coordinate,
+  bearingDegrees: number,
+  distanceMetres: number,
+): Coordinate {
+  const angularDistance = distanceMetres / EARTH_RADIUS_METRES;
+  const bearingRadians = bearingDegrees * Math.PI / 180;
+  const latitude = from.latitude * Math.PI / 180;
+  const longitude = from.longitude * Math.PI / 180;
+  const targetLatitude = Math.asin(
+    Math.sin(latitude) * Math.cos(angularDistance)
+    + Math.cos(latitude) * Math.sin(angularDistance) * Math.cos(bearingRadians),
+  );
+  const targetLongitude = longitude + Math.atan2(
+    Math.sin(bearingRadians) * Math.sin(angularDistance) * Math.cos(latitude),
+    Math.cos(angularDistance) - Math.sin(latitude) * Math.sin(targetLatitude),
+  );
+  return {
+    latitude: targetLatitude * 180 / Math.PI,
+    longitude: targetLongitude * 180 / Math.PI,
   };
 }
 

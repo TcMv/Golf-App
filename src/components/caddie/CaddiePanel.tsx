@@ -28,13 +28,16 @@ export default function CaddiePanel({ advice, onDismiss, units, llmText, llmLoad
 
   // Deterministic fallback lines (used if LLM is unavailable)
   const fallbackLines = [
-    `Play this as ${convertDistance(playingDistance, units)}${unit} with ${clubLabel}.`,
+    advice.shotType === 'layup'
+      ? `Hit ${clubLabel} to the ${convertDistance(advice.targetDistance, units)}${unit} landing area, leaving ${convertDistance(advice.remainingDistance, units)}${unit}.`
+      : `Play this as ${convertDistance(playingDistance, units)}${unit} with ${clubLabel}.`,
+    advice.aimInstruction,
     primaryWarning
       ? `${primaryWarning.type} is in play at ${convertDistance(primaryWarning.distanceMetres, units)}${unit} ${primaryWarning.side}.`
       : history
         ? `You average ${history.avg.toFixed(1)} here with ${history.girPct}% GIR.`
-        : 'Commit to the centre of the green.',
-  ];
+        : null,
+  ].filter((line): line is string => line != null);
 
   // LLM text is 2 sentences separated by newline
   const llmLines = llmText
@@ -61,12 +64,26 @@ export default function CaddiePanel({ advice, onDismiss, units, llmText, llmLoad
           <Text style={styles.metricLabel}>TO PIN</Text>
         </View>
         <View style={styles.metric}>
-          <Text style={[styles.metricValue, styles.metricAccent]}>{convertDistance(playingDistance, units)}{unit}</Text>
-          <Text style={styles.metricLabel}>PLAYS LIKE</Text>
+          <Text style={[styles.metricValue, styles.metricAccent]}>
+            {convertDistance(
+              advice.shotType === 'layup' ? advice.targetDistance : playingDistance,
+              units,
+            )}{unit}
+          </Text>
+          <Text style={styles.metricLabel}>
+            {advice.shotType === 'layup' ? 'TARGET' : 'PLAYS LIKE'}
+          </Text>
         </View>
         <View style={styles.metric}>
-          <Text style={styles.metricValue}>{convertDistance(recommended.adjustedCarry, units)}{unit}</Text>
-          <Text style={styles.metricLabel}>EXPECTED</Text>
+          <Text style={styles.metricValue}>
+            {convertDistance(
+              advice.shotType === 'layup' ? advice.remainingDistance : recommended.adjustedCarry,
+              units,
+            )}{unit}
+          </Text>
+          <Text style={styles.metricLabel}>
+            {advice.shotType === 'layup' ? 'LEFT' : 'EXPECTED'}
+          </Text>
         </View>
       </View>
 
