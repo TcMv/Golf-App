@@ -111,9 +111,21 @@ export function applyLearnedCarries(
     const summary = learning[label];
     if (!summary || summary.sampleCount < minimumSamples) return club;
 
+    if (club.carry_metres == null) {
+      return { ...club, carry_metres: summary.reliableCarry };
+    }
+
+    // GPS tracks total shot distance, not pure carry. Keep learning useful
+    // without allowing rollout, slopes, or bad data to rewrite the user's bag.
+    const maximumChange = Math.max(8, Math.round(club.carry_metres * 0.1));
+    const boundedCarry = Math.max(
+      club.carry_metres - maximumChange,
+      Math.min(club.carry_metres + maximumChange, summary.reliableCarry),
+    );
+
     return {
       ...club,
-      carry_metres: summary.reliableCarry,
+      carry_metres: Math.round((club.carry_metres * 2 + boundedCarry) / 3),
     };
   });
 }

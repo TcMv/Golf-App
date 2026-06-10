@@ -39,6 +39,14 @@ type HazardWarning = {
   label: string;
 };
 
+type ActiveHazard = {
+  hazard: Hazard;
+  nearDistance: number;
+  farDistance: number;
+  side: HazardWarning['side'];
+  crossesShotCorridor: boolean;
+};
+
 type ClubOption = {
   club: Club;
   adjustedCarry: number;
@@ -205,22 +213,19 @@ export function buildCaddieAdvice(params: {
 
   const activeHazards = hazards
     .map(hazard => {
-      if (hazard.coordinates.length < 2) return null;
-      const centroid = polygonCentroid(hazard.coordinates);
-      const distance = haversineMetres(playerPos, centroid);
-      if (distance < 15 || distance > distToObjective * 1.15) return null;
-      const angleDifference = ((bearing(playerPos, centroid) - bearingToGreen + 540) % 360) - 180;
-      if (Math.abs(angleDifference) > 50) return null;
-      const side: HazardWarning['side'] = angleDifference < -10
-        ? 'left'
-        : angleDifference > 10 ? 'right' : 'centre';
-      return { hazard, distance, side };
+      if (hazard.coordinates.length < 3) return null;
+      const geometry = polygonShotGeometry(playerPos, bearingToGreen, hazard.coordinates);
+      if (geometry.farDistance < 5 || geometry.nearDistance > distToObjective + 35) return null;
+      if (!geometry.crossesShotCorridor && geometry.minimumLateralDistance > 35) return null;
+      return {
+        hazard,
+        nearDistance: geometry.nearDistance,
+        farDistance: geometry.farDistance,
+        side: geometry.side,
+        crossesShotCorridor: geometry.crossesShotCorridor,
+      };
     })
-    .filter(Boolean) as {
-      hazard: Hazard;
-      distance: number;
-      side: HazardWarning['side'];
-    }[];
+    .filter(Boolean) as ActiveHazard[];
 
   const options = usableClubs.map(club => {
     const deviation = club.carry_stddev_metres ?? 12;
@@ -236,17 +241,40 @@ export function buildCaddieAdvice(params: {
       playerElevation,
       greenElevation,
     ) * lieFactor);
-    const warnings = activeHazards
-      .filter(({ distance }) =>
-        distance >= adjustedCarry - deviation
-        && distance <= adjustedCarry + deviation * 0.5
-      )
-      .map(({ hazard, distance, side }) => ({
-        type: hazard.type,
-        distanceMetres: distance,
-        side,
-        label: `${hazard.type} ${distance}m ${side}`,
-      }));
+    const warnings: HazardWarning[] = [];
+    for (const {
+      hazard,
+      nearDistance,
+      farDistance,
+      side,
+      crossesShotCorridor,
+    } of activeHazards) {
+      const landMin = adjustedCarry - deviation;
+      const landMax = adjustedCarry + deviation * 0.5;
+      const landingOverlap = crossesShotCorridor
+        && farDistance >= landMin
+        && nearDistance <= landMax;
+      const reliableCarry = adjustedCarry - deviation;
+      const requiresCarry = crossesShotCorridor
+        && (hazard.type === 'water' || hazard.type === 'red_zone' || hazard.type === 'ob')
+        && nearDistance <= landMax
+        && reliableCarry < farDistance + 5;
+      const blocksFlight = crossesShotCorridor
+        && hazard.type === 'trees'
+        && nearDistance <= landMax;
+
+      if (landingOverlap || requiresCarry || blocksFlight) {
+        const distance = Math.max(1, Math.round(
+          requiresCarry || blocksFlight ? farDistance : (nearDistance + farDistance) / 2,
+        ));
+        warnings.push({
+          type: hazard.type,
+          distanceMetres: distance,
+          side,
+          label: `${hazard.type} ${distance}m ${side}`,
+        });
+      }
+    }
     return {
       club,
       adjustedCarry,
@@ -255,28 +283,41 @@ export function buildCaddieAdvice(params: {
     };
   });
 
-  const longestAdjustedCarry = Math.max(...options.map(option => option.adjustedCarry));
+  const safeOptions = options.filter(option => option.clearsHazards);
+  const reachableOptions = safeOptions.filter(option => {
+    const allowance = Math.max(8, option.club.carry_stddev_metres ?? 12);
+    return option.adjustedCarry >= distToObjective - allowance
+      && option.adjustedCarry <= distToObjective + 20;
+  });
   const shotType: CaddieAdvice['shotType'] = customTarget || lie === 'trees' || lie === 'recovery'
     ? 'recovery'
-    : distToObjective > longestAdjustedCarry + 20 ? 'layup' : 'attack';
-  const safeOptions = options.filter(option =>
-    option.clearsHazards && option.adjustedCarry <= distToObjective + 20
-  );
-  const recommended = safeOptions.length > 0
-    ? shotType === 'layup'
-      ? safeOptions.reduce((best, option) =>
-          option.adjustedCarry > best.adjustedCarry ? option : best
-        )
-      : safeOptions.reduce((best, option) =>
+    : reachableOptions.length > 0 ? 'attack' : 'layup';
+  const recommended =
+    shotType === 'attack'
+      ? reachableOptions.reduce((best, option) =>
           Math.abs(option.adjustedCarry - distToObjective) < Math.abs(best.adjustedCarry - distToObjective)
             ? option
             : best
         )
-    : options.reduce((best, option) =>
-        Math.abs(option.adjustedCarry - distToObjective) < Math.abs(best.adjustedCarry - distToObjective)
-          ? option
-          : best
-      );
+      : safeOptions.length > 0
+        ? safeOptions
+            .filter(option => option.adjustedCarry <= distToObjective + 5)
+            .reduce<ClubOption | null>((best, option) =>
+              !best || option.adjustedCarry > best.adjustedCarry ? option : best
+            , null)
+          ?? safeOptions.reduce((best, option) =>
+            Math.abs(option.adjustedCarry - distToObjective) < Math.abs(best.adjustedCarry - distToObjective)
+              ? option
+              : best
+          )
+        : options.reduce((best, option) =>
+            option.warnings.length < best.warnings.length
+              ? option
+              : option.warnings.length === best.warnings.length
+                && Math.abs(option.adjustedCarry - distToObjective) < Math.abs(best.adjustedCarry - distToObjective)
+                ? option
+                : best
+          );
   const baseCarry = recommended.club.carry_metres!;
   const windAdjustedCarry = windCarryAdjustment(baseCarry, windSpeed, windDir, bearingToGreen);
   const windAdjustment = windAdjustedCarry - baseCarry;
@@ -294,6 +335,9 @@ export function buildCaddieAdvice(params: {
 
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
   const primaryHazard = recommended.warnings[0] ?? null;
+  const visibleHazard = activeHazards
+    .filter(item => item.crossesShotCorridor)
+    .sort((left, right) => left.nearDistance - right.nearDistance)[0] ?? null;
   const targetDistance = customTarget
     ? Math.max(1, distToObjective)
     : Math.min(recommended.adjustedCarry, Math.max(1, distToObjective));
@@ -323,7 +367,7 @@ export function buildCaddieAdvice(params: {
       ? 'away from'
       : primaryHazard.side === 'left' ? 'right of' : 'left of'} ${primaryHazard.type}.`
     : 'Commit to the centre of the green.';
-  const strategy = [
+  const strategy: string[] = [
     shotType === 'recovery'
       ? customTarget
         ? `Recovery shot: hit ${clubLabel} to the selected target, about ${targetDistance}m away.`
@@ -332,10 +376,26 @@ export function buildCaddieAdvice(params: {
       ? `Hit ${clubLabel} toward the marked landing area, carrying about ${targetDistance}m and leaving ${remainingDistance}m.`
       : `Play this as ${playingDistance}m with ${clubLabel}; expected carry is ${recommended.adjustedCarry}m.`,
     aimInstruction,
-    primaryHazard
-      ? `${primaryHazard.type} is in play at ${primaryHazard.distanceMetres}m ${primaryHazard.side}; favour the opposite side.`
-      : 'No mapped hazard blocks the direct line to the green.',
   ];
+  if (primaryHazard) {
+    strategy.push(
+      `${primaryHazard.type} is in play at ${primaryHazard.distanceMetres}m ${primaryHazard.side}; favour the opposite side.`,
+    );
+  } else if (visibleHazard) {
+    const reliableCarry = recommended.adjustedCarry
+      - (recommended.club.carry_stddev_metres ?? 12);
+    if (targetDistance < visibleHazard.nearDistance) {
+      strategy.push(
+        `The ${targetDistance}m landing target finishes about ${Math.round(visibleHazard.nearDistance - targetDistance)}m short of ${visibleHazard.hazard.type}.`,
+      );
+    } else {
+      strategy.push(
+        `${visibleHazard.hazard.type} crosses the shot line from ${Math.round(visibleHazard.nearDistance)}m to ${Math.round(visibleHazard.farDistance)}m; reliable carry clears it by ${Math.max(0, Math.round(reliableCarry - visibleHazard.farDistance))}m.`,
+      );
+    }
+  } else {
+    strategy.push('No mapped hazard blocks the direct line to the green.');
+  }
   if (holeIndex != null) {
     strategy.push(
       holeIndex <= 5
@@ -345,7 +405,9 @@ export function buildCaddieAdvice(params: {
   }
 
   const hazardLines = activeHazards
-    .map(({ hazard, distance, side }) => `  - ${hazard.type} ${distance}m ${side}`)
+    .map(({ hazard, nearDistance, farDistance, side }) =>
+      `  - ${hazard.type} ${Math.round(nearDistance)}-${Math.round(farDistance)}m ${side}`
+    )
     .join('\n');
   const elevationLine = elevDiff === 0
     ? ''
@@ -509,6 +571,53 @@ function distanceToPolygonMetres(point: Coordinate, polygon: Hazard['coordinates
     ));
   }
   return minimum;
+}
+
+function polygonShotGeometry(
+  player: Coordinate,
+  shotBearing: number,
+  polygon: Hazard['coordinates'],
+): {
+  nearDistance: number;
+  farDistance: number;
+  minimumLateralDistance: number;
+  crossesShotCorridor: boolean;
+  side: HazardWarning['side'];
+} {
+  const latitudeScale = 111_320;
+  const longitudeScale = latitudeScale * Math.cos(player.latitude * Math.PI / 180);
+  const bearingRadians = shotBearing * Math.PI / 180;
+  const alongEast = Math.sin(bearingRadians);
+  const alongNorth = Math.cos(bearingRadians);
+  const rightEast = Math.cos(bearingRadians);
+  const rightNorth = -Math.sin(bearingRadians);
+  const projected = polygon.map(point => {
+    const east = (point.lng - player.longitude) * longitudeScale;
+    const north = (point.lat - player.latitude) * latitudeScale;
+    return {
+      along: east * alongEast + north * alongNorth,
+      lateral: east * rightEast + north * rightNorth,
+    };
+  });
+  const alongDistances = projected.map(point => point.along);
+  const lateralDistances = projected.map(point => point.lateral);
+  const nearDistance = Math.min(...alongDistances);
+  const farDistance = Math.max(...alongDistances);
+  const minimumLateral = Math.min(...lateralDistances);
+  const maximumLateral = Math.max(...lateralDistances);
+  const averageLateral = lateralDistances.reduce((sum, value) => sum + value, 0)
+    / lateralDistances.length;
+  const minimumLateralDistance = minimumLateral <= 0 && maximumLateral >= 0
+    ? 0
+    : Math.min(Math.abs(minimumLateral), Math.abs(maximumLateral));
+
+  return {
+    nearDistance,
+    farDistance,
+    minimumLateralDistance,
+    crossesShotCorridor: minimumLateral <= 18 && maximumLateral >= -18,
+    side: averageLateral < -8 ? 'left' : averageLateral > 8 ? 'right' : 'centre',
+  };
 }
 
 function pointInPolygon(point: Coordinate, polygon: Hazard['coordinates']): boolean {

@@ -114,6 +114,33 @@ assert.ok(longHoleAdvice.remainingDistance >= 40 && longHoleAdvice.remainingDist
 assert.match(longHoleAdvice.strategy[0], /landing area/);
 assert.match(longHoleAdvice.shortText, /210m target/);
 
+const shortClubAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.00162, longitude: 0 },
+  hazards: [],
+  clubs: [{
+    ...clubs[0],
+    id: 'tracked-seven',
+    name: '7 Iron',
+    carry_metres: 135,
+    carry_stddev_metres: 8,
+  }],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+
+assert.ok(shortClubAdvice);
+assert.equal(shortClubAdvice.distToPin, 180);
+assert.equal(shortClubAdvice.shotType, 'layup');
+assert.equal(shortClubAdvice.recommended.club.id, 'tracked-seven');
+assert.equal(shortClubAdvice.targetDistance, 135);
+assert.ok(shortClubAdvice.remainingDistance >= 44 && shortClubAdvice.remainingDistance <= 46);
+assert.match(shortClubAdvice.shortText, /135m target/);
+assert.doesNotMatch(shortClubAdvice.shortText, /Play 180m/);
+
 const rightHazardAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },
   greenMid: { latitude: 0.002275, longitude: 0 },
@@ -125,10 +152,10 @@ const rightHazardAdvice = buildCaddieAdvice({
     type: 'water',
     label: null,
     coordinates: [
-      { lat: 0.00185, lng: 0.00035 },
-      { lat: 0.00195, lng: 0.00035 },
-      { lat: 0.00195, lng: 0.00045 },
-      { lat: 0.00185, lng: 0.00045 },
+      { lat: 0.00185, lng: -0.00004 },
+      { lat: 0.00195, lng: -0.00004 },
+      { lat: 0.00195, lng: 0.00004 },
+      { lat: 0.00185, lng: 0.00004 },
     ],
     created_at: '',
   }],
@@ -234,6 +261,89 @@ const landingHazardAdvice = buildCaddieAdvice({
 assert.ok(landingHazardAdvice);
 assert.notEqual(landingHazardAdvice.target.longitude, 0);
 assert.match(landingHazardAdvice.aimInstruction, /away from bunker/);
+
+const forcedWaterLayupAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.00162, longitude: 0 },
+  hazards: [{
+    id: 'forced-water',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'water',
+    label: null,
+    coordinates: [
+      { lat: 0.00139, lng: -0.00008 },
+      { lat: 0.00158, lng: -0.00008 },
+      { lat: 0.00158, lng: 0.00008 },
+      { lat: 0.00139, lng: 0.00008 },
+    ],
+    created_at: '',
+  }],
+  clubs: [
+    {
+      ...clubs[0],
+      id: 'long-iron',
+      name: 'Long Iron',
+      carry_metres: 180,
+      carry_stddev_metres: 12,
+    },
+    {
+      ...clubs[0],
+      id: 'tracked-seven',
+      name: '7 Iron',
+      carry_metres: 135,
+      carry_stddev_metres: 8,
+    },
+  ],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+
+assert.ok(forcedWaterLayupAdvice);
+assert.equal(forcedWaterLayupAdvice.shotType, 'layup');
+assert.equal(forcedWaterLayupAdvice.recommended.club.id, 'tracked-seven');
+assert.equal(forcedWaterLayupAdvice.targetDistance, 135);
+assert.ok(forcedWaterLayupAdvice.strategy.some(line => line.includes('short of water')));
+
+const offCentreWaterAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.0018, longitude: 0 },
+  hazards: [{
+    id: 'wide-water',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'water',
+    label: null,
+    coordinates: [
+      { lat: 0.00095, lng: -0.00005 },
+      { lat: 0.00105, lng: -0.00005 },
+      { lat: 0.00105, lng: 0.003 },
+      { lat: 0.00095, lng: 0.003 },
+    ],
+    created_at: '',
+  }],
+  clubs: [{
+    ...clubs[0],
+    id: 'seven-crossing',
+    name: '7 Iron',
+    carry_metres: 115,
+    carry_stddev_metres: 8,
+  }],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+
+assert.ok(offCentreWaterAdvice);
+assert.equal(offCentreWaterAdvice.recommended.clearsHazards, false);
+assert.equal(offCentreWaterAdvice.recommended.warnings[0].type, 'water');
 
 const square = (lat, lng, size = 0.0001) => [
   { lat: lat - size, lng: lng - size },

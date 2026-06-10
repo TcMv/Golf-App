@@ -39,7 +39,29 @@ const clubs = applyLearnedCarries([
     carry_stddev_metres: null,
   },
 ], learning);
-assert.equal(clubs[0].carry_metres, 134);
+assert.equal(clubs[0].carry_metres, 138);
 assert.equal(learningNote('7I', learning), 'learned from 5 shots, usual miss left');
+
+const inflatedTracking = applyLearnedCarries([{
+  id: '2',
+  name: '7i',
+  type: 'iron',
+  custom_name: null,
+  loft: null,
+  sort_order: 1,
+  carry_metres: 135,
+  carry_stddev_metres: null,
+}], {
+  '7i': {
+    clubName: '7i',
+    sampleCount: 8,
+    averageCarry: 175,
+    reliableCarry: 180,
+    commonMiss: null,
+    commonStrike: 'pure',
+    hitRate: 75,
+  },
+});
+assert.equal(inflatedTracking[0].carry_metres, 140);
 
 console.log('shot tracking tests passed');

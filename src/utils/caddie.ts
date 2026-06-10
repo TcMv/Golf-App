@@ -3,6 +3,13 @@ import { windCarryAdjustment, elevationCarryAdjustment } from './wind';
 import type { Club, Coordinate, Hazard, Lie } from '../types';
 
 type LatLng = Coordinate;
+type ActiveHazard = {
+  hazard: Hazard;
+  nearDistance: number;
+  farDistance: number;
+  side: HazardWarning['side'];
+  crossesShotCorridor: boolean;
+};
 export type CaddieLie = Lie | 'trees';
 export type CaddieZone = {
   zone_type: 'green' | 'fairway';
@@ -196,21 +203,23 @@ export function buildCaddieAdvice(params: {
 
   if (usable.length === 0) return null;
 
-  // Identify hazards that are in the corridor toward the green
+  // Convert polygon geometry into along-shot distances. This catches long,
+  // narrow hazards that centroid-only checks miss.
   const activeHazards = hazards
     .map(h => {
-      if (h.coordinates.length < 2) return null;
-      const centroid = polygonCentroid(h.coordinates);
-      const dist = haversineMetres(playerPos, centroid);
-      if (dist < 15 || dist > distToObjective * 1.15) return null;
-      const bToHazard = calcBearing(playerPos, centroid);
-      const angleDiff = ((bToHazard - bToGreen + 180 + 360) % 360) - 180;
-      if (Math.abs(angleDiff) > 50) return null;
-      const side: 'left' | 'right' | 'centre' =
-        angleDiff < -10 ? 'left' : angleDiff > 10 ? 'right' : 'centre';
-      return { hazard: h, dist, side };
+      if (h.coordinates.length < 3) return null;
+      const geometry = polygonShotGeometry(playerPos, bToGreen, h.coordinates);
+      if (geometry.farDistance < 5 || geometry.nearDistance > distToObjective + 35) return null;
+      if (!geometry.crossesShotCorridor && geometry.minimumLateralDistance > 35) return null;
+      return {
+        hazard: h,
+        nearDistance: geometry.nearDistance,
+        farDistance: geometry.farDistance,
+        side: geometry.side,
+        crossesShotCorridor: geometry.crossesShotCorridor,
+      };
     })
-    .filter(Boolean) as { hazard: Hazard; dist: number; side: 'left' | 'right' | 'centre' }[];
+    .filter(Boolean) as ActiveHazard[];
 
   // Score each club
   function evaluateClub(club: Club): ClubOption {
@@ -222,15 +231,36 @@ export function buildCaddieAdvice(params: {
     );
     const warnings: HazardWarning[] = [];
 
-    for (const { hazard, dist, side } of activeHazards) {
+    for (const {
+      hazard,
+      nearDistance,
+      farDistance,
+      side,
+      crossesShotCorridor,
+    } of activeHazards) {
       const landMin = adjusted - stddev;
       const landMax = adjusted + stddev * 0.5;
-      if (dist >= landMin && dist <= landMax) {
+      const landingOverlap = crossesShotCorridor
+        && farDistance >= landMin
+        && nearDistance <= landMax;
+      const reliableCarry = adjusted - stddev;
+      const requiresCarry = crossesShotCorridor
+        && (hazard.type === 'water' || hazard.type === 'red_zone' || hazard.type === 'ob')
+        && nearDistance <= landMax
+        && reliableCarry < farDistance + 5;
+      const blocksFlight = crossesShotCorridor
+        && hazard.type === 'trees'
+        && nearDistance <= landMax;
+
+      if (landingOverlap || requiresCarry || blocksFlight) {
+        const distance = Math.max(1, Math.round(
+          requiresCarry || blocksFlight ? farDistance : (nearDistance + farDistance) / 2,
+        ));
         warnings.push({
           type: hazard.type,
-          distanceMetres: dist,
+          distanceMetres: distance,
           side,
-          label: `${hazard.type} ${dist}m ${side}`,
+          label: `${hazard.type} ${distance}m ${side}`,
         });
       }
     }
@@ -245,30 +275,42 @@ export function buildCaddieAdvice(params: {
 
   const options = usable.map(evaluateClub);
 
-  const longestAdjustedCarry = Math.max(...options.map(option => option.adjustedCarry));
+  const safeOptions = options.filter(option => option.clearsHazards);
+  const reachableOptions = safeOptions.filter(option => {
+    const allowance = Math.max(8, option.club.carry_stddev_metres ?? 12);
+    return option.adjustedCarry >= distToObjective - allowance
+      && option.adjustedCarry <= distToObjective + 20;
+  });
   const shotType: CaddieAdvice['shotType'] = customTarget || lie === 'trees' || lie === 'recovery'
     ? 'recovery'
-    : distToObjective > longestAdjustedCarry + 20 ? 'layup' : 'attack';
+    : reachableOptions.length > 0 ? 'attack' : 'layup';
 
-  // Attack with the closest safe club. When the green is out of range, advance
-  // the ball as far as safely possible and plan the next shot.
-  const safeOptions = options.filter(o => o.clearsHazards && o.adjustedCarry <= distToObjective + 20);
   const recommended =
-    safeOptions.length > 0
-      ? shotType === 'layup'
-        ? safeOptions.reduce((best, option) =>
-            option.adjustedCarry > best.adjustedCarry ? option : best
-          )
-        : safeOptions.reduce((best, option) =>
+    shotType === 'attack'
+      ? reachableOptions.reduce((best, option) =>
             Math.abs(option.adjustedCarry - distToObjective) < Math.abs(best.adjustedCarry - distToObjective)
               ? option
               : best
           )
-      : options.reduce((best, o) =>
-          Math.abs(o.adjustedCarry - distToObjective) < Math.abs(best.adjustedCarry - distToObjective)
-            ? o
-            : best
-        );
+      : safeOptions.length > 0
+        ? safeOptions
+            .filter(option => option.adjustedCarry <= distToObjective + 5)
+            .reduce<ClubOption | null>((best, option) =>
+              !best || option.adjustedCarry > best.adjustedCarry ? option : best
+            , null)
+          ?? safeOptions.reduce((best, option) =>
+            Math.abs(option.adjustedCarry - distToObjective) < Math.abs(best.adjustedCarry - distToObjective)
+              ? option
+              : best
+          )
+        : options.reduce((best, option) =>
+            option.warnings.length < best.warnings.length
+              ? option
+              : option.warnings.length === best.warnings.length
+                && Math.abs(option.adjustedCarry - distToObjective) < Math.abs(best.adjustedCarry - distToObjective)
+                ? option
+                : best
+          );
 
   const baseCarry = recommended.club.carry_metres!;
   const windAdjustedCarry = windCarryAdjustment(baseCarry, windSpeed, windDir, bToGreen);
@@ -284,6 +326,9 @@ export function buildCaddieAdvice(params: {
 
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
   const primaryHazard = recommended.warnings[0] ?? null;
+  const visibleHazard = activeHazards
+    .filter(item => item.crossesShotCorridor)
+    .sort((left, right) => left.nearDistance - right.nearDistance)[0] ?? null;
   const targetDistance = customTarget
     ? Math.max(1, distToObjective)
     : Math.min(recommended.adjustedCarry, Math.max(1, distToObjective));
@@ -333,6 +378,18 @@ export function buildCaddieAdvice(params: {
     strategy.push(
       `${primaryHazard.type} is in play at ${primaryHazard.distanceMetres}m ${primaryHazard.side}; favour the opposite side.`,
     );
+  } else if (visibleHazard) {
+    const reliableCarry = recommended.adjustedCarry
+      - (recommended.club.carry_stddev_metres ?? 12);
+    if (targetDistance < visibleHazard.nearDistance) {
+      strategy.push(
+        `The ${targetDistance}m landing target finishes about ${Math.round(visibleHazard.nearDistance - targetDistance)}m short of ${visibleHazard.hazard.type}.`,
+      );
+    } else {
+      strategy.push(
+        `${visibleHazard.hazard.type} crosses the shot line from ${Math.round(visibleHazard.nearDistance)}m to ${Math.round(visibleHazard.farDistance)}m; reliable carry clears it by ${Math.max(0, Math.round(reliableCarry - visibleHazard.farDistance))}m.`,
+      );
+    }
   } else {
     strategy.push('No mapped hazard blocks the direct line to the green.');
   }
@@ -352,7 +409,9 @@ export function buildCaddieAdvice(params: {
 
   // Context string for Claude
   const hazardLines = activeHazards
-    .map(({ hazard, dist, side }) => `  - ${hazard.type} ${dist}m ${side}`)
+    .map(({ hazard, nearDistance, farDistance, side }) =>
+      `  - ${hazard.type} ${Math.round(nearDistance)}-${Math.round(farDistance)}m ${side}`
+    )
     .join('\n');
   const elevLine = elevDiff !== 0
     ? `Elevation: ${elevDiff > 0 ? '+' : ''}${elevDiff}m (${elevDiff > 0 ? 'uphill' : 'downhill'}).\n`
@@ -509,6 +568,53 @@ function distanceToPolygonMetres(point: LatLng, polygon: Hazard['coordinates']):
     minimum = Math.min(minimum, distanceToSegment(0, 0, startX, startY, endX, endY));
   }
   return minimum;
+}
+
+function polygonShotGeometry(
+  player: LatLng,
+  shotBearing: number,
+  polygon: Hazard['coordinates'],
+): {
+  nearDistance: number;
+  farDistance: number;
+  minimumLateralDistance: number;
+  crossesShotCorridor: boolean;
+  side: HazardWarning['side'];
+} {
+  const latitudeScale = 111_320;
+  const longitudeScale = latitudeScale * Math.cos(player.latitude * Math.PI / 180);
+  const bearingRadians = shotBearing * Math.PI / 180;
+  const alongEast = Math.sin(bearingRadians);
+  const alongNorth = Math.cos(bearingRadians);
+  const rightEast = Math.cos(bearingRadians);
+  const rightNorth = -Math.sin(bearingRadians);
+  const projected = polygon.map(point => {
+    const east = (point.lng - player.longitude) * longitudeScale;
+    const north = (point.lat - player.latitude) * latitudeScale;
+    return {
+      along: east * alongEast + north * alongNorth,
+      lateral: east * rightEast + north * rightNorth,
+    };
+  });
+  const alongDistances = projected.map(point => point.along);
+  const lateralDistances = projected.map(point => point.lateral);
+  const nearDistance = Math.min(...alongDistances);
+  const farDistance = Math.max(...alongDistances);
+  const minimumLateral = Math.min(...lateralDistances);
+  const maximumLateral = Math.max(...lateralDistances);
+  const averageLateral = lateralDistances.reduce((sum, value) => sum + value, 0)
+    / lateralDistances.length;
+  const minimumLateralDistance = minimumLateral <= 0 && maximumLateral >= 0
+    ? 0
+    : Math.min(Math.abs(minimumLateral), Math.abs(maximumLateral));
+
+  return {
+    nearDistance,
+    farDistance,
+    minimumLateralDistance,
+    crossesShotCorridor: minimumLateral <= 18 && maximumLateral >= -18,
+    side: averageLateral < -8 ? 'left' : averageLateral > 8 ? 'right' : 'centre',
+  };
 }
 
 function pointInPolygon(point: LatLng, polygon: Hazard['coordinates']): boolean {
