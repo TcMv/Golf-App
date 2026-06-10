@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
+import { validatedCaddieFactor } from '../../utils/caddie';
 import type { CaddieAdvice } from '../../utils/caddie';
 import { convertDistance, distanceUnitLabel } from '../../utils/units';
 import type { DistanceUnits } from '../../utils/units';
@@ -43,12 +44,10 @@ export default function CaddiePanel({ advice, onDismiss, units, llmText, llmLoad
         : null,
   ].filter((line): line is string => line != null);
 
-  // LLM text is 2 sentences separated by newline
-  const llmLines = llmText
-    ? llmText.split('\n').filter(l => l.trim().length > 0).slice(0, 2)
-    : null;
-
-  const shotLines = llmLines ?? fallbackLines;
+  const aiFactor = validatedCaddieFactor(llmText);
+  const shotLines = aiFactor
+    ? [fallbackLines[0], aiFactor]
+    : fallbackLines;
 
   return (
     <View style={styles.card}>
@@ -97,7 +96,7 @@ export default function CaddiePanel({ advice, onDismiss, units, llmText, llmLoad
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionLabel}>SHOT PLAN</Text>
-        {llmLoading && !llmLines ? (
+        {llmLoading && !aiFactor ? (
           <View style={styles.llmLoading}>
             <ActivityIndicator size="small" color={Colors.green} />
             <Text style={styles.llmLoadingText}>Getting caddie read…</Text>

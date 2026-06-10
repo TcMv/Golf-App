@@ -19,7 +19,12 @@ import { useLocation } from '../../hooks/useLocation';
 import { haversineMetres } from '../../utils/distance';
 import { fetchElevation, fetchWind } from '../../utils/wind';
 import type { WindData } from '../../utils/wind';
-import { buildCaddieAdvice, buildCaddiePrompt, detectCaddieLie } from '../../utils/caddie';
+import {
+  buildCaddieAdvice,
+  buildCaddiePrompt,
+  detectCaddieLie,
+  validatedCaddieFactor,
+} from '../../utils/caddie';
 import type { CaddieAdvice, CaddieZone } from '../../utils/caddie';
 import { fetchHoleHistory } from '../../utils/holeHistory';
 import type { HoleHistorySummary } from '../../utils/holeHistory';
@@ -210,6 +215,14 @@ export default function ActiveRoundScreen() {
     () => applyLearnedCarries(clubs, learning),
     [clubs, learning],
   );
+  const clubMisses = useMemo(
+    () => Object.fromEntries(
+      Object.entries(learning)
+        .filter(([, summary]) => summary.sampleCount >= 3 && summary.commonMiss != null)
+        .map(([clubName, summary]) => [clubName, summary.commonMiss]),
+    ) as Record<string, 'left' | 'right' | 'short' | 'long'>,
+    [learning],
+  );
   const playerLie = useMemo(() => (
     location
       ? detectCaddieLie({ playerPos: location, hazards: holeHazards, zones, tee })
@@ -321,6 +334,7 @@ export default function ActiveRoundScreen() {
         history: holeHistory,
         lie: playerLie,
         customTarget,
+        clubMisses,
       });
       setCaddieAdvice(addLearnedMissAdvice(advice, learning));
     }, 600);
@@ -337,6 +351,7 @@ export default function ActiveRoundScreen() {
     location?.latitude,
     location?.longitude,
     customTarget,
+    clubMisses,
     playerLie,
     windData,
     holeHazards,
@@ -516,6 +531,7 @@ export default function ActiveRoundScreen() {
       history: holeHistory,
       lie: playerLie,
       customTarget,
+      clubMisses,
     }), learning);
     if (advice) {
       setCaddieAdvice(advice);
@@ -531,13 +547,13 @@ export default function ActiveRoundScreen() {
         .invoke('golf-coach', { body: { system, userMessage } })
         .then(({ data, error }) => {
           if (!error && typeof data?.text === 'string' && data.text.trim().length > 0) {
-            setCaddieLlmText(data.text.trim());
+            setCaddieLlmText(validatedCaddieFactor(data.text));
           }
         })
         .catch(() => { /* fall back to deterministic lines */ })
         .finally(() => setCaddieLlmLoading(false));
     }
-  }, [activeRound?.course.name, customTarget, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location, playerLie]);
+  }, [activeRound?.course.name, clubMisses, customTarget, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location, playerLie]);
 
   if (!activeRound || !hole) {
     return (

@@ -3,7 +3,9 @@ const {
   buildCaddieAdvice,
   buildCaddiePrompt,
   buildPreRoundBriefing,
+  authoritativeShotLine,
   detectCaddieLie,
+  validatedCaddieFactor,
 } = require('/tmp/golf-caddie-test/utils/caddie.js');
 
 const clubs = [
@@ -71,9 +73,33 @@ assert.ok(advice.strategy.some(line => line.includes('stroke index 3')));
 assert.ok(advice.strategy.some(line => line.includes('average is 4.8')));
 assert.ok(!advice.alternatives.some(option => option.club.type === 'putter'));
 
+const missBiasedAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.001, longitude: 0 },
+  hazards: [],
+  clubs,
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  clubMisses: { '7 iron': 'left' },
+});
+assert.ok(missBiasedAdvice);
+assert.match(missBiasedAdvice.aimInstruction, /Aim right/);
+assert.ok(missBiasedAdvice.target.longitude > 0);
+
 const prompt = buildCaddiePrompt(advice, 'Test Links');
 assert.match(prompt.system, /Test Links/);
 assert.doesNotMatch(prompt.system, /Nambour Golf Club/);
+assert.match(prompt.system, /Do not name or suggest a club/);
+assert.match(prompt.userMessage, /AUTHORITATIVE SHOT PLAN/);
+assert.equal(validatedCaddieFactor('Hit 3H 210m toward the green.'), null);
+assert.equal(validatedCaddieFactor('Use Driver and favour the left side.'), null);
+assert.equal(
+  validatedCaddieFactor('Protect against your usual miss and commit to the marked line.'),
+  'Protect against your usual miss and commit to the marked line.',
+);
 
 const longHoleAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },
@@ -113,6 +139,10 @@ assert.equal(longHoleAdvice.targetDistance, 210);
 assert.ok(longHoleAdvice.remainingDistance >= 40 && longHoleAdvice.remainingDistance <= 45);
 assert.match(longHoleAdvice.strategy[0], /landing area/);
 assert.match(longHoleAdvice.shortText, /210m target/);
+assert.equal(
+  authoritativeShotLine(longHoleAdvice),
+  'Hit Driver to the marked 210m landing area, leaving 43m.',
+);
 
 const shortClubAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },

@@ -144,6 +144,7 @@ export function buildCaddieAdvice(params: {
   holeIndex?: number;
   lie?: CaddieLie;
   customTarget?: Coordinate | null;
+  clubMisses?: Record<string, 'left' | 'right' | 'short' | 'long'>;
 }): CaddieAdvice | null {
   const {
     playerPos,
@@ -159,6 +160,7 @@ export function buildCaddieAdvice(params: {
     holeIndex,
     lie = 'rough',
     customTarget = null,
+    clubMisses = {},
   } = params;
   const elevDiff = Math.round(greenElevation - playerElevation);
   const distToPin = haversineMetres(playerPos, greenMid);
@@ -338,6 +340,7 @@ export function buildCaddieAdvice(params: {
     .slice(0, 2);
 
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
+  const selectedMiss = clubMisses[clubLabel.toLowerCase()] ?? null;
   const primaryHazard = recommended.warnings[0] ?? null;
   const targetDistance = customTarget
     ? Math.max(1, distToObjective)
@@ -351,6 +354,7 @@ export function buildCaddieAdvice(params: {
         bearingToGreen,
         hazards,
         shotType,
+        missDirection: selectedMiss,
       });
   const target = targetPlan.coordinate;
   const remainingDistance = haversineMetres(target, greenMid);
@@ -527,6 +531,7 @@ function chooseTarget(params: {
   bearingToGreen: number;
   hazards: Hazard[];
   shotType: CaddieAdvice['shotType'];
+  missDirection?: 'left' | 'right' | 'short' | 'long' | null;
 }): { coordinate: Coordinate; offsetDegrees: number; hazardType: HazardType | null } {
   const offsets = [0, -2, 2, -4, 4, -6, 6, -8, 8];
   const directTarget = destinationPoint(
@@ -563,6 +568,9 @@ function chooseTarget(params: {
       else if (distance < 15) hazardPenalty += (15 - distance) * 200;
     }
     const greenDistance = haversineMetres(coordinate, params.greenMid);
+    const preferredOffset = params.missDirection === 'left'
+      ? 4
+      : params.missDirection === 'right' ? -4 : 0;
     return {
       coordinate,
       offsetDegrees,
@@ -570,7 +578,8 @@ function chooseTarget(params: {
         ? nearestHazard?.type ?? directThreat
         : directThreat,
       score: hazardPenalty
-        + Math.abs(offsetDegrees) * (params.shotType === 'attack' ? 120 : 15)
+        + Math.abs(offsetDegrees - preferredOffset)
+          * (preferredOffset !== 0 ? 300 : params.shotType === 'attack' ? 120 : 15)
         + greenDistance * (params.shotType === 'attack' ? 80 : 2),
     };
   }).reduce((best, candidate) => candidate.score < best.score ? candidate : best);
@@ -677,7 +686,38 @@ function distanceToSegment(
 
 export function buildCaddiePrompt(advice: CaddieAdvice, courseName: string) {
   return {
-    system: `You are an experienced golf caddie at ${courseName}. Give pre-shot advice in exactly 2 short sentences. First sentence: the specific shot — club, target distance, and where to aim or land it. Second sentence: the one critical factor — the hazard to avoid, the wind effect, or the player's personal miss tendency if their data shows one. Be direct, confident, and specific. No filler phrases. Sound like a real caddie who knows the player's game.`,
-    userMessage: advice.context,
+    system: `You are an experienced golf caddie at ${courseName}. The app's shot engine has already chosen the club, distance, landing point, and aim line. Give exactly one short sentence describing only the single most important execution factor: mapped hazard, wind, lie, or tracked miss tendency. Do not name or suggest a club. Do not include any number or distance. Do not alter the shot plan. Be direct and specific.`,
+    userMessage: `AUTHORITATIVE SHOT PLAN — DO NOT CHANGE:\n${advice.context}\n\nReturn only the execution-factor sentence.`,
   };
+}
+
+export function authoritativeShotLine(advice: CaddieAdvice): string {
+  const clubLabel = advice.recommended.club.custom_name ?? advice.recommended.club.name;
+  if (advice.shotType === 'recovery') {
+    return advice.customTarget
+      ? `Hit ${clubLabel} to the selected ${advice.targetDistance}m recovery target.`
+      : 'Select the safest visible recovery target before choosing the shot.';
+  }
+  if (advice.shotType === 'layup') {
+    return `Hit ${clubLabel} to the marked ${advice.targetDistance}m landing area, leaving ${advice.remainingDistance}m.`;
+  }
+  if (advice.shotType === 'putt') {
+    return `Putt ${advice.targetDistance}m toward the hole.`;
+  }
+  return `Play ${clubLabel} to the marked target; it plays ${advice.playingDistance}m with ${advice.recommended.adjustedCarry}m expected carry.`;
+}
+
+export function validatedCaddieFactor(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const sentence = text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<=[.!?])\s+/)[0]
+    ?.trim();
+  if (!sentence || sentence.length > 220) return null;
+  if (/\d/.test(sentence)) return null;
+  if (/\b(driver|putter|wood|hybrid|iron|wedge|[1-9]\s*[- ]?(?:wood|iron)|[1-9]\s*[hiw]|pw|gw|sw|lw)\b/i.test(sentence)) {
+    return null;
+  }
+  return sentence;
 }

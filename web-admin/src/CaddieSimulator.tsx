@@ -9,7 +9,9 @@ import {
 import {
   buildCaddieAdvice,
   buildCaddiePrompt,
+  authoritativeShotLine,
   detectCaddieLie,
+  validatedCaddieFactor,
 } from './lib/caddieEngine';
 import type {
   CaddieAdvice,
@@ -244,7 +246,10 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
       setAiText(`AI read failed: ${invokeError.message}`);
       return;
     }
-    setAiText(typeof data?.text === 'string' ? data.text : 'The AI service returned no advice.');
+    const factor = validatedCaddieFactor(
+      typeof data?.text === 'string' ? data.text : null,
+    );
+    setAiText(factor ?? 'AI wording conflicted with the engine plan, so it was not used.');
   }, [advice, aiLoading, course]);
 
   const center = playerPosition ?? greenMid ?? tee ?? {
@@ -252,6 +257,11 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
     longitude: course?.lng ?? 152.9587,
   };
   const needsRecoveryTarget = advice?.shotType === 'recovery' && !customTarget;
+  const headlineDistance = advice
+    ? advice.shotType === 'layup' || advice.shotType === 'recovery'
+      ? advice.targetDistance
+      : advice.playingDistance
+    : 0;
 
   return (
     <LoadScript googleMapsApiKey={API_KEY}>
@@ -542,12 +552,16 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
             ) : (
               <>
                 <div style={S.primaryAdvice}>
-                  <div style={S.distance}>{advice.playingDistance}<span>m</span></div>
+                  <div style={S.distance}>{headlineDistance}<span>m</span></div>
                   <div>
                     <div style={S.clubName}>
                       {advice.recommended.club.custom_name ?? advice.recommended.club.name}
                     </div>
-                    <div style={S.actualDistance}>{advice.distToPin}m actual · {advice.recommended.adjustedCarry}m carry</div>
+                    <div style={S.actualDistance}>
+                      {advice.shotType === 'layup' || advice.shotType === 'recovery'
+                        ? `${advice.remainingDistance}m left · ${advice.recommended.adjustedCarry}m carry`
+                        : `${advice.distToPin}m actual · ${advice.recommended.adjustedCarry}m carry`}
+                    </div>
                   </div>
                 </div>
 
@@ -597,7 +611,13 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
                 >
                   {aiLoading ? 'Asking caddie...' : 'Generate AI caddie wording'}
                 </button>
-                {aiText && <div style={S.aiRead}>{aiText}</div>}
+                {aiText && (
+                  <div style={S.aiRead}>
+                    <strong>{authoritativeShotLine(advice)}</strong>
+                    <br />
+                    {aiText}
+                  </div>
+                )}
 
                 <details style={S.debug}>
                   <summary>Show engine context</summary>
