@@ -86,6 +86,8 @@ type Hazard = {
 type SelectedPolygon =
   | { kind: 'zone'; id: string; type: PrimaryZoneType }
   | { kind: 'hazard'; id: string; type: HazardType };
+type LayerType = DrawingType | 'markers';
+type LayerVisibility = Record<LayerType, boolean>;
 
 const ZONE_CONFIG: Record<DrawingType, {
   label: string;
@@ -103,6 +105,17 @@ const ZONE_CONFIG: Record<DrawingType, {
 
 const PRIMARY_TYPES: PrimaryZoneType[] = ['green', 'fairway'];
 const HAZARD_TYPES: HazardType[] = ['bunker', 'water', 'red_zone', 'ob', 'trees'];
+const LAYER_TYPES: LayerType[] = [...PRIMARY_TYPES, ...HAZARD_TYPES, 'markers'];
+const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
+  green: true,
+  fairway: true,
+  bunker: true,
+  water: true,
+  red_zone: true,
+  ob: true,
+  trees: true,
+  markers: true,
+};
 
 function isPrimaryZone(type: DrawingType): type is PrimaryZoneType {
   return type === 'green' || type === 'fairway';
@@ -152,6 +165,16 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
   const [traceMessage, setTraceMessage] = useState('');
   const [selectedPolygon, setSelectedPolygon] = useState<SelectedPolygon | null>(null);
   const [deletingPolygon, setDeletingPolygon] = useState(false);
+  const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(() => {
+    try {
+      const saved = window.localStorage.getItem('fairway-map-layers');
+      return saved
+        ? { ...DEFAULT_LAYER_VISIBILITY, ...JSON.parse(saved) as Partial<LayerVisibility> }
+        : DEFAULT_LAYER_VISIBILITY;
+    } catch {
+      return DEFAULT_LAYER_VISIBILITY;
+    }
+  });
 
   const mapRef = useRef<google.maps.Map | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -243,6 +266,10 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
     if (!mapRef.current) return;
     mapRef.current.setOptions({ draggableCursor: drawing || traceMode ? 'crosshair' : '' });
   }, [drawing, traceMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem('fairway-map-layers', JSON.stringify(layerVisibility));
+  }, [layerVisibility]);
 
   useEffect(() => () => {
     if (traceImage) URL.revokeObjectURL(traceImage.url);
@@ -344,6 +371,20 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
     }
     setSelectedPolygon(null);
   }, [deletingPolygon, hazards, selectedPolygon]);
+
+  const setLayerVisible = useCallback((type: LayerType, visible: boolean) => {
+    setLayerVisibility(current => ({ ...current, [type]: visible }));
+    if (!visible) {
+      setSelectedPolygon(current => current?.type === type ? null : current);
+    }
+  }, []);
+
+  const startDrawing = useCallback((type: DrawingType) => {
+    setLayerVisible(type, true);
+    setDrawing(current => current === type ? null : type);
+    setDraftCoords([]);
+    setSelectedPolygon(null);
+  }, [setLayerVisible]);
 
   const toggleHazardHole = useCallback((number: number) => {
     setHazardHoleNumbers(current => {
@@ -737,10 +778,8 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                         color: drawing === type ? '#000' : existing ? config.color : '#888',
                       }}
                       onClick={() => {
-                        setDrawing(current => current === type ? null : type);
-                        setDraftCoords([]);
+                        startDrawing(type);
                         setHazardHoleNumbers([]);
-                        setSelectedPolygon(null);
                       }}
                     >
                       {drawing === type
@@ -778,13 +817,9 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                         : config.color,
                     }}
                     onClick={() => {
-                      setDrawing(current => {
-                        const next = current === type ? null : type;
-                        setHazardHoleNumbers(next && holeNumber != null ? [holeNumber] : []);
-                        return next;
-                      });
-                      setDraftCoords([]);
-                      setSelectedPolygon(null);
+                      const starting = drawing !== type;
+                      startDrawing(type);
+                      setHazardHoleNumbers(starting && holeNumber != null ? [holeNumber] : []);
                     }}
                   >
                     {drawing === type
@@ -800,6 +835,63 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                   Saving {savingPoint.replace(/_/g, ' ')}...
                 </span>
               )}
+            </div>
+          </div>
+
+          <div style={S.layerBar}>
+            <span style={S.layerTitle}>Map layers</span>
+            <div style={S.layerButtons}>
+              {LAYER_TYPES.map(type => {
+                const visible = layerVisibility[type];
+                const config = type === 'markers'
+                  ? { label: 'Tee & green markers', color: '#b0bec5' }
+                  : ZONE_CONFIG[type];
+                return (
+                  <button
+                    key={type}
+                    style={{
+                      ...S.layerButton,
+                      ...(visible ? S.layerButtonActive : {}),
+                      borderColor: visible ? config.color : '#343434',
+                    }}
+                    title={`${visible ? 'Hide' : 'Show'} ${config.label.toLowerCase()}`}
+                    onClick={() => setLayerVisible(type, !visible)}
+                  >
+                    <span style={{
+                      ...S.layerSwatch,
+                      background: config.color,
+                      opacity: visible ? 1 : 0.25,
+                    }} />
+                    {config.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={S.layerBulkActions}>
+              <button
+                style={S.layerBulkButton}
+                onClick={() => setLayerVisibility({ ...DEFAULT_LAYER_VISIBILITY })}
+              >
+                Show all
+              </button>
+              <button
+                style={S.layerBulkButton}
+                onClick={() => {
+                  setLayerVisibility({
+                    green: false,
+                    fairway: false,
+                    bunker: false,
+                    water: false,
+                    red_zone: false,
+                    ob: false,
+                    trees: false,
+                    markers: false,
+                  });
+                  setSelectedPolygon(null);
+                }}
+              >
+                Hide all
+              </button>
             </div>
           </div>
 
@@ -954,7 +1046,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 opacity={0.72}
               />
             )}
-            {greenZone && (
+            {greenZone && layerVisibility.green && (
               <Polygon
                 key={`green-${greenZone.id}`}
                 paths={greenZone.coordinates}
@@ -974,7 +1066,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 }}
               />
             )}
-            {fairwayZone && (
+            {fairwayZone && layerVisibility.fairway && (
               <Polygon
                 key={`fairway-${fairwayZone.id}`}
                 paths={fairwayZone.coordinates}
@@ -994,7 +1086,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 }}
               />
             )}
-            {holeHazards.map(hazard => {
+            {holeHazards.filter(hazard => layerVisibility[hazard.type]).map(hazard => {
               const config = ZONE_CONFIG[hazard.type];
               return (
                 <Polygon
@@ -1026,7 +1118,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 />
               );
             })}
-            {hole?.green_mid_lat != null && (
+            {layerVisibility.markers && hole?.green_mid_lat != null && (
               <Marker
                 position={{ lat: hole.green_mid_lat, lng: hole.green_mid_lng! }}
                 title="Green middle - drag to update"
@@ -1049,7 +1141,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 }}
               />
             )}
-            {hole?.green_front_lat != null && (
+            {layerVisibility.markers && hole?.green_front_lat != null && (
               <Marker
                 position={{ lat: hole.green_front_lat, lng: hole.green_front_lng! }}
                 title="Green front - drag to update"
@@ -1072,7 +1164,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 }}
               />
             )}
-            {hole?.green_back_lat != null && (
+            {layerVisibility.markers && hole?.green_back_lat != null && (
               <Marker
                 position={{ lat: hole.green_back_lat, lng: hole.green_back_lng! }}
                 title="Green back - drag to update"
@@ -1095,7 +1187,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 }}
               />
             )}
-            {hole?.tee_lat != null && (
+            {layerVisibility.markers && hole?.tee_lat != null && (
               <Marker
                 position={{ lat: hole.tee_lat, lng: hole.tee_lng! }}
                 title="Tee - drag to update"
@@ -1289,6 +1381,69 @@ const S: Record<string, React.CSSProperties> = {
   },
   savingBadge: {
     color: '#4caf50', fontSize: 11, marginLeft: 8,
+  },
+  layerBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '7px 16px',
+    background: '#101010',
+    borderBottom: '1px solid #242424',
+    flexShrink: 0,
+    overflowX: 'auto',
+  },
+  layerTitle: {
+    color: '#777',
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
+  },
+  layerButtons: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+    flex: 1,
+  },
+  layerButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+    padding: '5px 8px',
+    borderRadius: 14,
+    border: '1px solid #343434',
+    background: '#181818',
+    color: '#5f5f5f',
+    fontSize: 10,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  layerButtonActive: {
+    background: '#222',
+    color: '#ddd',
+  },
+  layerSwatch: {
+    width: 7,
+    height: 7,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  layerBulkActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    paddingLeft: 4,
+    borderLeft: '1px solid #2b2b2b',
+  },
+  layerBulkButton: {
+    padding: '5px 7px',
+    border: 'none',
+    background: 'transparent',
+    color: '#777',
+    fontSize: 10,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
   },
   drawHint: {
     background: 'rgba(76,175,80,0.12)',
