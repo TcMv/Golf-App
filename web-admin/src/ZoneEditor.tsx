@@ -116,7 +116,12 @@ const MAP_OPTIONS: google.maps.MapOptions = {
   disableDoubleClickZoom: true,
 };
 
-export default function ZoneEditor() {
+type ZoneEditorProps = {
+  initialCourseId?: string;
+  onBack?: () => void;
+};
+
+export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [courseId, setCourseId] = useState('');
   const [holes, setHoles] = useState<Hole[]>([]);
@@ -154,9 +159,13 @@ export default function ZoneEditor() {
     supabase.from('courses').select('id, name').order('name').then(({ data }) => {
       const list = (data ?? []) as Course[];
       setCourses(list);
-      if (list.length === 1) setCourseId(list[0].id);
+      if (initialCourseId && list.some(course => course.id === initialCourseId)) {
+        setCourseId(initialCourseId);
+      } else if (list.length === 1) {
+        setCourseId(list[0].id);
+      }
     });
-  }, []);
+  }, [initialCourseId]);
 
   useEffect(() => {
     if (!courseId) return;
@@ -567,8 +576,12 @@ export default function ZoneEditor() {
         {/* ── Sidebar ──────────────────────────────────────────── */}
         <div style={S.sidebar}>
           <div style={S.sidebarHeader}>
-            <span style={S.logo}>⛳ Zone Admin</span>
-            <button style={S.signOut} onClick={() => supabase.auth.signOut()}>Sign out</button>
+            <span style={S.logo}>Fairway Studio</span>
+            {onBack ? (
+              <button style={S.signOut} onClick={onBack}>All clubs</button>
+            ) : (
+              <button style={S.signOut} onClick={() => supabase.auth.signOut()}>Sign out</button>
+            )}
           </div>
 
           <div style={S.sidebarBody}>

@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { isAdminEmail } from './lib/admin';
 import ZoneEditor from './ZoneEditor';
+import CourseLanding from './CourseLanding';
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -10,6 +11,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -22,6 +24,9 @@ export default function App() {
       await supabase.auth.signOut();
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, nextSession) => {
+      if (!nextSession) {
+        setSelectedCourseId(null);
+      }
       if (nextSession && !isAdminEmail(nextSession.user.email)) {
         setError('This account does not have administrator access.');
         setSession(null);
@@ -36,7 +41,22 @@ export default function App() {
     return <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#111', color: '#aaa' }}>Loading…</div>;
   }
 
-  if (session) return <ZoneEditor />;
+  if (session) {
+    if (selectedCourseId) {
+      return (
+        <ZoneEditor
+          initialCourseId={selectedCourseId}
+          onBack={() => setSelectedCourseId(null)}
+        />
+      );
+    }
+    return (
+      <CourseLanding
+        user={session.user}
+        onSelectCourse={setSelectedCourseId}
+      />
+    );
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
