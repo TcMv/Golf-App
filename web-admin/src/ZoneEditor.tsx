@@ -36,7 +36,9 @@ import { supabase } from './lib/supabase';
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
 type LatLng = { lat: number; lng: number };
-type ZoneType = 'green' | 'fairway';
+type PrimaryZoneType = 'green' | 'fairway';
+type HazardType = 'bunker' | 'water' | 'trees' | 'ob' | 'red_zone';
+type DrawingType = PrimaryZoneType | HazardType;
 
 type Course = { id: string; name: string };
 type Hole = {
@@ -52,9 +54,39 @@ type HoleZone = {
   id: string;
   course_id: string;
   hole_number: number;
-  zone_type: ZoneType;
+  zone_type: PrimaryZoneType;
   coordinates: LatLng[];
 };
+type Hazard = {
+  id: string;
+  course_id: string;
+  hole_number: number | null;
+  hole_numbers: number[] | null;
+  type: HazardType;
+  label: string | null;
+  coordinates: LatLng[];
+};
+
+const ZONE_CONFIG: Record<DrawingType, {
+  label: string;
+  color: string;
+  fillOpacity: number;
+}> = {
+  green: { label: 'Green', color: '#4caf50', fillOpacity: 0.25 },
+  fairway: { label: 'Fairway', color: '#ffc107', fillOpacity: 0.15 },
+  bunker: { label: 'Bunker', color: '#f5d76e', fillOpacity: 0.3 },
+  water: { label: 'Water', color: '#42a5f5', fillOpacity: 0.3 },
+  trees: { label: 'Trees', color: '#2e7d32', fillOpacity: 0.28 },
+  ob: { label: 'Out of Bounds', color: '#ffffff', fillOpacity: 0.08 },
+  red_zone: { label: 'Red Penalty', color: '#ef5350', fillOpacity: 0.25 },
+};
+
+const PRIMARY_TYPES: PrimaryZoneType[] = ['green', 'fairway'];
+const HAZARD_TYPES: HazardType[] = ['bunker', 'water', 'red_zone', 'ob', 'trees'];
+
+function isPrimaryZone(type: DrawingType): type is PrimaryZoneType {
+  return type === 'green' || type === 'fairway';
+}
 
 const MAP_OPTIONS: google.maps.MapOptions = {
   mapTypeId: 'satellite',
@@ -73,18 +105,24 @@ export default function ZoneEditor() {
   const [holes, setHoles] = useState<Hole[]>([]);
   const [holeNumber, setHoleNumber] = useState<number | null>(null);
   const [allZones, setAllZones] = useState<HoleZone[]>([]);
-  const [drawing, setDrawing] = useState<ZoneType | null>(null);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [drawing, setDrawing] = useState<DrawingType | null>(null);
   const [draftCoords, setDraftCoords] = useState<LatLng[]>([]);
   const [saving, setSaving] = useState(false);
 
   const mapRef = useRef<google.maps.Map | null>(null);
   // Always-current ref so polygon edit listeners never capture stale saveZone
-  const saveZoneRef = useRef<(t: ZoneType, c: LatLng[]) => Promise<void>>(async () => {});
+  const saveDrawingRef = useRef<(t: DrawingType, c: LatLng[]) => Promise<void>>(async () => {});
 
   const hole = holes.find(h => h.number === holeNumber) ?? null;
   const holeZones = allZones.filter(z => z.hole_number === holeNumber);
   const greenZone = holeZones.find(z => z.zone_type === 'green');
   const fairwayZone = holeZones.find(z => z.zone_type === 'fairway');
+  const holeHazards = hazards.filter(hazard =>
+    (hazard.hole_number == null && (!hazard.hole_numbers || hazard.hole_numbers.length === 0))
+    || hazard.hole_number === holeNumber
+    || hazard.hole_numbers?.includes(holeNumber ?? -1)
+  );
 
   // ── Data loading ────────────────────────────────────────────────
 
@@ -113,12 +151,24 @@ export default function ZoneEditor() {
   }, [courseId]);
 
   useEffect(() => {
-    if (!courseId) { setAllZones([]); return; }
-    supabase
-      .from('hole_zones')
-      .select('id, course_id, hole_number, zone_type, coordinates')
-      .eq('course_id', courseId)
-      .then(({ data }) => setAllZones((data ?? []) as HoleZone[]));
+    if (!courseId) {
+      setAllZones([]);
+      setHazards([]);
+      return;
+    }
+    Promise.all([
+      supabase
+        .from('hole_zones')
+        .select('id, course_id, hole_number, zone_type, coordinates')
+        .eq('course_id', courseId),
+      supabase
+        .from('hazards')
+        .select('id, course_id, hole_number, hole_numbers, type, label, coordinates')
+        .eq('course_id', courseId),
+    ]).then(([zonesResult, hazardsResult]) => {
+      setAllZones((zonesResult.data ?? []) as HoleZone[]);
+      setHazards((hazardsResult.data ?? []) as Hazard[]);
+    });
   }, [courseId]);
 
   // Centre map on selected hole
@@ -146,11 +196,37 @@ export default function ZoneEditor() {
 
   // ── Persistence ─────────────────────────────────────────────────
 
-  const saveZone = useCallback(async (type: ZoneType, coords: LatLng[]) => {
+  const saveDrawing = useCallback(async (type: DrawingType, coords: LatLng[]) => {
     if (!courseId || holeNumber == null) return;
     setSaving(true);
-    const existing = allZones.find(z => z.hole_number === holeNumber && z.zone_type === type);
-    const payload = { course_id: courseId, hole_number: holeNumber, zone_type: type, coordinates: coords };
+    if (!isPrimaryZone(type)) {
+      const { data, error } = await supabase
+        .from('hazards')
+        .insert({
+          course_id: courseId,
+          hole_number: holeNumber,
+          hole_numbers: [holeNumber],
+          type,
+          label: null,
+          coordinates: coords,
+        })
+        .select()
+        .single();
+      setSaving(false);
+      if (error) { alert('Save failed: ' + error.message); return; }
+      setHazards(prev => [...prev, data as Hazard]);
+      return;
+    }
+
+    const existing = allZones.find(zone =>
+      zone.hole_number === holeNumber && zone.zone_type === type
+    );
+    const payload = {
+      course_id: courseId,
+      hole_number: holeNumber,
+      zone_type: type,
+      coordinates: coords,
+    };
     const { data, error } = existing
       ? await supabase.from('hole_zones').update(payload).eq('id', existing.id).select().single()
       : await supabase.from('hole_zones').insert(payload).select().single();
@@ -163,14 +239,21 @@ export default function ZoneEditor() {
     ]);
   }, [courseId, holeNumber, allZones]);
 
-  useEffect(() => { saveZoneRef.current = saveZone; }, [saveZone]);
+  useEffect(() => { saveDrawingRef.current = saveDrawing; }, [saveDrawing]);
 
-  const clearZone = useCallback(async (type: ZoneType) => {
+  const clearZone = useCallback(async (type: PrimaryZoneType) => {
     const z = allZones.find(x => x.hole_number === holeNumber && x.zone_type === type);
     if (!z) return;
     await supabase.from('hole_zones').delete().eq('id', z.id);
     setAllZones(prev => prev.filter(x => x.id !== z.id));
   }, [allZones, holeNumber]);
+
+  const deleteHazard = useCallback(async (hazard: Hazard) => {
+    if (!confirm(`Delete this ${ZONE_CONFIG[hazard.type].label.toLowerCase()} polygon?`)) return;
+    const { error } = await supabase.from('hazards').delete().eq('id', hazard.id);
+    if (error) { alert('Delete failed: ' + error.message); return; }
+    setHazards(prev => prev.filter(item => item.id !== hazard.id));
+  }, []);
 
   // ── Drawing ──────────────────────────────────────────────────────
 
@@ -189,7 +272,7 @@ export default function ZoneEditor() {
     const type = drawing;
     setDrawing(null);
     setDraftCoords([]);
-    void saveZoneRef.current(type, coords);
+    void saveDrawingRef.current(type, coords);
   }, [draftCoords, drawing, saving]);
 
   // dblclick fires a click event immediately before it, so slice off that last point
@@ -225,14 +308,17 @@ export default function ZoneEditor() {
   }, [draftCoords.length, drawing, finishDrawing]);
 
   // After saving, polygons are editable — attach listeners to capture vertex drags
-  const attachEditListeners = useCallback((polygon: google.maps.Polygon, type: ZoneType) => {
+  const attachZoneEditListeners = useCallback((
+    polygon: google.maps.Polygon,
+    type: PrimaryZoneType,
+  ) => {
     const sync = () => {
       const path = polygon.getPath();
       const coords: LatLng[] = Array.from({ length: path.getLength() }, (_, i) => ({
         lat: path.getAt(i).lat(),
         lng: path.getAt(i).lng(),
       }));
-      void saveZoneRef.current(type, coords);
+      void saveDrawingRef.current(type, coords);
     };
     const path = polygon.getPath();
     path.addListener('set_at', sync);
@@ -241,12 +327,40 @@ export default function ZoneEditor() {
   }, []);
 
   const onGreenLoad = useCallback((p: google.maps.Polygon) => {
-    attachEditListeners(p, 'green');
-  }, [attachEditListeners]);
+    attachZoneEditListeners(p, 'green');
+  }, [attachZoneEditListeners]);
 
   const onFairwayLoad = useCallback((p: google.maps.Polygon) => {
-    attachEditListeners(p, 'fairway');
-  }, [attachEditListeners]);
+    attachZoneEditListeners(p, 'fairway');
+  }, [attachZoneEditListeners]);
+
+  const attachHazardEditListeners = useCallback((
+    polygon: google.maps.Polygon,
+    hazardId: string,
+  ) => {
+    const sync = async () => {
+      const path = polygon.getPath();
+      const coordinates: LatLng[] = Array.from({ length: path.getLength() }, (_, index) => ({
+        lat: path.getAt(index).lat(),
+        lng: path.getAt(index).lng(),
+      }));
+      const { error } = await supabase
+        .from('hazards')
+        .update({ coordinates })
+        .eq('id', hazardId);
+      if (error) {
+        alert('Save failed: ' + error.message);
+        return;
+      }
+      setHazards(prev => prev.map(hazard =>
+        hazard.id === hazardId ? { ...hazard, coordinates } : hazard
+      ));
+    };
+    const path = polygon.getPath();
+    path.addListener('set_at', sync);
+    path.addListener('insert_at', sync);
+    path.addListener('remove_at', sync);
+  }, []);
 
   // ── Sidebar status ───────────────────────────────────────────────
 
@@ -313,6 +427,45 @@ export default function ZoneEditor() {
                     );
                   })}
                 </div>
+
+                {hole && (
+                  <>
+                    <div style={{ ...S.sectionLabel, marginTop: 24 }}>
+                      H{hole.number} HAZARDS
+                      <span style={S.mappedBadge}>{holeHazards.length}</span>
+                    </div>
+                    {holeHazards.length === 0 ? (
+                      <div style={S.emptyHazards}>No hazards mapped</div>
+                    ) : (
+                      <div style={S.hazardList}>
+                        {holeHazards.map(hazard => (
+                          <div key={hazard.id} style={S.hazardRow}>
+                            <span
+                              style={{
+                                ...S.hazardDot,
+                                background: ZONE_CONFIG[hazard.type].color,
+                              }}
+                            />
+                            <span style={S.hazardName}>
+                              {hazard.label || ZONE_CONFIG[hazard.type].label}
+                              {hazard.hole_number == null
+                                && (!hazard.hole_numbers || hazard.hole_numbers.length === 0)
+                                ? ' (course-wide)'
+                                : ''}
+                            </span>
+                            <button
+                              style={S.hazardDelete}
+                              title="Delete polygon"
+                              onClick={() => void deleteHazard(hazard)}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             )}
           </div>
@@ -327,49 +480,73 @@ export default function ZoneEditor() {
               {hole ? `Hole ${hole.number}  ·  Par ${hole.par}` : 'Select a hole to start'}
             </span>
             <div style={S.toolbarActions}>
-              {/* Green */}
-              <button
-                disabled={!hole}
-                style={{
-                  ...S.zoneBtn,
-                  background: drawing === 'green' ? '#4caf50' : greenZone ? 'rgba(76,175,80,0.15)' : 'transparent',
-                  borderColor: drawing === 'green' || greenZone ? '#4caf50' : '#333',
-                  color: drawing === 'green' ? '#000' : greenZone ? '#4caf50' : '#888',
-                }}
-                onClick={() => { setDrawing(d => d === 'green' ? null : 'green'); setDraftCoords([]); }}
-              >
-                {drawing === 'green'
-                  ? `✏ Drawing… (${draftCoords.length} pts)`
-                  : greenZone ? `✓ Green  (${greenZone.coordinates.length} pts)`
-                  : '＋ Draw Green'}
-              </button>
-              {greenZone && drawing !== 'green' && (
-                <button style={S.clearBtn} title="Clear green" onClick={() => clearZone('green')}>✕</button>
-              )}
+              {PRIMARY_TYPES.map(type => {
+                const existing = type === 'green' ? greenZone : fairwayZone;
+                const config = ZONE_CONFIG[type];
+                return (
+                  <div key={type} style={S.toolGroup}>
+                    <button
+                      disabled={!hole}
+                      style={{
+                        ...S.zoneBtn,
+                        background: drawing === type
+                          ? config.color
+                          : existing ? `${config.color}22` : 'transparent',
+                        borderColor: drawing === type || existing ? config.color : '#333',
+                        color: drawing === type ? '#000' : existing ? config.color : '#888',
+                      }}
+                      onClick={() => {
+                        setDrawing(current => current === type ? null : type);
+                        setDraftCoords([]);
+                      }}
+                    >
+                      {drawing === type
+                        ? `Drawing ${config.label} (${draftCoords.length})`
+                        : existing ? `✓ ${config.label}`
+                        : `+ ${config.label}`}
+                    </button>
+                    {existing && drawing !== type && (
+                      <button
+                        style={S.clearBtn}
+                        title={`Clear ${config.label.toLowerCase()}`}
+                        onClick={() => void clearZone(type)}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
 
               <div style={S.divider} />
 
-              {/* Fairway */}
-              <button
-                disabled={!hole}
-                style={{
-                  ...S.zoneBtn,
-                  background: drawing === 'fairway' ? '#ffc107' : fairwayZone ? 'rgba(255,193,7,0.12)' : 'transparent',
-                  borderColor: drawing === 'fairway' || fairwayZone ? '#ffc107' : '#333',
-                  color: drawing === 'fairway' ? '#000' : fairwayZone ? '#ffc107' : '#888',
-                }}
-                onClick={() => { setDrawing(d => d === 'fairway' ? null : 'fairway'); setDraftCoords([]); }}
-              >
-                {drawing === 'fairway'
-                  ? `✏ Drawing… (${draftCoords.length} pts)`
-                  : fairwayZone ? `✓ Fairway  (${fairwayZone.coordinates.length} pts)`
-                  : '＋ Draw Fairway'}
-              </button>
-              {fairwayZone && drawing !== 'fairway' && (
-                <button style={S.clearBtn} title="Clear fairway" onClick={() => clearZone('fairway')}>✕</button>
-              )}
+              {HAZARD_TYPES.map(type => {
+                const config = ZONE_CONFIG[type];
+                return (
+                  <button
+                    key={type}
+                    disabled={!hole}
+                    style={{
+                      ...S.zoneBtn,
+                      background: drawing === type ? config.color : 'transparent',
+                      borderColor: drawing === type ? config.color : '#333',
+                      color: drawing === type
+                        ? type === 'ob' ? '#000' : '#111'
+                        : config.color,
+                    }}
+                    onClick={() => {
+                      setDrawing(current => current === type ? null : type);
+                      setDraftCoords([]);
+                    }}
+                  >
+                    {drawing === type
+                      ? `Drawing ${config.label} (${draftCoords.length})`
+                      : `+ ${config.label}`}
+                  </button>
+                );
+              })}
 
-              {saving && <span style={S.savingBadge}>Saving…</span>}
+              {saving && <span style={S.savingBadge}>Saving...</span>}
             </div>
           </div>
 
@@ -415,6 +592,25 @@ export default function ZoneEditor() {
                 }}
               />
             )}
+            {holeHazards.map(hazard => {
+              const config = ZONE_CONFIG[hazard.type];
+              return (
+                <Polygon
+                  key={`hazard-${hazard.id}`}
+                  paths={hazard.coordinates}
+                  editable
+                  onLoad={polygon => attachHazardEditListeners(polygon, hazard.id)}
+                  options={{
+                    fillColor: config.color,
+                    fillOpacity: config.fillOpacity,
+                    strokeColor: config.color,
+                    strokeWeight: hazard.type === 'ob' ? 3 : 2,
+                    strokeOpacity: 0.95,
+                    zIndex: hazard.type === 'trees' ? 1 : 2,
+                  }}
+                />
+              );
+            })}
             {hole?.green_mid_lat != null && (
               <Marker
                 position={{ lat: hole.green_mid_lat, lng: hole.green_mid_lng! }}
@@ -449,9 +645,9 @@ export default function ZoneEditor() {
               <Polygon
                 paths={draftCoords}
                 options={{
-                  fillColor: drawing === 'green' ? '#4caf50' : '#ffc107',
-                  fillOpacity: 0.18,
-                  strokeColor: drawing === 'green' ? '#4caf50' : '#ffc107',
+                  fillColor: ZONE_CONFIG[drawing].color,
+                  fillOpacity: ZONE_CONFIG[drawing].fillOpacity,
+                  strokeColor: ZONE_CONFIG[drawing].color,
                   strokeWeight: 2,
                   strokeOpacity: 0.7,
                   clickable: false,
@@ -467,7 +663,7 @@ export default function ZoneEditor() {
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
                   scale: i === 0 ? 6 : 4,
-                  fillColor: drawing === 'green' ? '#4caf50' : '#ffc107',
+                  fillColor: ZONE_CONFIG[drawing].color,
                   fillOpacity: 1,
                   strokeColor: '#fff',
                   strokeWeight: 2,
@@ -545,6 +741,29 @@ const S: Record<string, React.CSSProperties> = {
   holeNum: { fontWeight: 700, width: 32, fontSize: 13, color: 'inherit' },
   holePar: { flex: 1, color: '#555', fontSize: 11 },
   dots: { display: 'flex', gap: 3, lineHeight: 1 },
+  emptyHazards: {
+    color: '#555', fontSize: 11, padding: '6px 8px',
+  },
+  hazardList: {
+    display: 'flex', flexDirection: 'column', gap: 4,
+  },
+  hazardRow: {
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '6px 8px', borderRadius: 6,
+    background: '#1b1b1b', border: '1px solid #242424',
+  },
+  hazardDot: {
+    width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
+  },
+  hazardName: {
+    flex: 1, color: '#aaa', fontSize: 11,
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  },
+  hazardDelete: {
+    width: 22, height: 22, borderRadius: '50%',
+    background: 'transparent', border: '1px solid #333',
+    color: '#777', cursor: 'pointer', lineHeight: 1,
+  },
   mapArea: {
     flex: 1,
     display: 'flex',
@@ -552,8 +771,8 @@ const S: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
   },
   toolbar: {
-    padding: '0 16px',
-    height: 52,
+    padding: '8px 16px',
+    minHeight: 52,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -566,10 +785,14 @@ const S: Record<string, React.CSSProperties> = {
     color: '#aaa', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
   },
   toolbarActions: {
-    display: 'flex', alignItems: 'center', gap: 6,
+    display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+    gap: 6, flexWrap: 'wrap',
+  },
+  toolGroup: {
+    display: 'flex', alignItems: 'center', gap: 4,
   },
   zoneBtn: {
-    padding: '6px 14px', borderRadius: 20,
+    padding: '6px 11px', borderRadius: 20,
     border: '1px solid',
     fontSize: 12, fontWeight: 600, cursor: 'pointer',
     transition: 'all 0.15s',
