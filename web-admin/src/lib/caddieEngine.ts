@@ -238,24 +238,20 @@ export function buildCaddieAdvice(params: {
     .slice(0, 2);
 
   const clubLabel = recommended.club.custom_name ?? recommended.club.name;
-  const primaryHazard = recommended.warnings[0] ?? (
-    activeHazards.length > 0
-      ? {
-          type: activeHazards[0].hazard.type,
-          distanceMetres: activeHazards[0].distance,
-          side: activeHazards[0].side,
-          label: '',
-        }
-      : null
-  );
-  const aimOffset = primaryHazard
-    ? primaryHazard.side === 'left' ? 8 : primaryHazard.side === 'right' ? -8 : 10
-    : 0;
+  const primaryHazard = recommended.warnings[0] ?? null;
   const targetDistance = Math.min(recommended.adjustedCarry, Math.max(1, distToPin));
-  const target = destinationPoint(playerPos, bearingToGreen + aimOffset, targetDistance);
+  const targetPlan = chooseTarget({
+    playerPos,
+    greenMid,
+    targetDistance,
+    bearingToGreen,
+    hazards,
+    shotType,
+  });
+  const target = targetPlan.coordinate;
   const remainingDistance = haversineMetres(target, greenMid);
-  const aimInstruction = primaryHazard
-    ? `Aim ${primaryHazard.side === 'left' ? 'right' : 'left'} of the direct line, away from ${primaryHazard.type}.`
+  const aimInstruction = targetPlan.offsetDegrees !== 0
+    ? `Aim ${targetPlan.offsetDegrees < 0 ? 'left' : 'right'} of the direct line${targetPlan.hazardType ? `, away from ${targetPlan.hazardType}` : ''}.`
     : shotType === 'layup'
       ? `Aim at the centre of the fairway and leave about ${remainingDistance}m.`
       : 'Aim at the centre of the green.';
@@ -341,6 +337,118 @@ function destinationPoint(
     latitude: targetLatitude * 180 / Math.PI,
     longitude: targetLongitude * 180 / Math.PI,
   };
+}
+
+function chooseTarget(params: {
+  playerPos: Coordinate;
+  greenMid: Coordinate;
+  targetDistance: number;
+  bearingToGreen: number;
+  hazards: Hazard[];
+  shotType: CaddieAdvice['shotType'];
+}): { coordinate: Coordinate; offsetDegrees: number; hazardType: HazardType | null } {
+  const offsets = [0, -2, 2, -4, 4, -6, 6, -8, 8];
+  const directTarget = destinationPoint(
+    params.playerPos,
+    params.bearingToGreen,
+    params.targetDistance,
+  );
+  const directThreat = params.hazards
+    .filter(hazard => hazard.coordinates.length >= 3)
+    .map(hazard => ({
+      hazard,
+      distance: distanceToPolygonMetres(directTarget, hazard.coordinates),
+    }))
+    .filter(item => item.distance < 15)
+    .sort((left, right) => left.distance - right.distance)[0]?.hazard.type ?? null;
+  return offsets.map(offsetDegrees => {
+    const coordinate = destinationPoint(
+      params.playerPos,
+      params.bearingToGreen + offsetDegrees,
+      params.targetDistance,
+    );
+    let hazardPenalty = 0;
+    let nearestHazard: Hazard | null = null;
+    let nearestHazardDistance = Number.POSITIVE_INFINITY;
+    for (const hazard of params.hazards) {
+      if (hazard.coordinates.length < 3) continue;
+      const distance = distanceToPolygonMetres(coordinate, hazard.coordinates);
+      if (distance < nearestHazardDistance) {
+        nearestHazardDistance = distance;
+        nearestHazard = hazard;
+      }
+      if (distance === 0) hazardPenalty += 100_000;
+      else if (distance < 8) hazardPenalty += (8 - distance) * 2_000;
+      else if (distance < 15) hazardPenalty += (15 - distance) * 200;
+    }
+    const greenDistance = haversineMetres(coordinate, params.greenMid);
+    return {
+      coordinate,
+      offsetDegrees,
+      hazardType: nearestHazardDistance < 15
+        ? nearestHazard?.type ?? directThreat
+        : directThreat,
+      score: hazardPenalty
+        + Math.abs(offsetDegrees) * (params.shotType === 'attack' ? 120 : 15)
+        + greenDistance * (params.shotType === 'attack' ? 80 : 2),
+    };
+  }).reduce((best, candidate) => candidate.score < best.score ? candidate : best);
+}
+
+function distanceToPolygonMetres(point: Coordinate, polygon: Hazard['coordinates']): number {
+  if (pointInPolygon(point, polygon)) return 0;
+  const latitudeScale = 111_320;
+  const longitudeScale = latitudeScale * Math.cos(point.latitude * Math.PI / 180);
+  let minimum = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < polygon.length; index += 1) {
+    const start = polygon[index];
+    const end = polygon[(index + 1) % polygon.length];
+    minimum = Math.min(minimum, distanceToSegment(
+      0,
+      0,
+      (start.lng - point.longitude) * longitudeScale,
+      (start.lat - point.latitude) * latitudeScale,
+      (end.lng - point.longitude) * longitudeScale,
+      (end.lat - point.latitude) * latitudeScale,
+    ));
+  }
+  return minimum;
+}
+
+function pointInPolygon(point: Coordinate, polygon: Hazard['coordinates']): boolean {
+  let inside = false;
+  for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current++) {
+    const currentPoint = polygon[current];
+    const previousPoint = polygon[previous];
+    const intersects = (currentPoint.lat > point.latitude) !== (previousPoint.lat > point.latitude)
+      && point.longitude < (previousPoint.lng - currentPoint.lng)
+        * (point.latitude - currentPoint.lat)
+        / (previousPoint.lat - currentPoint.lat)
+        + currentPoint.lng;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function distanceToSegment(
+  pointX: number,
+  pointY: number,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+): number {
+  const deltaX = endX - startX;
+  const deltaY = endY - startY;
+  if (deltaX === 0 && deltaY === 0) return Math.hypot(pointX - startX, pointY - startY);
+  const ratio = Math.max(0, Math.min(1,
+    ((pointX - startX) * deltaX + (pointY - startY) * deltaY)
+      / (deltaX * deltaX + deltaY * deltaY),
+  ));
+  return Math.hypot(
+    pointX - (startX + ratio * deltaX),
+    pointY - (startY + ratio * deltaY),
+  );
 }
 
 export function buildCaddiePrompt(advice: CaddieAdvice, courseName: string) {

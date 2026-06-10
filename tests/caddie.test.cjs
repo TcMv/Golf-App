@@ -158,8 +158,81 @@ const rightHazardAdvice = buildCaddieAdvice({
 
 assert.ok(rightHazardAdvice);
 assert.equal(rightHazardAdvice.recommended.club.id, 'wood');
-assert.match(rightHazardAdvice.aimInstruction, /left.*water/);
-assert.ok(rightHazardAdvice.target.longitude < 0);
+assert.match(rightHazardAdvice.aimInstruction, /centre of the fairway/);
+
+const bunkerShortAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.001285, longitude: 0 },
+  hazards: [{
+    id: 'bunker-short',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'bunker',
+    label: null,
+    coordinates: [
+      { lat: 0.00105, lng: -0.00004 },
+      { lat: 0.00115, lng: -0.00004 },
+      { lat: 0.00115, lng: 0.00004 },
+      { lat: 0.00105, lng: 0.00004 },
+    ],
+    created_at: '',
+  }],
+  clubs: [{
+    ...clubs[0],
+    id: 'five',
+    name: '5 Iron',
+    carry_metres: 155,
+    carry_stddev_metres: 10,
+  }],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+
+assert.ok(bunkerShortAdvice);
+assert.equal(bunkerShortAdvice.shotType, 'attack');
+assert.ok(bunkerShortAdvice.remainingDistance <= 1);
+assert.ok(Math.abs(bunkerShortAdvice.target.longitude) < 0.000001);
+assert.equal(bunkerShortAdvice.aimInstruction, 'Aim at the centre of the green.');
+
+const landingHazardAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.001285, longitude: 0 },
+  hazards: [{
+    id: 'bunker-at-target',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'bunker',
+    label: null,
+    coordinates: [
+      { lat: 0.00123, lng: -0.00003 },
+      { lat: 0.00131, lng: -0.00003 },
+      { lat: 0.00131, lng: 0.00005 },
+      { lat: 0.00123, lng: 0.00005 },
+    ],
+    created_at: '',
+  }],
+  clubs: [{
+    ...clubs[0],
+    id: 'five',
+    name: '5 Iron',
+    carry_metres: 155,
+    carry_stddev_metres: 10,
+  }],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+});
+
+assert.ok(landingHazardAdvice);
+assert.notEqual(landingHazardAdvice.target.longitude, 0);
+assert.match(landingHazardAdvice.aimInstruction, /away from bunker/);
 
 const briefing = buildPreRoundBriefing({
   courseName: 'Test Links',
