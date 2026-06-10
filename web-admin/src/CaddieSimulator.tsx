@@ -9,9 +9,11 @@ import {
 import {
   buildCaddieAdvice,
   buildCaddiePrompt,
+  detectCaddieLie,
 } from './lib/caddieEngine';
 import type {
   CaddieAdvice,
+  CaddieZone,
   Club,
   Coordinate,
   Hazard,
@@ -88,6 +90,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
   const [holes, setHoles] = useState<Hole[]>([]);
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [clubs, setClubs] = useState<Club[]>([]);
+  const [zones, setZones] = useState<CaddieZone[]>([]);
   const [holeNumber, setHoleNumber] = useState<number | null>(null);
   const [playerPosition, setPlayerPosition] = useState<Coordinate | null>(null);
   const [windSpeed, setWindSpeed] = useState(0);
@@ -96,6 +99,8 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
   const [aiText, setAiText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState('');
+  const [customTarget, setCustomTarget] = useState<Coordinate | null>(null);
+  const [mapMode, setMapMode] = useState<'player' | 'target'>('player');
   const mapRef = useRef<google.maps.Map | null>(null);
 
   useEffect(() => {
@@ -111,16 +116,19 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
         .select('id, course_id, hole_number, hole_numbers, type, label, coordinates, created_at')
         .eq('course_id', courseId),
       supabase
+        .from('hole_zones')
+        .select('hole_number, zone_type, coordinates')
+        .eq('course_id', courseId),
+      supabase
         .from('user_clubs')
         .select('id, club_name, carry_distance_metres')
         .eq('user_id', userId)
-        .not('carry_distance_metres', 'is', null)
         .order('carry_distance_metres', { ascending: false }),
       supabase
         .from('clubs')
         .select('id, name, type, loft, custom_name, sort_order, carry_metres, carry_stddev_metres')
         .order('sort_order'),
-    ]).then(([courseResult, holesResult, hazardsResult, userClubsResult, globalClubsResult]) => {
+    ]).then(([courseResult, holesResult, hazardsResult, zonesResult, userClubsResult, globalClubsResult]) => {
       const firstError = courseResult.error || holesResult.error || hazardsResult.error;
       if (firstError) {
         setError(firstError.message);
@@ -131,6 +139,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
       setCourse(courseResult.data as Course);
       setHoles(loadedHoles);
       setHazards((hazardsResult.data ?? []) as Hazard[]);
+      setZones((zonesResult.data ?? []) as (CaddieZone & { hole_number: number })[]);
       setHoleNumber(loadedHoles[0]?.number ?? null);
       setClubs(personalClubs.length > 0
         ? personalClubs.map((club, index) => ({
@@ -158,10 +167,21 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
     || hazard.hole_number === holeNumber
     || hazard.hole_numbers?.includes(holeNumber ?? -1)
   ), [hazards, holeNumber]);
+  const holeZones = useMemo(() => (
+    (zones as (CaddieZone & { hole_number?: number })[])
+      .filter(zone => zone.hole_number === holeNumber)
+  ), [holeNumber, zones]);
+  const playerLie = useMemo(() => (
+    playerPosition
+      ? detectCaddieLie({ playerPos: playerPosition, hazards: holeHazards, zones: holeZones, tee })
+      : 'rough'
+  ), [holeHazards, holeZones, playerPosition, tee]);
 
   useEffect(() => {
     const position = tee ?? greenMid;
     setPlayerPosition(position);
+    setCustomTarget(null);
+    setMapMode('player');
     setAiText('');
     if (position && mapRef.current) {
       mapRef.current.panTo({ lat: position.latitude, lng: position.longitude });
@@ -188,6 +208,8 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
       holeNumber: hole.number,
       holePar: hole.par,
       holeIndex: hole.stroke_index,
+      lie: playerLie,
+      customTarget,
     });
   }, [
     clubs,
@@ -196,6 +218,8 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
     hole,
     holeHazards,
     playerPosition,
+    customTarget,
+    playerLie,
     windDirection,
     windLabel,
     windSpeed,
@@ -203,6 +227,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
 
   const placePlayer = useCallback((lat: number, lng: number) => {
     setPlayerPosition({ latitude: lat, longitude: lng });
+    setCustomTarget(null);
     setAiText('');
   }, []);
 
@@ -226,6 +251,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
     latitude: course?.lat ?? -26.6317,
     longitude: course?.lng ?? 152.9587,
   };
+  const needsRecoveryTarget = advice?.shotType === 'recovery' && !customTarget;
 
   return (
     <LoadScript googleMapsApiKey={API_KEY}>
@@ -314,6 +340,33 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
                 Green front
               </button>
             </div>
+            <div style={S.modeButtons}>
+              <button
+                style={{ ...S.quickButton, ...(mapMode === 'player' ? S.modeActive : {}) }}
+                onClick={() => setMapMode('player')}
+              >
+                Move player
+              </button>
+              <button
+                style={{ ...S.quickButton, ...(mapMode === 'target' ? S.modeActive : {}) }}
+                onClick={() => setMapMode('target')}
+              >
+                Choose shot target
+              </button>
+            </div>
+            <div style={S.lieBadge}>Detected lie: <strong>{playerLie}</strong></div>
+            {customTarget && (
+              <button
+                style={S.resetTarget}
+                onClick={() => {
+                  setCustomTarget(null);
+                  setMapMode('player');
+                  setAiText('');
+                }}
+              >
+                Use caddie target
+              </button>
+            )}
 
             <div style={S.divider} />
             <label style={S.label}>BAG USED FOR TEST</label>
@@ -336,7 +389,17 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
               options={MAP_OPTIONS}
               onLoad={map => { mapRef.current = map; }}
               onClick={event => {
-                if (event.latLng) placePlayer(event.latLng.lat(), event.latLng.lng());
+                if (!event.latLng) return;
+                if (mapMode === 'target') {
+                  setCustomTarget({
+                    latitude: event.latLng.lat(),
+                    longitude: event.latLng.lng(),
+                  });
+                  setMapMode('player');
+                  setAiText('');
+                } else {
+                  placePlayer(event.latLng.lat(), event.latLng.lng());
+                }
               }}
             >
               {holeHazards.map(hazard => (
@@ -384,7 +447,22 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
                   }}
                 />
               )}
-              {playerPosition && greenMid && (
+              {customTarget && !advice && (
+                <Marker
+                  position={{ lat: customTarget.latitude, lng: customTarget.longitude }}
+                  title="Player-selected shot target"
+                  label={{ text: 'TARGET', color: '#111', fontWeight: '800', fontSize: '10px' }}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 20,
+                    fillColor: '#f5d76e',
+                    fillOpacity: 0.95,
+                    strokeColor: '#fff',
+                    strokeWeight: 3,
+                  }}
+                />
+              )}
+              {playerPosition && greenMid && !needsRecoveryTarget && (
                 <>
                   <Polyline
                     path={[
@@ -475,11 +553,16 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
 
                 <div style={S.shortAdvice}>{advice.shortText}</div>
                 <div style={S.shotPlan}>
-                  <span>{advice.shotType === 'layup' ? 'LAYUP PLAN' : 'ATTACK PLAN'}</span>
+                  <span>
+                    {advice.shotType === 'recovery'
+                      ? 'RECOVERY PLAN'
+                      : advice.shotType === 'layup' ? 'LAYUP PLAN' : advice.shotType === 'putt' ? 'PUTT PLAN' : 'ATTACK PLAN'}
+                  </span>
                   <strong>{advice.aimInstruction}</strong>
                   <small>
                     Target {advice.targetDistance}m · {advice.remainingDistance}m remaining
                   </small>
+                  <small>Lie: {advice.lie}{advice.customTarget ? ' · player-selected target' : ''}</small>
                 </div>
 
                 <div style={S.metrics}>
@@ -567,6 +650,13 @@ const S: Record<string, React.CSSProperties> = {
   range: { display: 'block', width: '100%', marginTop: 10, accentColor: '#9fc187' },
   help: { color: '#71847a', fontSize: 11, lineHeight: 1.5, marginBottom: 12 },
   quickPositions: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 },
+  modeButtons: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 7 },
+  modeActive: { borderColor: '#f5d76e', color: '#f5d76e' },
+  lieBadge: { marginTop: 10, color: '#788d81', fontSize: 10, textTransform: 'capitalize' },
+  resetTarget: {
+    width: '100%', marginTop: 8, padding: 8, borderRadius: 6, border: '1px solid #536d5e',
+    background: 'transparent', color: '#b8c8bf', cursor: 'pointer', fontSize: 10,
+  },
   quickButton: {
     padding: '8px 5px', borderRadius: 6, border: '1px solid #30463a', background: '#15271e',
     color: '#a4b7ac', cursor: 'pointer', fontSize: 10,

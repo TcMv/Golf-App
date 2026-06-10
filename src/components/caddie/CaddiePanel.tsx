@@ -28,7 +28,11 @@ export default function CaddiePanel({ advice, onDismiss, units, llmText, llmLoad
 
   // Deterministic fallback lines (used if LLM is unavailable)
   const fallbackLines = [
-    advice.shotType === 'layup'
+    advice.shotType === 'recovery'
+      ? advice.customTarget
+        ? `Play ${clubLabel} to your selected ${convertDistance(advice.targetDistance, units)}${unit} recovery target.`
+        : 'Select the safest visible recovery target on the map.'
+      : advice.shotType === 'layup'
       ? `Hit ${clubLabel} to the ${convertDistance(advice.targetDistance, units)}${unit} landing area, leaving ${convertDistance(advice.remainingDistance, units)}${unit}.`
       : `Play this as ${convertDistance(playingDistance, units)}${unit} with ${clubLabel}.`,
     advice.aimInstruction,
@@ -66,23 +70,27 @@ export default function CaddiePanel({ advice, onDismiss, units, llmText, llmLoad
         <View style={styles.metric}>
           <Text style={[styles.metricValue, styles.metricAccent]}>
             {convertDistance(
-              advice.shotType === 'layup' ? advice.targetDistance : playingDistance,
+              advice.shotType === 'layup' || advice.shotType === 'recovery'
+                ? advice.targetDistance
+                : playingDistance,
               units,
             )}{unit}
           </Text>
           <Text style={styles.metricLabel}>
-            {advice.shotType === 'layup' ? 'TARGET' : 'PLAYS LIKE'}
+            {advice.shotType === 'layup' || advice.shotType === 'recovery' ? 'TARGET' : 'PLAYS LIKE'}
           </Text>
         </View>
         <View style={styles.metric}>
           <Text style={styles.metricValue}>
             {convertDistance(
-              advice.shotType === 'layup' ? advice.remainingDistance : recommended.adjustedCarry,
+              advice.shotType === 'layup' || advice.shotType === 'recovery'
+                ? advice.remainingDistance
+                : recommended.adjustedCarry,
               units,
             )}{unit}
           </Text>
           <Text style={styles.metricLabel}>
-            {advice.shotType === 'layup' ? 'LEFT' : 'EXPECTED'}
+            {advice.shotType === 'layup' || advice.shotType === 'recovery' ? 'LEFT' : 'EXPECTED'}
           </Text>
         </View>
       </View>

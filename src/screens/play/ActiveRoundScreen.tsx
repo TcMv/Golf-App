@@ -19,8 +19,8 @@ import { useLocation } from '../../hooks/useLocation';
 import { haversineMetres } from '../../utils/distance';
 import { fetchElevation, fetchWind } from '../../utils/wind';
 import type { WindData } from '../../utils/wind';
-import { buildCaddieAdvice, buildCaddiePrompt } from '../../utils/caddie';
-import type { CaddieAdvice } from '../../utils/caddie';
+import { buildCaddieAdvice, buildCaddiePrompt, detectCaddieLie } from '../../utils/caddie';
+import type { CaddieAdvice, CaddieZone } from '../../utils/caddie';
 import { fetchHoleHistory } from '../../utils/holeHistory';
 import type { HoleHistorySummary } from '../../utils/holeHistory';
 import {
@@ -124,6 +124,7 @@ export default function ActiveRoundScreen() {
   const [clubs, setClubs] = useState<Club[]>([]);
   const [shotLearningRows, setShotLearningRows] = useState<ShotLearningRow[]>([]);
   const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [zones, setZones] = useState<CaddieZone[]>([]);
   const [windData, setWindData] = useState<WindData | null>(null);
   const [holeHistory, setHoleHistory] = useState<HoleHistorySummary | null>(null);
   const [caddieAdvice, setCaddieAdvice] = useState<CaddieAdvice | null>(null);
@@ -135,6 +136,8 @@ export default function ActiveRoundScreen() {
   const [pendingShot, setPendingShot] = useState<PendingShot | null>(null);
   const [savingShot, setSavingShot] = useState(false);
   const [scoreSyncPending, setScoreSyncPending] = useState(false);
+  const [customTarget, setCustomTarget] = useState<Coordinate | null>(null);
+  const [selectingTarget, setSelectingTarget] = useState(false);
 
   const hole = useMemo(
     () => activeRound?.holes.find(item => item.number === activeRound.currentHoleNumber) ?? null,
@@ -207,6 +210,11 @@ export default function ActiveRoundScreen() {
     () => applyLearnedCarries(clubs, learning),
     [clubs, learning],
   );
+  const playerLie = useMemo(() => (
+    location
+      ? detectCaddieLie({ playerPos: location, hazards: holeHazards, zones, tee })
+      : 'rough'
+  ), [holeHazards, location, tee, zones]);
 
   useEffect(() => {
     let cancelled = false;
@@ -252,12 +260,21 @@ export default function ActiveRoundScreen() {
 
   useEffect(() => {
     if (!activeRound?.round.course_id) return;
-    supabase
-      .from('hazards')
-      .select('id, course_id, hole_number, hole_numbers, type, label, coordinates, created_at')
-      .eq('course_id', activeRound.round.course_id)
-      .then(({ data }) => setHazards((data ?? []) as Hazard[]));
-  }, [activeRound?.round.course_id]);
+    Promise.all([
+      supabase
+        .from('hazards')
+        .select('id, course_id, hole_number, hole_numbers, type, label, coordinates, created_at')
+        .eq('course_id', activeRound.round.course_id),
+      supabase
+        .from('hole_zones')
+        .select('zone_type, coordinates')
+        .eq('course_id', activeRound.round.course_id)
+        .eq('hole_number', activeRound.currentHoleNumber),
+    ]).then(([hazardsResult, zonesResult]) => {
+      setHazards((hazardsResult.data ?? []) as Hazard[]);
+      setZones((zonesResult.data ?? []) as CaddieZone[]);
+    });
+  }, [activeRound?.currentHoleNumber, activeRound?.round.course_id]);
 
   useEffect(() => {
     if (!windData && location) {
@@ -302,6 +319,8 @@ export default function ActiveRoundScreen() {
         holePar: hole?.par,
         holeIndex: hole?.stroke_index,
         history: holeHistory,
+        lie: playerLie,
+        customTarget,
       });
       setCaddieAdvice(addLearnedMissAdvice(advice, learning));
     }, 600);
@@ -317,6 +336,8 @@ export default function ActiveRoundScreen() {
     learning,
     location?.latitude,
     location?.longitude,
+    customTarget,
+    playerLie,
     windData,
     holeHazards,
   ]);
@@ -340,6 +361,8 @@ export default function ActiveRoundScreen() {
   useEffect(() => {
     setTrackingStart(null);
     setPendingShot(null);
+    setCustomTarget(null);
+    setSelectingTarget(false);
   }, [hole?.number]);
 
   const persistScore = useCallback(async (score: Partial<HoleScore>) => {
@@ -491,6 +514,8 @@ export default function ActiveRoundScreen() {
       holePar: hole.par,
       holeIndex: hole.stroke_index,
       history: holeHistory,
+      lie: playerLie,
+      customTarget,
     }), learning);
     if (advice) {
       setCaddieAdvice(advice);
@@ -512,7 +537,7 @@ export default function ActiveRoundScreen() {
         .catch(() => { /* fall back to deterministic lines */ })
         .finally(() => setCaddieLlmLoading(false));
     }
-  }, [activeRound?.course.name, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location]);
+  }, [activeRound?.course.name, customTarget, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location, playerLie]);
 
   if (!activeRound || !hole) {
     return (
@@ -529,6 +554,7 @@ export default function ActiveRoundScreen() {
     ? caddieAdvice.recommended.club.custom_name ?? caddieAdvice.recommended.club.name
     : null;
   const learnedNote = recommendedClub ? learningNote(recommendedClub, learning) : null;
+  const needsRecoveryTarget = caddieAdvice?.shotType === 'recovery' && !customTarget;
   const distanceDisplay = (value: number | null) => (
     value == null ? '-' : convertDistance(value, units)
   );
@@ -550,6 +576,12 @@ export default function ActiveRoundScreen() {
         showsMyLocationButton={false}
         showsCompass={false}
         rotateEnabled
+        onPress={event => {
+          if (!selectingTarget) return;
+          setCustomTarget(event.nativeEvent.coordinate);
+          setSelectingTarget(false);
+          setCaddieLlmText(null);
+        }}
       >
         {tee && (
           <Marker coordinate={tee}>
@@ -561,7 +593,7 @@ export default function ActiveRoundScreen() {
             <View style={styles.greenMarker}><Text style={styles.flag}>⚑</Text></View>
           </Marker>
         )}
-        {location && greenMid && (
+        {location && greenMid && !needsRecoveryTarget && (
           <>
             <Polyline
               coordinates={[location, caddieAdvice?.target ?? greenMid]}
@@ -628,6 +660,13 @@ export default function ActiveRoundScreen() {
             <View style={styles.trackingMarker} />
           </Marker>
         )}
+        {customTarget && !caddieAdvice && (
+          <Marker coordinate={customTarget}>
+            <View style={styles.customTargetMarker}>
+              <Text style={styles.customTargetMarkerText}>TARGET</Text>
+            </View>
+          </Marker>
+        )}
       </MapView>
 
       <View style={[styles.topOverlay, { top: insets.top + Spacing.sm }]}>
@@ -684,15 +723,42 @@ export default function ActiveRoundScreen() {
             <Text style={styles.caddieLabel}>CADDIE</Text>
             <Text style={styles.caddieText} numberOfLines={1}>
               {caddieAdvice
-                ? caddieAdvice.shotType === 'layup'
+                ? caddieAdvice.shotType === 'recovery'
+                  ? customTarget
+                    ? `${recommendedClub} · recovery target ${convertDistance(caddieAdvice.targetDistance, units)}${distanceUnitLabel(units, true)}`
+                    : 'Recovery required · choose a visible target'
+                  : caddieAdvice.shotType === 'layup'
                   ? `${recommendedClub} · target ${convertDistance(caddieAdvice.targetDistance, units)}${distanceUnitLabel(units, true)} · ${convertDistance(caddieAdvice.remainingDistance, units)} left`
                   : `${recommendedClub} · play ${convertDistance(caddieAdvice.playingDistance, units)}${distanceUnitLabel(units, true)}`
                 : location ? 'Calculating recommendation...' : 'Waiting for GPS...'}
             </Text>
             {learnedNote && <Text style={styles.learnedText} numberOfLines={1}>{learnedNote}</Text>}
+            <Text style={styles.lieText}>{playerLie.toUpperCase()} LIE</Text>
           </View>
           <Text style={styles.more}>MORE ›</Text>
         </TouchableOpacity>
+        <View style={styles.targetActions}>
+          <TouchableOpacity
+            style={[styles.targetAction, selectingTarget && styles.targetActionActive]}
+            onPress={() => setSelectingTarget(current => !current)}
+          >
+            <Text style={styles.targetActionText}>
+              {selectingTarget ? 'TAP MAP FOR TARGET' : 'CHOOSE TARGET'}
+            </Text>
+          </TouchableOpacity>
+          {customTarget && (
+            <TouchableOpacity
+              style={styles.targetAction}
+              onPress={() => {
+                setCustomTarget(null);
+                setSelectingTarget(false);
+                setCaddieLlmText(null);
+              }}
+            >
+              <Text style={styles.targetActionText}>USE CADDIE TARGET</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {(locationStale || locationError) && (
@@ -871,7 +937,20 @@ const styles = StyleSheet.create({
   caddieLabel: { color: Colors.green, fontFamily: Font.bold, fontSize: 9, letterSpacing: 1 },
   caddieText: { color: Colors.text, fontFamily: Font.semibold, fontSize: FontSize.sm },
   learnedText: { color: Colors.textMuted, fontFamily: Font.regular, fontSize: 9 },
+  lieText: { marginTop: 2, color: Colors.yellow, fontFamily: Font.bold, fontSize: 8 },
   more: { color: Colors.green, fontFamily: Font.bold, fontSize: FontSize.xs },
+  targetActions: { flexDirection: 'row', gap: Spacing.sm },
+  targetAction: {
+    flex: 1,
+    alignItems: 'center',
+    borderRadius: Radius.full,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.mapOverlay,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+  },
+  targetActionActive: { borderColor: Colors.yellow, backgroundColor: Colors.surface3 },
+  targetActionText: { color: Colors.text, fontFamily: Font.bold, fontSize: 9 },
   gpsWarning: {
     position: 'absolute',
     alignSelf: 'center',
@@ -998,6 +1077,17 @@ const styles = StyleSheet.create({
     fontFamily: Font.black,
     fontSize: 10,
   },
+  customTargetMarker: {
+    minWidth: 62,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.yellow,
+    borderWidth: 2,
+    borderColor: Colors.text,
+  },
+  customTargetMarkerText: { color: Colors.bg, fontFamily: Font.black, fontSize: 9 },
   caddieModal: { justifyContent: 'flex-end', backgroundColor: Colors.backdrop },
   caddieModalInner: { maxHeight: '88%' },
 });

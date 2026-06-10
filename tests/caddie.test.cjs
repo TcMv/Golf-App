@@ -3,6 +3,7 @@ const {
   buildCaddieAdvice,
   buildCaddiePrompt,
   buildPreRoundBriefing,
+  detectCaddieLie,
 } = require('/tmp/golf-caddie-test/utils/caddie.js');
 
 const clubs = [
@@ -233,6 +234,91 @@ const landingHazardAdvice = buildCaddieAdvice({
 assert.ok(landingHazardAdvice);
 assert.notEqual(landingHazardAdvice.target.longitude, 0);
 assert.match(landingHazardAdvice.aimInstruction, /away from bunker/);
+
+const square = (lat, lng, size = 0.0001) => [
+  { lat: lat - size, lng: lng - size },
+  { lat: lat + size, lng: lng - size },
+  { lat: lat + size, lng: lng + size },
+  { lat: lat - size, lng: lng + size },
+];
+
+assert.equal(detectCaddieLie({
+  playerPos: { latitude: 0, longitude: 0 },
+  hazards: [],
+  zones: [{ zone_type: 'fairway', coordinates: square(0, 0) }],
+}), 'fairway');
+
+assert.equal(detectCaddieLie({
+  playerPos: { latitude: 0, longitude: 0 },
+  hazards: [{
+    id: 'trees',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'trees',
+    label: null,
+    coordinates: square(0, 0),
+    created_at: '',
+  }],
+  zones: [],
+}), 'trees');
+
+const recoveryTarget = { latitude: 0, longitude: 0.0005 };
+const recoveryAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.002, longitude: 0 },
+  hazards: [],
+  clubs,
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  lie: 'trees',
+  customTarget: recoveryTarget,
+});
+
+assert.ok(recoveryAdvice);
+assert.equal(recoveryAdvice.shotType, 'recovery');
+assert.equal(recoveryAdvice.customTarget, true);
+assert.deepEqual(recoveryAdvice.target, recoveryTarget);
+assert.ok(recoveryAdvice.targetDistance >= 55 && recoveryAdvice.targetDistance <= 57);
+assert.ok(recoveryAdvice.recommended.adjustedCarry < recoveryAdvice.recommended.club.carry_metres);
+assert.match(recoveryAdvice.strategy[0], /Recovery shot/);
+
+const bunkerAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.0009, longitude: 0 },
+  hazards: [],
+  clubs,
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  lie: 'bunker',
+});
+
+assert.ok(bunkerAdvice);
+assert.ok(bunkerAdvice.recommended.adjustedCarry < bunkerAdvice.recommended.club.carry_metres);
+assert.notEqual(bunkerAdvice.recommended.club.type, 'wood');
+
+const puttingAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.00005, longitude: 0 },
+  hazards: [],
+  clubs,
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  lie: 'green',
+});
+
+assert.ok(puttingAdvice);
+assert.equal(puttingAdvice.shotType, 'putt');
+assert.equal(puttingAdvice.recommended.club.type, 'putter');
 
 const briefing = buildPreRoundBriefing({
   courseName: 'Test Links',
