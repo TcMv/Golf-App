@@ -47,8 +47,12 @@ type Hole = {
   par: number;
   tee_lat: number | null;
   tee_lng: number | null;
+  green_front_lat: number | null;
+  green_front_lng: number | null;
   green_mid_lat: number | null;
   green_mid_lng: number | null;
+  green_back_lat: number | null;
+  green_back_lng: number | null;
 };
 type HoleZone = {
   id: string;
@@ -109,6 +113,7 @@ export default function ZoneEditor() {
   const [drawing, setDrawing] = useState<DrawingType | null>(null);
   const [draftCoords, setDraftCoords] = useState<LatLng[]>([]);
   const [saving, setSaving] = useState(false);
+  const [savingPoint, setSavingPoint] = useState<string | null>(null);
 
   const mapRef = useRef<google.maps.Map | null>(null);
   // Always-current ref so polygon edit listeners never capture stale saveZone
@@ -140,7 +145,7 @@ export default function ZoneEditor() {
     setHoleNumber(null);
     supabase
       .from('holes')
-      .select('id, number, par, tee_lat, tee_lng, green_mid_lat, green_mid_lng')
+      .select('id, number, par, tee_lat, tee_lng, green_front_lat, green_front_lng, green_mid_lat, green_mid_lng, green_back_lat, green_back_lng')
       .eq('course_id', courseId)
       .order('number')
       .then(({ data }) => {
@@ -254,6 +259,25 @@ export default function ZoneEditor() {
     if (error) { alert('Delete failed: ' + error.message); return; }
     setHazards(prev => prev.filter(item => item.id !== hazard.id));
   }, []);
+
+  const saveHolePoint = useCallback(async (
+    field: 'tee' | 'green_front' | 'green_mid' | 'green_back',
+    position: LatLng,
+  ) => {
+    if (!hole) return;
+    setSavingPoint(field);
+    const update = {
+      [`${field}_lat`]: position.lat,
+      [`${field}_lng`]: position.lng,
+    };
+    const { error } = await supabase.from('holes').update(update).eq('id', hole.id);
+    setSavingPoint(null);
+    if (error) {
+      alert('Location save failed: ' + error.message);
+      return;
+    }
+    setHoles(prev => prev.map(item => item.id === hole.id ? { ...item, ...update } : item));
+  }, [hole]);
 
   // ── Drawing ──────────────────────────────────────────────────────
 
@@ -547,7 +571,16 @@ export default function ZoneEditor() {
               })}
 
               {saving && <span style={S.savingBadge}>Saving...</span>}
+              {savingPoint && (
+                <span style={S.savingBadge}>
+                  Saving {savingPoint.replace(/_/g, ' ')}...
+                </span>
+              )}
             </div>
+          </div>
+
+          <div style={S.pointHint}>
+            Drag T, F, M, or B markers to update tee and green locations.
           </div>
 
           {drawing && (
@@ -618,26 +651,90 @@ export default function ZoneEditor() {
             {hole?.green_mid_lat != null && (
               <Marker
                 position={{ lat: hole.green_mid_lat, lng: hole.green_mid_lng! }}
-                title="Green centre"
+                title="Green middle - drag to update"
+                label={{ text: 'M', color: '#0f0f0f', fontWeight: '700' }}
+                draggable={!drawing}
+                onDragEnd={event => {
+                  if (!event.latLng) return;
+                  void saveHolePoint('green_mid', {
+                    lat: event.latLng.lat(),
+                    lng: event.latLng.lng(),
+                  });
+                }}
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
-                  scale: 8,
-                  fillColor: '#fff',
+                  scale: 10,
+                  fillColor: '#4caf50',
                   fillOpacity: 1,
-                  strokeColor: '#4caf50',
+                  strokeColor: '#fff',
                   strokeWeight: 2.5,
+                }}
+              />
+            )}
+            {hole?.green_front_lat != null && (
+              <Marker
+                position={{ lat: hole.green_front_lat, lng: hole.green_front_lng! }}
+                title="Green front - drag to update"
+                label={{ text: 'F', color: '#0f0f0f', fontWeight: '700' }}
+                draggable={!drawing}
+                onDragEnd={event => {
+                  if (!event.latLng) return;
+                  void saveHolePoint('green_front', {
+                    lat: event.latLng.lat(),
+                    lng: event.latLng.lng(),
+                  });
+                }}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 9,
+                  fillColor: '#81c784',
+                  fillOpacity: 1,
+                  strokeColor: '#fff',
+                  strokeWeight: 2,
+                }}
+              />
+            )}
+            {hole?.green_back_lat != null && (
+              <Marker
+                position={{ lat: hole.green_back_lat, lng: hole.green_back_lng! }}
+                title="Green back - drag to update"
+                label={{ text: 'B', color: '#0f0f0f', fontWeight: '700' }}
+                draggable={!drawing}
+                onDragEnd={event => {
+                  if (!event.latLng) return;
+                  void saveHolePoint('green_back', {
+                    lat: event.latLng.lat(),
+                    lng: event.latLng.lng(),
+                  });
+                }}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 9,
+                  fillColor: '#2e7d32',
+                  fillOpacity: 1,
+                  strokeColor: '#fff',
+                  strokeWeight: 2,
                 }}
               />
             )}
             {hole?.tee_lat != null && (
               <Marker
                 position={{ lat: hole.tee_lat, lng: hole.tee_lng! }}
-                title="Tee"
+                title="Tee - drag to update"
+                label={{ text: 'T', color: '#0f0f0f', fontWeight: '700' }}
+                draggable={!drawing}
+                onDragEnd={event => {
+                  if (!event.latLng) return;
+                  void saveHolePoint('tee', {
+                    lat: event.latLng.lat(),
+                    lng: event.latLng.lng(),
+                  });
+                }}
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
-                  scale: 6,
+                  scale: 9,
                   fillColor: '#fff',
-                  fillOpacity: 0.8,
+                  fillOpacity: 1,
                   strokeColor: '#aaa',
                   strokeWeight: 2,
                 }}
@@ -819,6 +916,14 @@ const S: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid rgba(76,175,80,0.3)',
     padding: '8px 16px',
     fontSize: 12, color: '#4caf50',
+    flexShrink: 0,
+  },
+  pointHint: {
+    background: 'rgba(255,255,255,0.05)',
+    borderBottom: '1px solid #222',
+    padding: '6px 16px',
+    fontSize: 11,
+    color: '#888',
     flexShrink: 0,
   },
 };
