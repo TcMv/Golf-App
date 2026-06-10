@@ -559,10 +559,14 @@ export default function ZoneEditor() {
 
           <GoogleMap
             mapContainerStyle={{ flex: 1 }}
-            center={mapCenter}
-            zoom={19}
+            defaultCenter={mapCenter}
+            defaultZoom={19}
             options={MAP_OPTIONS}
-            onLoad={map => { mapRef.current = map; }}
+            onLoad={map => {
+              mapRef.current = map;
+              map.panTo(mapCenter);
+              map.setZoom(19);
+            }}
             onClick={onMapClick}
             onDblClick={onMapDblClick}
           >
