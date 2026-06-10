@@ -112,6 +112,7 @@ export default function ZoneEditor() {
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [drawing, setDrawing] = useState<DrawingType | null>(null);
   const [draftCoords, setDraftCoords] = useState<LatLng[]>([]);
+  const [hazardHoleNumbers, setHazardHoleNumbers] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [savingPoint, setSavingPoint] = useState<string | null>(null);
 
@@ -190,6 +191,7 @@ export default function ZoneEditor() {
     }
     setDrawing(null);
     setDraftCoords([]);
+    setHazardHoleNumbers([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hole?.id]);
 
@@ -205,12 +207,15 @@ export default function ZoneEditor() {
     if (!courseId || holeNumber == null) return;
     setSaving(true);
     if (!isPrimaryZone(type)) {
+      const assignedHoles = hazardHoleNumbers.length > 0
+        ? hazardHoleNumbers
+        : [holeNumber];
       const { data, error } = await supabase
         .from('hazards')
         .insert({
           course_id: courseId,
-          hole_number: holeNumber,
-          hole_numbers: [holeNumber],
+          hole_number: assignedHoles.length === 1 ? assignedHoles[0] : null,
+          hole_numbers: assignedHoles,
           type,
           label: null,
           coordinates: coords,
@@ -242,7 +247,7 @@ export default function ZoneEditor() {
       ...prev.filter(z => !(z.hole_number === holeNumber && z.zone_type === type)),
       saved,
     ]);
-  }, [courseId, holeNumber, allZones]);
+  }, [courseId, holeNumber, allZones, hazardHoleNumbers]);
 
   useEffect(() => { saveDrawingRef.current = saveDrawing; }, [saveDrawing]);
 
@@ -258,6 +263,16 @@ export default function ZoneEditor() {
     const { error } = await supabase.from('hazards').delete().eq('id', hazard.id);
     if (error) { alert('Delete failed: ' + error.message); return; }
     setHazards(prev => prev.filter(item => item.id !== hazard.id));
+  }, []);
+
+  const toggleHazardHole = useCallback((number: number) => {
+    setHazardHoleNumbers(current => {
+      if (current.includes(number)) {
+        if (current.length === 1) return current;
+        return current.filter(item => item !== number);
+      }
+      return [...current, number].sort((a, b) => a - b);
+    });
   }, []);
 
   const saveHolePoint = useCallback(async (
@@ -475,7 +490,9 @@ export default function ZoneEditor() {
                               {hazard.hole_number == null
                                 && (!hazard.hole_numbers || hazard.hole_numbers.length === 0)
                                 ? ' (course-wide)'
-                                : ''}
+                                : hazard.hole_numbers && hazard.hole_numbers.length > 1
+                                  ? ` (H${hazard.hole_numbers.join(', H')})`
+                                  : ''}
                             </span>
                             <button
                               style={S.hazardDelete}
@@ -522,6 +539,7 @@ export default function ZoneEditor() {
                       onClick={() => {
                         setDrawing(current => current === type ? null : type);
                         setDraftCoords([]);
+                        setHazardHoleNumbers([]);
                       }}
                     >
                       {drawing === type
@@ -559,7 +577,11 @@ export default function ZoneEditor() {
                         : config.color,
                     }}
                     onClick={() => {
-                      setDrawing(current => current === type ? null : type);
+                      setDrawing(current => {
+                        const next = current === type ? null : type;
+                        setHazardHoleNumbers(next && holeNumber != null ? [holeNumber] : []);
+                        return next;
+                      });
                       setDraftCoords([]);
                     }}
                   >
@@ -582,6 +604,43 @@ export default function ZoneEditor() {
           <div style={S.pointHint}>
             Drag T, F, M, or B markers to update tee and green locations.
           </div>
+
+          {drawing && !isPrimaryZone(drawing) && (
+            <div style={S.holeAssignment}>
+              <span style={S.assignmentLabel}>Applies to holes</span>
+              <button
+                style={{
+                  ...S.assignmentAll,
+                  ...(hazardHoleNumbers.length === holes.length ? S.assignmentActive : {}),
+                }}
+                onClick={() => setHazardHoleNumbers(holes.map(item => item.number))}
+              >
+                All holes
+              </button>
+              <div style={S.assignmentHoles}>
+                {holes.map(item => {
+                  const selected = hazardHoleNumbers.includes(item.number);
+                  return (
+                    <button
+                      key={item.id}
+                      style={{
+                        ...S.assignmentHole,
+                        ...(selected ? S.assignmentActive : {}),
+                      }}
+                      onClick={() => toggleHazardHole(item.number)}
+                    >
+                      {item.number}
+                    </button>
+                  );
+                })}
+              </div>
+              <span style={S.assignmentSummary}>
+                {hazardHoleNumbers.length === holes.length
+                  ? 'All holes selected'
+                  : `Holes ${hazardHoleNumbers.join(', ')}`}
+              </span>
+            </div>
+          )}
 
           {drawing && (
             <div style={S.drawHint}>
@@ -925,5 +984,58 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 11,
     color: '#888',
     flexShrink: 0,
+  },
+  holeAssignment: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '7px 16px',
+    background: '#171717',
+    borderBottom: '1px solid #292929',
+    flexShrink: 0,
+    overflowX: 'auto',
+  },
+  assignmentLabel: {
+    color: '#888',
+    fontSize: 11,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    marginRight: 4,
+  },
+  assignmentAll: {
+    padding: '5px 10px',
+    borderRadius: 14,
+    background: '#222',
+    border: '1px solid #333',
+    color: '#aaa',
+    fontSize: 11,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  assignmentHoles: {
+    display: 'flex',
+    gap: 4,
+  },
+  assignmentHole: {
+    width: 28,
+    height: 28,
+    borderRadius: '50%',
+    background: '#222',
+    border: '1px solid #333',
+    color: '#888',
+    fontSize: 11,
+    cursor: 'pointer',
+  },
+  assignmentActive: {
+    background: '#42a5f5',
+    borderColor: '#42a5f5',
+    color: '#0f0f0f',
+    fontWeight: 700,
+  },
+  assignmentSummary: {
+    color: '#42a5f5',
+    fontSize: 11,
+    whiteSpace: 'nowrap',
+    marginLeft: 4,
   },
 };
