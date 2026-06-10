@@ -27,15 +27,28 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 
 import {
   GoogleMap,
+  GroundOverlay,
   LoadScript,
   Marker,
   Polygon,
 } from '@react-google-maps/api';
 import { supabase } from './lib/supabase';
+import { magicTrace } from './lib/magicTrace';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
 type LatLng = { lat: number; lng: number };
+type ImageBounds = {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+};
+type TraceImage = {
+  url: string;
+  imageData: ImageData;
+  bounds: ImageBounds;
+};
 type PrimaryZoneType = 'green' | 'fairway';
 type HazardType = 'bunker' | 'water' | 'trees' | 'ob' | 'red_zone';
 type DrawingType = PrimaryZoneType | HazardType;
@@ -115,8 +128,13 @@ export default function ZoneEditor() {
   const [hazardHoleNumbers, setHazardHoleNumbers] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [savingPoint, setSavingPoint] = useState<string | null>(null);
+  const [traceImage, setTraceImage] = useState<TraceImage | null>(null);
+  const [traceMode, setTraceMode] = useState(false);
+  const [traceTolerance, setTraceTolerance] = useState(45);
+  const [traceMessage, setTraceMessage] = useState('');
 
   const mapRef = useRef<google.maps.Map | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Always-current ref so polygon edit listeners never capture stale saveZone
   const saveDrawingRef = useRef<(t: DrawingType, c: LatLng[]) => Promise<void>>(async () => {});
 
@@ -198,8 +216,12 @@ export default function ZoneEditor() {
   // Cursor crosshair while drawing
   useEffect(() => {
     if (!mapRef.current) return;
-    mapRef.current.setOptions({ draggableCursor: drawing ? 'crosshair' : '' });
-  }, [drawing]);
+    mapRef.current.setOptions({ draggableCursor: drawing || traceMode ? 'crosshair' : '' });
+  }, [drawing, traceMode]);
+
+  useEffect(() => () => {
+    if (traceImage) URL.revokeObjectURL(traceImage.url);
+  }, [traceImage]);
 
   // ── Persistence ─────────────────────────────────────────────────
 
@@ -296,10 +318,107 @@ export default function ZoneEditor() {
 
   // ── Drawing ──────────────────────────────────────────────────────
 
+  const uploadTraceImage = useCallback((file: File) => {
+    const mapBounds = mapRef.current?.getBounds();
+    if (!mapBounds) {
+      alert('The map is not ready yet.');
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const maximumDimension = 1400;
+      const scale = Math.min(1, maximumDimension / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) {
+        URL.revokeObjectURL(url);
+        alert('This browser could not process the image.');
+        return;
+      }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const northEast = mapBounds.getNorthEast();
+      const southWest = mapBounds.getSouthWest();
+      setTraceImage({
+          url,
+          imageData: context.getImageData(0, 0, canvas.width, canvas.height),
+          bounds: {
+            north: northEast.lat(),
+            east: northEast.lng(),
+            south: southWest.lat(),
+            west: southWest.lng(),
+          },
+      });
+      setTraceMode(true);
+      setTraceMessage('Image aligned to the current map view. Select a zone type, then click the feature.');
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      alert('Could not read that image.');
+    };
+    image.src = url;
+  }, []);
+
+  const latToMercator = (lat: number) => {
+    const sine = Math.sin(lat * Math.PI / 180);
+    return Math.log((1 + sine) / (1 - sine)) / 2;
+  };
+
+  const traceAt = useCallback((position: LatLng) => {
+    if (!traceImage || !drawing) return;
+    const { bounds, imageData } = traceImage;
+    if (
+      position.lng < bounds.west || position.lng > bounds.east
+      || position.lat < bounds.south || position.lat > bounds.north
+    ) {
+      setTraceMessage('Click inside the uploaded image.');
+      return;
+    }
+
+    const northY = latToMercator(bounds.north);
+    const southY = latToMercator(bounds.south);
+    const clickY = latToMercator(position.lat);
+    const seedX = (position.lng - bounds.west) / (bounds.east - bounds.west) * imageData.width;
+    const seedY = (northY - clickY) / (northY - southY) * imageData.height;
+    const pixels = magicTrace(imageData, {
+      seedX,
+      seedY,
+      tolerance: traceTolerance,
+      minimumPixels: 25,
+      simplifyTolerance: 2,
+    });
+
+    if (pixels.length < 3) {
+      setDraftCoords([]);
+      setTraceMessage('No usable region found. Increase the colour tolerance or click nearer the centre.');
+      return;
+    }
+
+    const coordinates = pixels.map(pixel => {
+      const xRatio = pixel.x / imageData.width;
+      const yRatio = pixel.y / imageData.height;
+      const mercatorY = northY - yRatio * (northY - southY);
+      const lat = Math.atan(Math.sinh(mercatorY)) * 180 / Math.PI;
+      return {
+        lat,
+        lng: bounds.west + xRatio * (bounds.east - bounds.west),
+      };
+    });
+    setDraftCoords(coordinates);
+    setTraceMessage(`Found a ${coordinates.length}-point outline. Drag vertices to adjust, then press Enter to save.`);
+  }, [drawing, traceImage, traceTolerance]);
+
   const onMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (!drawing || !e.latLng) return;
+    if (traceMode && traceImage) {
+      traceAt({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      return;
+    }
     setDraftCoords(prev => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
-  }, [drawing]);
+  }, [drawing, traceAt, traceImage, traceMode]);
 
   const finishDrawing = useCallback((removeDoubleClickPoint = false) => {
     if (!drawing || saving) return;
@@ -310,14 +429,17 @@ export default function ZoneEditor() {
 
     const type = drawing;
     setDrawing(null);
+    setTraceMode(false);
     setDraftCoords([]);
+    setTraceMessage('');
     void saveDrawingRef.current(type, coords);
   }, [draftCoords, drawing, saving]);
 
   // dblclick fires a click event immediately before it, so slice off that last point
   const onMapDblClick = useCallback((_e: google.maps.MapMouseEvent) => {
+    if (traceMode) return;
     finishDrawing(true);
-  }, [finishDrawing]);
+  }, [finishDrawing, traceMode]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -332,7 +454,9 @@ export default function ZoneEditor() {
       if (event.key === 'Escape') {
         event.preventDefault();
         setDrawing(null);
+        setTraceMode(false);
         setDraftCoords([]);
+        setTraceMessage('');
         return;
       }
 
@@ -394,6 +518,20 @@ export default function ZoneEditor() {
       setHazards(prev => prev.map(hazard =>
         hazard.id === hazardId ? { ...hazard, coordinates } : hazard
       ));
+    };
+    const path = polygon.getPath();
+    path.addListener('set_at', sync);
+    path.addListener('insert_at', sync);
+    path.addListener('remove_at', sync);
+  }, []);
+
+  const attachDraftEditListeners = useCallback((polygon: google.maps.Polygon) => {
+    const sync = () => {
+      const path = polygon.getPath();
+      setDraftCoords(Array.from({ length: path.getLength() }, (_, index) => ({
+        lat: path.getAt(index).lat(),
+        lng: path.getAt(index).lng(),
+      })));
     };
     const path = polygon.getPath();
     path.addListener('set_at', sync);
@@ -603,6 +741,63 @@ export default function ZoneEditor() {
 
           <div style={S.pointHint}>
             Drag T, F, M, or B markers to update tee and green locations.
+            <span style={S.traceActions}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                style={{ display: 'none' }}
+                onChange={event => {
+                  const file = event.target.files?.[0];
+                  if (file) uploadTraceImage(file);
+                  event.target.value = '';
+                }}
+              />
+              <button
+                style={S.traceButton}
+                title="Upload an owned or licensed image matching the map's current visible area"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {traceImage ? 'Replace trace image' : 'Upload trace image'}
+              </button>
+              {traceImage && (
+                <>
+                  <label style={S.toleranceLabel}>
+                    Colour tolerance
+                    <input
+                      type="range"
+                      min="10"
+                      max="120"
+                      value={traceTolerance}
+                      onChange={event => setTraceTolerance(Number(event.target.value))}
+                    />
+                    <span>{traceTolerance}</span>
+                  </label>
+                  <button
+                    style={{
+                      ...S.traceButton,
+                      ...(traceMode ? S.traceButtonActive : {}),
+                    }}
+                    onClick={() => {
+                      setTraceMode(current => !current);
+                      setTraceMessage('');
+                    }}
+                  >
+                    Magic fill {traceMode ? 'on' : 'off'}
+                  </button>
+                  <button
+                    style={S.removeTraceButton}
+                    onClick={() => {
+                      setTraceImage(null);
+                      setTraceMode(false);
+                      setTraceMessage('');
+                    }}
+                  >
+                    Remove image
+                  </button>
+                </>
+              )}
+            </span>
           </div>
 
           {drawing && !isPrimaryZone(drawing) && (
@@ -644,15 +839,16 @@ export default function ZoneEditor() {
 
           {drawing && (
             <div style={S.drawHint}>
-              Click to place vertices · <kbd>Enter</kbd> closes &amp; saves
-              {' '}· double-click also works · <kbd>Backspace</kbd> undoes · <kbd>Esc</kbd> cancels
+              {traceMode && traceImage
+                ? 'Magic fill: click the centre of the feature · adjust tolerance and click again if needed'
+                : <>Click to place vertices · <kbd>Enter</kbd> closes &amp; saves
+                  {' '}· double-click also works · <kbd>Backspace</kbd> undoes · <kbd>Esc</kbd> cancels</>}
             </div>
           )}
+          {traceMessage && <div style={S.traceMessage}>{traceMessage}</div>}
 
           <GoogleMap
             mapContainerStyle={{ flex: 1 }}
-            defaultCenter={mapCenter}
-            defaultZoom={19}
             options={MAP_OPTIONS}
             onLoad={map => {
               mapRef.current = map;
@@ -662,6 +858,13 @@ export default function ZoneEditor() {
             onClick={onMapClick}
             onDblClick={onMapDblClick}
           >
+            {traceImage && (
+              <GroundOverlay
+                url={traceImage.url}
+                bounds={traceImage.bounds}
+                opacity={0.72}
+              />
+            )}
             {greenZone && (
               <Polygon
                 key={`green-${greenZone.id}`}
@@ -804,19 +1007,20 @@ export default function ZoneEditor() {
             {drawing && draftCoords.length >= 2 && (
               <Polygon
                 paths={draftCoords}
+                editable={traceMode}
+                onLoad={traceMode ? attachDraftEditListeners : undefined}
                 options={{
                   fillColor: ZONE_CONFIG[drawing].color,
                   fillOpacity: ZONE_CONFIG[drawing].fillOpacity,
                   strokeColor: ZONE_CONFIG[drawing].color,
                   strokeWeight: 2,
                   strokeOpacity: 0.7,
-                  clickable: false,
-                  editable: false,
+                  clickable: traceMode,
                 }}
               />
             )}
             {/* Draft vertex dots */}
-            {drawing && draftCoords.map((pt, i) => (
+            {drawing && !traceMode && draftCoords.map((pt, i) => (
               <Marker
                 key={`draft-${i}`}
                 position={pt}
@@ -983,6 +1187,55 @@ const S: Record<string, React.CSSProperties> = {
     padding: '6px 16px',
     fontSize: 11,
     color: '#888',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  traceActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  traceButton: {
+    padding: '5px 9px',
+    borderRadius: 5,
+    background: '#222',
+    border: '1px solid #383838',
+    color: '#bbb',
+    fontSize: 11,
+    cursor: 'pointer',
+  },
+  traceButtonActive: {
+    background: '#4caf50',
+    borderColor: '#4caf50',
+    color: '#0f0f0f',
+    fontWeight: 700,
+  },
+  removeTraceButton: {
+    padding: '5px 8px',
+    border: 'none',
+    background: 'transparent',
+    color: '#777',
+    fontSize: 11,
+    cursor: 'pointer',
+  },
+  toleranceLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    color: '#888',
+    fontSize: 11,
+  },
+  traceMessage: {
+    padding: '7px 16px',
+    background: 'rgba(66,165,245,0.12)',
+    borderBottom: '1px solid rgba(66,165,245,0.3)',
+    color: '#64b5f6',
+    fontSize: 11,
     flexShrink: 0,
   },
   holeAssignment: {
