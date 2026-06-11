@@ -301,7 +301,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
       typeof data?.text === 'string' ? data.text : null,
       advice,
     );
-    setAiText(factor ?? 'AI wording conflicted with the engine plan, so it was not used.');
+    setAiText(factor ?? '');
   }, [advice, aiLoading, course]);
 
   const center = playerPosition ?? greenMid ?? tee ?? {

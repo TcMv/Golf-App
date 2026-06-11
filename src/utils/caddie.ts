@@ -918,7 +918,7 @@ export function authoritativeShotLine(advice: CaddieAdvice): string {
       : 'Select the safest visible recovery target before choosing the shot.';
   }
   if (advice.shotType === 'layup') {
-    return `Hit ${clubLabel} to the marked ${advice.targetDistance}m landing area, leaving ${advice.remainingDistance}m.`;
+    return `Hit ${clubLabel} toward the marked landing area, carrying about ${advice.targetDistance}m and leaving ${advice.remainingDistance}m.`;
   }
   if (advice.shotType === 'putt') {
     return `Putt ${advice.targetDistance}m toward the hole.`;

@@ -175,7 +175,7 @@ assert.match(longHoleAdvice.strategy[0], /landing area/);
 assert.match(longHoleAdvice.shortText, /210m target/);
 assert.equal(
   authoritativeShotLine(longHoleAdvice),
-  'Hit Driver to the marked 210m landing area, leaving 43m.',
+  'Hit Driver toward the marked landing area, carrying about 210m and leaving 43m.',
 );
 
 const doglegAdvice = buildCaddieAdvice({
