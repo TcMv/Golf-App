@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -26,6 +27,11 @@ import {
   calculateClubDistanceStats,
   calculatePerformanceAnalytics,
 } from '../../utils/statsAnalytics';
+import {
+  calculateRoundPar,
+  groupHolesByCourse,
+  roundHoleSequence,
+} from '../../utils/homeDashboard';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { HoleScore, Round, Club } from '../../types';
 import { convertDistance, distanceUnitLabel } from '../../utils/units';
@@ -451,6 +457,7 @@ export default function StatsScreen() {
     samples: number;
   }>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [storedHandicap, setStoredHandicap] = useState<string | null>(null);
 
   // Expanded Scorecards
@@ -469,31 +476,57 @@ export default function StatsScreen() {
   // ---------------------------------------------------------------------------
 
   const fetchData = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setLoadError(null);
     try {
+      const { data: roundsData, error: roundsError } = await supabase
+        .from('rounds')
+        .select(`
+          id,
+          course_id,
+          tee_set_id,
+          date,
+          holes_played,
+          starting_hole,
+          scoring_mode,
+          exclude_from_handicap,
+          gross_total,
+          net_total,
+          handicap_differential,
+          completed,
+          courses:course_id ( name )
+        `)
+        .eq('user_id', user.id)
+        .eq('completed', true)
+        .order('date', { ascending: false });
+      if (roundsError) throw roundsError;
+
+      const roundIds = (roundsData ?? []).map(round => round.id);
+      const courseIds = [...new Set((roundsData ?? []).map(round => round.course_id))];
       const [
-        { data: roundsData },
-        { data: scoresData },
-        { data: settingsData },
-        { data: userClubsData },
-        { data: globalClubsData },
-        { data: shotsData },
+        holesResult,
+        scoresResult,
+        userClubsResult,
+        globalClubsResult,
+        shotsResult,
       ] = await Promise.all([
-        supabase
-          .from('rounds')
-          .select('id, course_id, tee_set_id, date, holes_played, exclude_from_handicap, gross_total, net_total, handicap_differential, completed, courses:course_id ( name ), holes:course_id ( number, par )')
-          .eq('user_id', user.id)
-          .eq('completed', true)
-          .order('date', { ascending: false }),
-        supabase
-          .from('hole_scores')
-          .select('id, round_id, hole_number, gross_score, fairway_hit, gir, putts'),
-        supabase
-          .from('profiles')
-          .select('handicap_index')
-          .eq('id', user.id)
-          .maybeSingle(),
+        courseIds.length > 0
+          ? supabase
+              .from('holes')
+              .select('course_id, number, par')
+              .in('course_id', courseIds)
+              .order('number')
+          : Promise.resolve({ data: [], error: null }),
+        roundIds.length > 0
+          ? supabase
+              .from('hole_scores')
+              .select('id, round_id, hole_number, gross_score, fairway_hit, gir, putts')
+              .in('round_id', roundIds)
+          : Promise.resolve({ data: [], error: null }),
         supabase
           .from('user_clubs')
           .select('id, user_id, club_name, carry_distance_metres, total_distance_metres, created_at')
@@ -504,77 +537,93 @@ export default function StatsScreen() {
           .order('sort_order'),
         supabase
           .from('shots')
-          .select('club_id, club_name, distance_metres')
+          .select('club_id, club_name, distance_metres, rounds!inner(user_id)')
+          .eq('rounds.user_id', user.id)
           .not('distance_metres', 'is', null),
       ]);
 
-      // Process Rounds Data
-      const processedRounds: RoundRow[] = (roundsData ?? []).map((r: any) => {
-        const start = r.starting_hole ?? 1;
-        const sequence = r.holes_played === 9
-          ? Array.from({ length: 9 }, (_, index) => start + index)
-          : Array.from({ length: 18 }, (_, index) => ((start - 1 + index) % 18) + 1);
-        const hList = (r.holes ?? []).filter((hole: { number: number }) => sequence.includes(hole.number));
-        const parTotal = hList.length > 0 ? hList.reduce((sum: number, h: any) => sum + h.par, 0) : null;
+      if (holesResult.error) throw holesResult.error;
+      if (scoresResult.error) throw scoresResult.error;
+
+      const holesByCourse = groupHolesByCourse(holesResult.data ?? []);
+      const scoresData = (scoresResult.data ?? []) as HoleScore[];
+      const scoresByRound = scoresData.reduce<Record<string, HoleScore[]>>((grouped, score) => {
+        grouped[score.round_id] = [...(grouped[score.round_id] ?? []), score];
+        return grouped;
+      }, {});
+
+      const processedRounds: RoundRow[] = (roundsData ?? []).map((round: any) => {
+        const courseHoles = holesByCourse[round.course_id] ?? [];
+        const sequence = new Set(roundHoleSequence(
+          round.starting_hole ?? 1,
+          round.holes_played ?? 18,
+        ));
+        const playedHoles = courseHoles.filter(hole => sequence.has(hole.number));
+        const savedScores = scoresByRound[round.id] ?? [];
+        const recoveredGross = savedScores.length === (round.holes_played ?? 18)
+          && savedScores.every(score => score.gross_score != null)
+          ? savedScores.reduce((total, score) => total + (score.gross_score ?? 0), 0)
+          : null;
         return {
-          ...r,
-          holes: hList,
-          course_name: r.courses?.name ?? 'Unknown Course',
-          par_total: parTotal,
+          ...round,
+          holes: playedHoles,
+          course_name: round.courses?.name ?? 'Unknown Course',
+          par_total: calculateRoundPar(
+            courseHoles,
+            round.starting_hole ?? 1,
+            round.holes_played ?? 18,
+          ),
+          gross_total: round.gross_total ?? recoveredGross,
         };
       });
       setRawRounds(processedRounds);
+      setScores(scoresData);
 
-      // Process Hole Scores
-      setScores((scoresData ?? []) as HoleScore[]);
-
-      // Use the newest round's course pars as the display fallback. Each
-      // calculated round still uses its own joined hole data for analytics.
       const parMap: Record<number, number> = {};
-      ((processedRounds[0]?.holes ?? []) as { number: number; par: number }[]).forEach(h => {
-        parMap[h.number] = h.par;
+      (processedRounds[0]?.holes ?? []).forEach(hole => {
+        parMap[hole.number] = hole.par;
       });
       setHolePars(parMap);
+      setStoredHandicap(
+        profile?.handicap_index != null ? String(profile.handicap_index) : null,
+      );
 
-      // Handicap setting from profile
-      setStoredHandicap(settingsData?.handicap_index != null ? String(settingsData.handicap_index) : null);
-
-      const clubsList = userClubsData ?? [];
+      const clubsList = userClubsResult.error ? [] : (userClubsResult.data ?? []);
       clubsList.sort((a, b) => (b.carry_distance_metres ?? 0) - (a.carry_distance_metres ?? 0));
       setUserClubs(clubsList);
 
-      // Calculate GPS shot averages
       const clubIdToName: Record<string, string> = {};
-      (globalClubsData ?? []).forEach(c => {
-        clubIdToName[c.id] = c.name;
+      (globalClubsResult.error ? [] : (globalClubsResult.data ?? [])).forEach(club => {
+        clubIdToName[club.id] = club.name;
       });
 
       const shotDistancesGrouped: Record<string, number[]> = {};
-      (shotsData ?? []).forEach(s => {
-        const name = s.club_name ?? (s.club_id ? clubIdToName[s.club_id] : null);
-        if (name) {
-          if (!shotDistancesGrouped[name]) shotDistancesGrouped[name] = [];
-          shotDistancesGrouped[name].push(s.distance_metres);
-        }
+      (shotsResult.error ? [] : (shotsResult.data ?? [])).forEach(shot => {
+        const name = shot.club_name ?? (shot.club_id ? clubIdToName[shot.club_id] : null);
+        if (!name || shot.distance_metres == null) return;
+        shotDistancesGrouped[name] = [
+          ...(shotDistancesGrouped[name] ?? []),
+          shot.distance_metres,
+        ];
       });
 
       const gpsAvgs: Record<string, { average: number; stddev: number; samples: number }> = {};
-      Object.keys(shotDistancesGrouped).forEach(name => {
-        const stats = calculateClubDistanceStats(shotDistancesGrouped[name]);
-        if (stats) gpsAvgs[name] = stats;
+      Object.entries(shotDistancesGrouped).forEach(([name, distances]) => {
+        const clubStats = calculateClubDistanceStats(distances);
+        if (clubStats) gpsAvgs[name] = clubStats;
       });
       setGpsAverages(gpsAvgs);
-
-    } catch {
-      Alert.alert('Load Error', 'Could not load your statistics. Please try again.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load statistics.';
+      setLoadError(message);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [profile?.handicap_index, user]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useFocusEffect(useCallback(() => {
+    void fetchData();
+  }, [fetchData]));
 
   // ---------------------------------------------------------------------------
   // Calculations
@@ -766,7 +815,13 @@ export default function StatsScreen() {
   // ---------------------------------------------------------------------------
 
   const renderDashboard = () => {
-    if (!stats) return null;
+    if (!stats) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No completed rounds found</Text>
+        </View>
+      );
+    }
     return (
       <View style={styles.tabContainer}>
         {/* Metric Cards with Sparklines */}
@@ -1073,8 +1128,16 @@ export default function StatsScreen() {
           <ActivityIndicator color={Colors.green} size="large" style={{ marginTop: 40 }} />
         ) : (
           <>
+            {loadError && (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Could not load statistics</Text>
+                <TouchableOpacity onPress={() => void fetchData()} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Try Again</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             {/* Handicap Hero Card shown on all tabs */}
-            {activeTab !== 'clubs' && stats && (
+            {!loadError && activeTab !== 'clubs' && stats && (
               <View style={styles.handicapCard}>
                 <Text style={styles.handicapLabel}>Handicap Index</Text>
                 <Text style={styles.handicapValue}>
@@ -1085,10 +1148,10 @@ export default function StatsScreen() {
             )}
 
             {/* Tab specific content */}
-            {activeTab === 'dashboard' && renderDashboard()}
-            {activeTab === 'history' && renderHistory()}
-            {activeTab === 'handicap' && renderHandicap()}
-            {activeTab === 'clubs' && renderClubs()}
+            {!loadError && activeTab === 'dashboard' && renderDashboard()}
+            {!loadError && activeTab === 'history' && renderHistory()}
+            {!loadError && activeTab === 'handicap' && renderHandicap()}
+            {!loadError && activeTab === 'clubs' && renderClubs()}
           </>
         )}
       </ScrollView>
@@ -1503,6 +1566,22 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textMuted,
     fontFamily: Font.regular,
+  },
+  secondaryBtn: {
+    marginTop: Spacing.md,
+    minHeight: 42,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryBtnText: {
+    color: Colors.green,
+    fontSize: FontSize.sm,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
   },
 
   // Edit carry distance modal

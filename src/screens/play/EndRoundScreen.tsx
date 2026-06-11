@@ -135,6 +135,26 @@ export default function EndRoundScreen() {
     if (!activeRound) return;
     setFinishLoading(true);
     try {
+      // Upsert hole scores (safe even if auto-saved during active round)
+      const scoreRows = holes
+        .filter((h) => scores[h.number]?.gross_score != null)
+        .map((h) => ({
+          round_id: activeRound.round.id,
+          hole_id: h.id,
+          hole_number: h.number,
+          ...scores[h.number],
+        }));
+
+      if (scoreRows.length > 0) {
+        const { error: scoreError } = await supabase
+          .from('hole_scores')
+          .upsert(scoreRows, { onConflict: 'round_id,hole_number' });
+        if (scoreError) {
+          Alert.alert('Error', 'Failed to save scorecard: ' + scoreError.message);
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('rounds')
         .update({
@@ -148,20 +168,6 @@ export default function EndRoundScreen() {
       if (error) {
         Alert.alert('Error', 'Failed to save round: ' + error.message);
         return;
-      }
-
-      // Upsert hole scores (safe even if auto-saved during active round)
-      const scoreRows = holes
-        .filter((h) => scores[h.number]?.gross_score != null)
-        .map((h) => ({
-          round_id: activeRound.round.id,
-          hole_id: h.id,
-          hole_number: h.number,
-          ...scores[h.number],
-        }));
-
-      if (scoreRows.length > 0) {
-        await supabase.from('hole_scores').upsert(scoreRows, { onConflict: 'round_id,hole_number' });
       }
 
       setRoundSaved(true);

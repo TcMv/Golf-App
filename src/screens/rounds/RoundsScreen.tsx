@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,12 +9,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { format, isThisMonth, isThisYear } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Round } from '../../types';
+import { calculateRoundPar, groupHolesByCourse } from '../../utils/homeDashboard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -135,8 +136,7 @@ export default function RoundsScreen() {
           id, course_id, tee_set_id, date, holes_played, scoring_mode,
           starting_hole, exclude_from_handicap, gross_total, net_total,
           handicap_differential, completed,
-          courses:course_id ( name ),
-          holes:course_id ( number, par )
+          courses:course_id ( name )
         `,
         )
         .eq('user_id', user.id)
@@ -148,35 +148,65 @@ export default function RoundsScreen() {
         return;
       }
 
-      // Aggregate par totals from holes
+      const courseIds = [...new Set((data ?? []).map(round => round.course_id))];
+      const roundIds = (data ?? []).map(round => round.id);
+      const [holesResult, scoresResult] = await Promise.all([
+        courseIds.length > 0
+          ? supabase
+              .from('holes')
+              .select('course_id, number, par')
+              .in('course_id', courseIds)
+              .order('number')
+          : Promise.resolve({ data: [], error: null }),
+        roundIds.length > 0
+          ? supabase
+              .from('hole_scores')
+              .select('round_id, gross_score')
+              .in('round_id', roundIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (holesResult.error || scoresResult.error) {
+        setError('Could not load your round scorecards.');
+        return;
+      }
+
+      const holesByCourse = groupHolesByCourse(holesResult.data ?? []);
+      const scoresByRound = (scoresResult.data ?? []).reduce<Record<string, (number | null)[]>>(
+        (grouped, score) => {
+          grouped[score.round_id] = [...(grouped[score.round_id] ?? []), score.gross_score];
+          return grouped;
+        },
+        {},
+      );
       const rows: RoundRow[] = (data ?? []).map((r: any) => {
-        const startingHole = r.starting_hole ?? 1;
-        const endingHole = startingHole + 8;
-        const holesArr: { number: number; par: number }[] = r.holes_played === 9
-          ? (r.holes ?? []).filter(
-              (hole: { number: number }) => hole.number >= startingHole && hole.number <= endingHole,
-            )
-          : r.holes ?? [];
-        const parTotal =
-          holesArr.length > 0
-            ? holesArr.reduce((sum: number, h: { par: number }) => sum + h.par, 0)
-            : null;
+        const savedScores = scoresByRound[r.id] ?? [];
+        const recoveredGross = savedScores.length === (r.holes_played ?? 18)
+          && savedScores.every(score => score != null)
+          ? savedScores.reduce<number>((total, score) => total + (score ?? 0), 0)
+          : null;
         return {
           ...r,
           course_name: r.courses?.name ?? 'Unknown Course',
-          par_total: parTotal,
+          par_total: calculateRoundPar(
+            holesByCourse[r.course_id] ?? [],
+            r.starting_hole ?? 1,
+            r.holes_played ?? 18,
+          ),
+          gross_total: r.gross_total ?? recoveredGross,
         };
       });
 
       setRounds(rows);
+    } catch {
+      setError('Could not load your rounds.');
     } finally {
       setLoading(false);
     }
   }, [user?.id]);
 
-  useEffect(() => {
-    fetchRounds();
-  }, [fetchRounds]);
+  useFocusEffect(useCallback(() => {
+    void fetchRounds();
+  }, [fetchRounds]));
 
   const filtered = applyFilter(rounds, filter);
 

@@ -17,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { HoleScore, Round } from '../../types';
+import { roundHoleSequence } from '../../utils/homeDashboard';
 
 type RouteParams = { roundId: string };
 
@@ -75,14 +76,13 @@ export default function RoundDetailScreen() {
         return;
       }
 
-      const startingHole = roundData.starting_hole ?? 1;
-      const endingHole = startingHole + 8;
+      const playedHoleNumbers = new Set(roundHoleSequence(
+        roundData.starting_hole ?? 1,
+        roundData.holes_played ?? 18,
+      ));
       setHoles(
-        roundData.holes_played === 9
-          ? ((holesData ?? []) as { number: number; par: number }[]).filter(
-              hole => hole.number >= startingHole && hole.number <= endingHole,
-            )
-          : (holesData ?? []) as { number: number; par: number }[],
+        ((holesData ?? []) as { number: number; par: number }[])
+          .filter(hole => playedHoleNumbers.has(hole.number)),
       );
       setScores((scoresData ?? []) as HoleScore[]);
     } finally {
@@ -119,8 +119,22 @@ export default function RoundDetailScreen() {
   })();
 
   const totalPar = holes.reduce((s, h) => s + h.par, 0);
-  const toPar = (round.gross_total ?? 0) - totalPar;
-  const toParLabel = toPar === 0 ? 'E' : toPar > 0 ? `+${toPar}` : `${toPar}`;
+  const recoveredGross = scores.length === round.holes_played
+    && scores.every(score => score.gross_score != null)
+    ? scores.reduce((total, score) => total + (score.gross_score ?? 0), 0)
+    : null;
+  const displayedGross = round.gross_total ?? recoveredGross;
+  const toPar = displayedGross != null ? displayedGross - totalPar : null;
+  const toParLabel = toPar == null ? '—' : toPar === 0 ? 'E' : toPar > 0 ? `+${toPar}` : `${toPar}`;
+  const toParColor = toPar == null
+    ? Colors.textMuted
+    : toPar < 0
+      ? Colors.birdie
+      : toPar === 0
+        ? Colors.scorePar
+        : toPar === 1
+          ? Colors.bogey
+          : Colors.doublePlus;
 
   const scoreMap: Record<number, HoleScore> = {};
   scores.forEach((s) => { scoreMap[s.hole_number] = s; });
@@ -209,11 +223,11 @@ export default function RoundDetailScreen() {
         {/* Score summary */}
         <View style={styles.heroRow}>
           <View style={styles.heroScore}>
-            <Text style={styles.heroScoreValue}>{round.gross_total ?? '-'}</Text>
+            <Text style={styles.heroScoreValue}>{displayedGross ?? '-'}</Text>
             <Text style={styles.heroScoreLabel}>Gross</Text>
           </View>
           <View style={[styles.heroScore, styles.heroTopar]}>
-            <Text style={[styles.heroScoreValue, { color: toPar < 0 ? Colors.birdie : toPar === 0 ? Colors.scorePar : Colors.bogey }]}>
+            <Text style={[styles.heroScoreValue, { color: toParColor }]}>
               {toParLabel}
             </Text>
             <Text style={styles.heroScoreLabel}>To Par</Text>
@@ -249,11 +263,11 @@ export default function RoundDetailScreen() {
             <Text style={[styles.colHole, { fontWeight: FontWeight.bold }]}>TOT</Text>
             <Text style={[styles.colPar, { fontWeight: FontWeight.bold }]}>{totalPar}</Text>
             <Text style={[styles.colScore, { fontWeight: FontWeight.black, fontSize: FontSize.base }]}>
-              {round.gross_total ?? '-'}
+              {displayedGross ?? '-'}
             </Text>
             <Text style={[styles.colDiff, {
               fontWeight: FontWeight.bold,
-              color: toPar < 0 ? Colors.birdie : toPar === 0 ? Colors.scorePar : toPar === 1 ? Colors.bogey : Colors.doublePlus
+              color: toParColor,
             }]}>{toParLabel}</Text>
             <Text style={styles.colFir}>{firHoles.length > 0 ? `${firHit}/${firHoles.length}` : '—'}</Text>
             <Text style={styles.colGir}>{girHit}/{holes.length}</Text>
