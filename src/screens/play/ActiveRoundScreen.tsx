@@ -51,6 +51,7 @@ import type {
   Hazard,
   HazardType,
   HoleScore,
+  Lie,
   Shot,
 } from '../../types';
 import { convertDistance, distanceUnitLabel } from '../../utils/units';
@@ -64,6 +65,7 @@ type PendingShot = {
   start: Coordinate;
   end: Coordinate;
   distanceMetres: number;
+  startLie: Lie;
 };
 
 const HAZARD_COLORS: Record<HazardType, string> = {
@@ -137,12 +139,12 @@ export default function ActiveRoundScreen() {
   const [caddieLlmText, setCaddieLlmText] = useState<string | null>(null);
   const [caddieLlmLoading, setCaddieLlmLoading] = useState(false);
   const [scoringOpen, setScoringOpen] = useState(false);
-  const [trackingStart, setTrackingStart] = useState<Coordinate | null>(null);
   const [pendingShot, setPendingShot] = useState<PendingShot | null>(null);
   const [savingShot, setSavingShot] = useState(false);
   const [scoreSyncPending, setScoreSyncPending] = useState(false);
   const [customTarget, setCustomTarget] = useState<Coordinate | null>(null);
   const [selectingTarget, setSelectingTarget] = useState(false);
+  const [placingShotStart, setPlacingShotStart] = useState(false);
 
   const hole = useMemo(
     () => activeRound?.holes.find(item => item.number === activeRound.currentHoleNumber) ?? null,
@@ -377,10 +379,10 @@ export default function ActiveRoundScreen() {
   }, [hole?.number]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setTrackingStart(null);
     setPendingShot(null);
     setCustomTarget(null);
     setSelectingTarget(false);
+    setPlacingShotStart(false);
   }, [hole?.number]);
 
   const persistScore = useCallback(async (score: Partial<HoleScore>) => {
@@ -432,23 +434,62 @@ export default function ActiveRoundScreen() {
     setCurrentHole(roundHoleNumbers[nextIndex]);
   }, [activeRound, currentHoleIndex, navigation, roundHoleNumbers, setCurrentHole]);
 
-  const handleTrackShot = useCallback(() => {
+  const createPendingShot = useCallback((start: Coordinate, startLie: Lie) => {
+    if (!location) return;
+    const distanceMetres = haversineMetres(start, location);
+    if (distanceMetres < 2) {
+      Alert.alert(
+        'Shot distance too short',
+        'The start and current ball locations are almost the same. Adjust the start location or wait for a current GPS position.',
+      );
+      return;
+    }
+    setPendingShot({
+      start,
+      end: location,
+      distanceMetres,
+      startLie,
+    });
+  }, [location]);
+
+  const handleAddShot = useCallback(() => {
     if (!location || locationStale) {
-      Alert.alert('Waiting for GPS', 'A current GPS position is required to track the shot.');
+      Alert.alert('Waiting for GPS', 'A current GPS position is required to add the shot.');
       return;
     }
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (!trackingStart) {
-      setTrackingStart(location);
+
+    const previousShot = holeShots[holeShots.length - 1];
+    if (previousShot?.end_lat != null && previousShot.end_lng != null) {
+      createPendingShot(
+        { latitude: previousShot.end_lat, longitude: previousShot.end_lng },
+        previousShot.end_lie ?? 'fairway',
+      );
       return;
     }
-    const distanceMetres = haversineMetres(trackingStart, location);
-    if (distanceMetres < 2) {
-      Alert.alert('Move to the ball', 'Finish the shot after reaching the ball so GPS can measure it.');
+
+    if (holeShots.length === 0 && tee) {
+      createPendingShot(tee, 'tee');
       return;
     }
-    setPendingShot({ start: trackingStart, end: location, distanceMetres });
-  }, [location, locationStale, trackingStart]);
+
+    Alert.alert(
+      holeShots.length === 0 ? 'Tee location unavailable' : 'Previous ball location unavailable',
+      holeShots.length === 0
+        ? 'Place an approximate tee location on the map, then the app will measure the shot to your current position.'
+        : 'Place the approximate location where the previous shot finished.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Place on map',
+          onPress: () => {
+            setSelectingTarget(false);
+            setPlacingShotStart(true);
+          },
+        },
+      ],
+    );
+  }, [createPendingShot, holeShots, location, locationStale, tee]);
 
   const saveShot = useCallback(async (value: ShotCaptureValue) => {
     if (!activeRound || !hole || !pendingShot || savingShot) return;
@@ -507,7 +548,6 @@ export default function ActiveRoundScreen() {
       },
     ]);
     setPendingShot(null);
-    setTrackingStart(null);
     setSavingShot(false);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [activeRound, addShot, hole, holeShots.length, pendingShot, savingShot]);
@@ -596,6 +636,14 @@ export default function ActiveRoundScreen() {
         showsCompass={false}
         rotateEnabled
         onPress={event => {
+          if (placingShotStart) {
+            createPendingShot(
+              event.nativeEvent.coordinate,
+              holeShots.length === 0 ? 'tee' : 'fairway',
+            );
+            setPlacingShotStart(false);
+            return;
+          }
           if (!selectingTarget) return;
           setCustomTarget(event.nativeEvent.coordinate);
           setSelectingTarget(false);
@@ -674,11 +722,6 @@ export default function ActiveRoundScreen() {
             )}
           </React.Fragment>
         ))}
-        {trackingStart && (
-          <Marker coordinate={trackingStart}>
-            <View style={styles.trackingMarker} />
-          </Marker>
-        )}
         {customTarget && !caddieAdvice && (
           <Marker coordinate={customTarget}>
             <View style={styles.customTargetMarker}>
@@ -788,26 +831,27 @@ export default function ActiveRoundScreen() {
         </View>
       )}
 
-      <View style={[styles.bottomDock, { bottom: insets.bottom + Spacing.sm }]}>
-        {trackingStart && (
-          <View style={styles.trackingStatus}>
-            <View style={styles.liveDot} />
-            <Text style={styles.trackingText}>Shot started. Walk to the ball, then finish.</Text>
-            <TouchableOpacity onPress={() => setTrackingStart(null)}>
-              <Text style={styles.cancelTracking}>CANCEL</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={[styles.trackButton, trackingStart && styles.finishButton]}
-          onPress={handleTrackShot}
-        >
-          <Text style={styles.trackButtonText}>
-            {trackingStart ? 'FINISH SHOT' : '+ TRACK SHOT'}
+      {placingShotStart && (
+        <View style={[styles.shotStartPrompt, { top: insets.top + 190 }]}>
+          <Text style={styles.shotStartPromptText}>
+            Tap the map where this shot started
           </Text>
+          <TouchableOpacity onPress={() => setPlacingShotStart(false)}>
+            <Text style={styles.cancelTracking}>CANCEL</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={[styles.bottomDock, { bottom: insets.bottom + Spacing.sm }]}>
+        <TouchableOpacity
+          style={styles.trackButton}
+          onPress={handleAddShot}
+        >
+          <Text style={styles.trackButtonText}>+ ADD SHOT</Text>
           <Text style={styles.trackButtonSub}>
-            {trackingStart ? 'Save distance and miss' : `${holeShots.length} tracked this hole`}
+            {holeShots.length === 0
+              ? 'Measured from the tee to your current ball'
+              : `Measured from shot ${holeShots.length}'s finish`}
           </Text>
         </TouchableOpacity>
 
@@ -839,10 +883,10 @@ export default function ActiveRoundScreen() {
         clubs={clubs.filter(club => club.type !== 'putter')}
         distanceMetres={pendingShot?.distanceMetres ?? 0}
         shotNumber={holeShots.length + 1}
+        initialLie={pendingShot?.startLie ?? (holeShots.length === 0 ? 'tee' : 'fairway')}
         units={units}
         onCancel={() => {
           setPendingShot(null);
-          setTrackingStart(null);
         }}
         onSave={saveShot}
       />
@@ -979,17 +1023,26 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.redMuted,
   },
   gpsWarningText: { color: Colors.red, fontFamily: Font.bold, fontSize: FontSize.xs },
-  bottomDock: { position: 'absolute', left: Spacing.sm, right: Spacing.sm, gap: Spacing.sm },
-  trackingStatus: {
+  shotStartPrompt: {
+    position: 'absolute',
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    borderRadius: Radius.md,
-    padding: Spacing.sm,
+    gap: Spacing.md,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     backgroundColor: Colors.mapOverlay,
+    borderWidth: 1,
+    borderColor: Colors.yellow,
+    ...Shadow.card,
   },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.green },
-  trackingText: { flex: 1, color: Colors.text, fontFamily: Font.medium, fontSize: FontSize.xs },
+  shotStartPromptText: {
+    color: Colors.text,
+    fontFamily: Font.bold,
+    fontSize: FontSize.xs,
+  },
+  bottomDock: { position: 'absolute', left: Spacing.sm, right: Spacing.sm, gap: Spacing.sm },
   cancelTracking: { color: Colors.red, fontFamily: Font.bold, fontSize: FontSize.xs },
   trackButton: {
     minHeight: 58,
@@ -999,7 +1052,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.green,
     ...Shadow.card,
   },
-  finishButton: { backgroundColor: Colors.yellow },
   trackButtonText: { color: Colors.bg, fontFamily: Font.black, fontSize: FontSize.md },
   trackButtonSub: { color: Colors.bg, opacity: 0.7, fontFamily: Font.medium, fontSize: FontSize.xs },
   scoreRow: { flexDirection: 'row', gap: Spacing.sm, minHeight: 68 },
@@ -1064,14 +1116,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.bg,
   },
   shotMarkerText: { color: Colors.bg, fontFamily: Font.black, fontSize: FontSize.xs },
-  trackingMarker: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: Colors.yellow,
-    borderWidth: 4,
-    borderColor: Colors.text,
-  },
   caddieTarget: {
     width: 68,
     height: 68,

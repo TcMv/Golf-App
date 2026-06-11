@@ -34,6 +34,7 @@ type Props = {
   clubs: Club[];
   distanceMetres: number;
   shotNumber: number;
+  initialLie: Lie;
   units: DistanceUnits;
   onCancel: () => void;
   onSave: (value: ShotCaptureValue) => void;
@@ -82,6 +83,7 @@ export default function ShotCaptureSheet({
   clubs,
   distanceMetres,
   shotNumber,
+  initialLie,
   units,
   onCancel,
   onSave,
@@ -97,13 +99,13 @@ export default function ShotCaptureSheet({
   useEffect(() => {
     if (!visible) return;
     setClubId(null);
-    setLie(shotNumber === 1 ? 'tee' : 'fairway');
+    setLie(initialLie);
     setEndLie('fairway');
     setTarget(shotNumber === 1 ? 'fairway' : 'green');
     setOutcome('hit');
     setMissDirection(null);
     setStrikeQuality('pure');
-  }, [shotNumber, visible]);
+  }, [initialLie, shotNumber, visible]);
 
   const selectedClub = useMemo(
     () => clubs.find(club => club.id === clubId) ?? null,
@@ -135,7 +137,7 @@ export default function ShotCaptureSheet({
               <Text style={styles.title}>Save shot {shotNumber}</Text>
               <Text style={styles.distance}>
                 {convertDistance(Math.round(distanceMetres), units)}
-                {distanceUnitLabel(units, true)} tracked
+                {distanceUnitLabel(units, true)} measured
               </Text>
             </View>
             <TouchableOpacity style={styles.close} onPress={onCancel}>
