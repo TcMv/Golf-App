@@ -225,7 +225,8 @@ export function buildCaddieAdvice(params: {
 
   if (usableClubs.length === 0) return null;
 
-  const options = usableClubs.map(club => {
+  const pathTargets = new Map<string, Coordinate>();
+  const options = usableClubs.map((club): ClubOption => {
     const deviation = club.carry_stddev_metres ?? 12;
     const windAdjusted = windCarryAdjustment(
       club.carry_metres!,
@@ -239,10 +240,11 @@ export function buildCaddieAdvice(params: {
       playerElevation,
       greenElevation,
     ) * lieFactor);
-    const routeTarget = !customTarget && distToObjective > adjustedCarry + 12
+    const pathTarget = !customTarget && distToObjective > adjustedCarry + 12
       ? targetAlongFairwayRoute(playerPos, greenMid, fairwayCentreline, adjustedCarry)
       : null;
-    const clubBearing = routeTarget ? bearing(playerPos, routeTarget) : bearingToGreen;
+    if (pathTarget) pathTargets.set(club.id, pathTarget);
+    const clubBearing = pathTarget ? bearing(playerPos, pathTarget) : bearingToGreen;
     const clubHazards = hazards
       .map(hazard => {
         if (hazard.coordinates.length < 3) return null;
@@ -331,7 +333,8 @@ export function buildCaddieAdvice(params: {
     ? Math.max(1, distToObjective)
     : Math.min(recommended.adjustedCarry, Math.max(1, distToObjective));
   const routeTarget = !customTarget && shotType === 'layup'
-    ? targetAlongFairwayRoute(playerPos, greenMid, fairwayCentreline, targetDistance)
+    ? pathTargets.get(recommended.club.id)
+      ?? targetAlongFairwayRoute(playerPos, greenMid, fairwayCentreline, targetDistance)
     : null;
   const targetPlan = customTarget
     ? { coordinate: customTarget, offsetDegrees: 0, hazardType: null }
@@ -398,9 +401,9 @@ export function buildCaddieAdvice(params: {
     : customTarget
     ? `Play to the selected recovery target, ${targetDistance}m away.`
     : targetPlan.offsetDegrees !== 0
-    ? `Aim ${targetPlan.offsetDegrees < 0 ? 'left' : 'right'} of the ${routeTarget ? 'fairway route' : 'direct line'}${targetPlan.hazardType ? `, away from ${targetPlan.hazardType}` : ''}.`
+    ? `Aim ${targetPlan.offsetDegrees < 0 ? 'left' : 'right'} of the ${routeTarget ? 'fairway path' : 'direct line'}${targetPlan.hazardType ? `, away from ${targetPlan.hazardType}` : ''}.`
     : routeTarget
-      ? `Follow the fairway route to the marked landing area and leave about ${remainingDistance}m.`
+      ? `Play along the fairway path to the marked landing area and leave about ${remainingDistance}m.`
     : shotType === 'layup'
       ? `Aim at the centre of the fairway and leave about ${remainingDistance}m.`
       : 'Aim at the centre of the green.';
@@ -579,27 +582,57 @@ function targetAlongFairwayRoute(
       nearestRatio = ratio;
     }
   }
-  let remaining = targetDistance;
   let current = {
     latitude: route[nearestSegment].latitude
       + (route[nearestSegment + 1].latitude - route[nearestSegment].latitude) * nearestRatio,
     longitude: route[nearestSegment].longitude
       + (route[nearestSegment + 1].longitude - route[nearestSegment].longitude) * nearestRatio,
   };
+  const samples: { coordinate: Coordinate; progress: number; directDistance: number }[] = [];
+  let progress = 0;
+  const addSample = (coordinate: Coordinate, sampleProgress: number) => {
+    samples.push({
+      coordinate,
+      progress: sampleProgress,
+      directDistance: haversineMetres(player, coordinate),
+    });
+  };
+  addSample(current, 0);
+
   for (let index = nearestSegment; index < route.length - 1; index += 1) {
     const segmentEnd = route[index + 1];
     const segmentLength = haversineMetres(current, segmentEnd);
-    if (remaining <= segmentLength) {
-      const ratio = segmentLength === 0 ? 0 : remaining / segmentLength;
-      return {
+    const steps = Math.max(1, Math.ceil(segmentLength / 5));
+    for (let step = 1; step <= steps; step += 1) {
+      const ratio = step / steps;
+      addSample({
         latitude: current.latitude + (segmentEnd.latitude - current.latitude) * ratio,
         longitude: current.longitude + (segmentEnd.longitude - current.longitude) * ratio,
-      };
+      }, progress + segmentLength * ratio);
     }
-    remaining -= segmentLength;
+    progress += segmentLength;
     current = segmentEnd;
   }
-  return route[route.length - 1];
+
+  const distanceTolerance = Math.max(10, targetDistance * 0.06);
+  const reachable = samples.filter(sample =>
+    sample.directDistance >= targetDistance - distanceTolerance
+    && sample.directDistance <= targetDistance + Math.min(8, distanceTolerance / 2)
+  );
+  if (reachable.length > 0) {
+    return reachable.reduce((best, sample) =>
+      sample.progress > best.progress ? sample : best
+    ).coordinate;
+  }
+
+  return samples.reduce((best, sample) => {
+    const difference = Math.abs(sample.directDistance - targetDistance);
+    const bestDifference = Math.abs(best.directDistance - targetDistance);
+    return difference < bestDifference
+      || (Math.abs(difference - bestDifference) < 1 && sample.progress > best.progress)
+      ? sample
+      : best;
+  }).coordinate;
 }
 
 function chooseTarget(params: {

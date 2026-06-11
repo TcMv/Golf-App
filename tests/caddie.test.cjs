@@ -219,9 +219,114 @@ assert.ok(doglegAdvice);
 assert.equal(doglegAdvice.shotType, 'layup');
 assert.ok(doglegAdvice.target.latitude > 0.0014);
 assert.ok(Math.abs(doglegAdvice.target.longitude) < 0.00015);
-assert.match(doglegAdvice.aimInstruction, /fairway route/);
+assert.match(doglegAdvice.aimInstruction, /fairway path/);
 assert.equal(doglegAdvice.recommended.clearsHazards, true);
 assert.doesNotMatch(doglegAdvice.strategy.join(' '), /trees/);
+
+const cornerCutAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.0025, longitude: -0.0015 },
+  hazards: [{
+    id: 'corner-bunker',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'bunker',
+    label: null,
+    coordinates: [
+      { lat: 0.00072, lng: -0.00063 },
+      { lat: 0.0009, lng: -0.00063 },
+      { lat: 0.0009, lng: -0.00048 },
+      { lat: 0.00072, lng: -0.00048 },
+    ],
+    created_at: '',
+  }],
+  clubs: [
+    {
+      ...clubs[0],
+      id: 'corner-driver',
+      name: 'Driver',
+      type: 'driver',
+      carry_metres: 250,
+      carry_stddev_metres: 12,
+    },
+    {
+      ...clubs[0],
+      id: 'corner-wood',
+      name: '5 Wood',
+      type: 'wood',
+      carry_metres: 190,
+      carry_stddev_metres: 10,
+    },
+  ],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  fairwayCentreline: [
+    { lat: 0, lng: 0 },
+    { lat: 0.0018, lng: 0 },
+    { lat: 0.0018, lng: -0.0015 },
+    { lat: 0.0025, lng: -0.0015 },
+  ],
+});
+assert.ok(cornerCutAdvice);
+assert.equal(cornerCutAdvice.recommended.club.id, 'corner-driver');
+assert.equal(cornerCutAdvice.recommended.clearsHazards, true);
+assert.ok(cornerCutAdvice.target.longitude < -0.0008);
+assert.ok(cornerCutAdvice.remainingDistance < 150);
+
+const pathLandingHazardAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.003, longitude: 0 },
+  hazards: [{
+    id: 'driver-landing-bunker',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'bunker',
+    label: null,
+    coordinates: [
+      { lat: 0.0018, lng: -0.00007 },
+      { lat: 0.00198, lng: -0.00007 },
+      { lat: 0.00198, lng: 0.00007 },
+      { lat: 0.0018, lng: 0.00007 },
+    ],
+    created_at: '',
+  }],
+  clubs: [
+    {
+      ...clubs[0],
+      id: 'landing-driver',
+      name: 'Driver',
+      type: 'driver',
+      carry_metres: 210,
+      carry_stddev_metres: 12,
+    },
+    {
+      ...clubs[0],
+      id: 'landing-hybrid',
+      name: '3 Hybrid',
+      type: 'hybrid',
+      carry_metres: 170,
+      carry_stddev_metres: 10,
+    },
+  ],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  fairwayCentreline: [
+    { lat: 0, lng: 0 },
+    { lat: 0.003, lng: 0 },
+  ],
+});
+assert.ok(pathLandingHazardAdvice);
+assert.equal(pathLandingHazardAdvice.recommended.club.id, 'landing-hybrid');
+assert.equal(pathLandingHazardAdvice.recommended.clearsHazards, true);
+assert.ok(pathLandingHazardAdvice.remainingDistance > 150);
 
 const shortClubAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },
