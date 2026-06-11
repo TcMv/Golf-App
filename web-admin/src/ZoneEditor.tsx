@@ -386,13 +386,17 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
   const startDrawing = useCallback((type: DrawingType) => {
     setLayerVisible(type, true);
     setDrawing(current => current === type ? null : type);
-    setDraftCoords([]);
+    setDraftCoords(
+      type === 'fairway_centreline' && hole?.tee_lat != null && hole.tee_lng != null
+        ? [{ lat: hole.tee_lat, lng: hole.tee_lng }]
+        : [],
+    );
     setSelectedPolygon(null);
     if (type === 'fairway_centreline') {
       setTraceMode(false);
       setTraceMessage('');
     }
-  }, [setLayerVisible]);
+  }, [hole, setLayerVisible]);
 
   const toggleHazardHole = useCallback((number: number) => {
     setHazardHoleNumbers(current => {
@@ -529,9 +533,24 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
 
   const finishDrawing = useCallback((removeDoubleClickPoint = false) => {
     if (!drawing || saving) return;
-    const coords = removeDoubleClickPoint && draftCoords.length > 1
+    let coords = removeDoubleClickPoint && draftCoords.length > 1
       ? draftCoords.slice(0, -1)
       : draftCoords;
+    if (
+      drawing === 'fairway_centreline'
+      && hole?.green_mid_lat != null
+      && hole.green_mid_lng != null
+    ) {
+      const greenMid = { lat: hole.green_mid_lat, lng: hole.green_mid_lng };
+      const finalPoint = coords[coords.length - 1];
+      if (
+        !finalPoint
+        || Math.abs(finalPoint.lat - greenMid.lat) > 0.000001
+        || Math.abs(finalPoint.lng - greenMid.lng) > 0.000001
+      ) {
+        coords = [...coords, greenMid];
+      }
+    }
     if (coords.length < (drawing === 'fairway_centreline' ? 2 : 3)) return;
 
     const type = drawing;
@@ -540,7 +559,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
     setDraftCoords([]);
     setTraceMessage('');
     void saveDrawingRef.current(type, coords);
-  }, [draftCoords, drawing, saving]);
+  }, [draftCoords, drawing, hole, saving]);
 
   // dblclick fires a click event immediately before it, so slice off that last point
   const onMapDblClick = useCallback((_e: google.maps.MapMouseEvent) => {
@@ -1021,7 +1040,10 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
 
           {drawing && (
             <div style={S.drawHint}>
-              {traceMode && traceImage
+              {drawing === 'fairway_centreline'
+                ? <>Starts at the tee · click dogleg waypoints over any polygon · <kbd>Enter</kbd> saves at green centre
+                  {' '}· <kbd>Backspace</kbd> undoes · <kbd>Esc</kbd> cancels</>
+                : traceMode && traceImage
                 ? 'Magic fill: click the centre of the feature · adjust tolerance and click again if needed'
                 : <>Click to place vertices · <kbd>Enter</kbd> closes &amp; saves
                   {' '}· double-click also works · <kbd>Backspace</kbd> undoes · <kbd>Esc</kbd> cancels</>}
@@ -1035,9 +1057,10 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 background: ZONE_CONFIG[selectedPolygon.type].color,
               }} />
               <span style={S.selectionText}>
-                <strong>{ZONE_CONFIG[selectedPolygon.type].label}</strong> polygon selected
+                <strong>{ZONE_CONFIG[selectedPolygon.type].label}</strong>{' '}
+                {selectedPolygon.type === 'fairway_centreline' ? 'line' : 'polygon'} selected
               </span>
-              <span style={S.selectionHint}>Click another polygon to change selection</span>
+              <span style={S.selectionHint}>Click another feature to change selection</span>
               <button
                 style={S.cancelSelection}
                 onClick={() => setSelectedPolygon(null)}
@@ -1076,7 +1099,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
               <Polygon
                 key={`green-${greenZone.id}`}
                 paths={greenZone.coordinates}
-                editable={!selectedPolygon || selectedPolygon.id === greenZone.id}
+                editable={!drawing && (!selectedPolygon || selectedPolygon.id === greenZone.id)}
                 onLoad={onGreenLoad}
                 onClick={() => {
                   if (!drawing) {
@@ -1089,6 +1112,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                   strokeWeight: selectedPolygon?.id === greenZone.id ? 4 : 2,
                   strokeOpacity: 0.9,
                   zIndex: selectedPolygon?.id === greenZone.id ? 20 : 3,
+                  clickable: !drawing,
                 }}
               />
             )}
@@ -1096,7 +1120,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
               <Polygon
                 key={`fairway-${fairwayZone.id}`}
                 paths={fairwayZone.coordinates}
-                editable={!selectedPolygon || selectedPolygon.id === fairwayZone.id}
+                editable={!drawing && (!selectedPolygon || selectedPolygon.id === fairwayZone.id)}
                 onLoad={onFairwayLoad}
                 onClick={() => {
                   if (!drawing) {
@@ -1109,6 +1133,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                   strokeWeight: selectedPolygon?.id === fairwayZone.id ? 4 : 2,
                   strokeOpacity: 0.9,
                   zIndex: selectedPolygon?.id === fairwayZone.id ? 20 : 2,
+                  clickable: !drawing,
                 }}
               />
             )}
@@ -1116,7 +1141,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
               <Polyline
                 key={`centreline-${fairwayCentreline.id}`}
                 path={fairwayCentreline.coordinates}
-                editable={!selectedPolygon || selectedPolygon.id === fairwayCentreline.id}
+                editable={!drawing && (!selectedPolygon || selectedPolygon.id === fairwayCentreline.id)}
                 onLoad={onCentrelineLoad}
                 onClick={() => {
                   if (!drawing) {
@@ -1133,7 +1158,8 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                     : ZONE_CONFIG.fairway_centreline.color,
                   strokeWeight: selectedPolygon?.id === fairwayCentreline.id ? 5 : 3,
                   strokeOpacity: 0.95,
-                  zIndex: selectedPolygon?.id === fairwayCentreline.id ? 20 : 4,
+                  zIndex: 1000,
+                  clickable: !drawing,
                 }}
               />
             )}
@@ -1143,7 +1169,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 <Polygon
                   key={`hazard-${hazard.id}`}
                   paths={hazard.coordinates}
-                  editable={!selectedPolygon || selectedPolygon.id === hazard.id}
+                  editable={!drawing && (!selectedPolygon || selectedPolygon.id === hazard.id)}
                   onLoad={polygon => attachHazardEditListeners(polygon, hazard.id)}
                   onClick={() => {
                     if (!drawing) {
@@ -1165,6 +1191,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                     zIndex: selectedPolygon?.id === hazard.id
                       ? 20
                       : hazard.type === 'trees' ? 1 : 2,
+                    clickable: !drawing,
                   }}
                 />
               );
@@ -1270,8 +1297,10 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                       path={draftCoords}
                       options={{
                         strokeColor: ZONE_CONFIG[drawing].color,
-                        strokeWeight: 3,
-                        strokeOpacity: 0.9,
+                        strokeWeight: 4,
+                        strokeOpacity: 1,
+                        clickable: false,
+                        zIndex: 1100,
                       }}
                     />
                   )
