@@ -39,6 +39,7 @@ import {
   learningNote,
 } from '../../utils/shotTracking';
 import type { ClubLearningMap, ShotLearningRow } from '../../utils/shotTracking';
+import { clubTypeFromBagName } from '../../utils/clubSetup';
 import HoleScoringSheet from '../../components/scoring/HoleScoringSheet';
 import CaddiePanel from '../../components/caddie/CaddiePanel';
 import ShotCaptureSheet from '../../components/shots/ShotCaptureSheet';
@@ -77,13 +78,7 @@ const HAZARD_COLORS: Record<HazardType, string> = {
 };
 
 function clubTypeFromName(name: string): ClubType {
-  const value = name.toLowerCase();
-  if (value.includes('putter')) return 'putter';
-  if (value.includes('driver')) return 'driver';
-  if (value.includes('wood')) return 'wood';
-  if (value.includes('hybrid')) return 'hybrid';
-  if (value.includes('wedge')) return 'wedge';
-  return 'iron';
+  return clubTypeFromBagName(name);
 }
 
 function scoreLabel(diff: number | null): string {

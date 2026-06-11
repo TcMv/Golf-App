@@ -65,6 +65,7 @@ const CLUB_PRESETS: Preset[] = [
   { name: '8 Iron', type: 'iron', loft: 38 },
   { name: '9 Iron', type: 'iron', loft: 42 },
   { name: 'Pitching Wedge', type: 'wedge', loft: 46 },
+  { name: '48° Wedge', type: 'wedge', loft: 48 },
   { name: 'Gap Wedge', type: 'wedge', loft: 50 },
   { name: '52° Wedge', type: 'wedge', loft: 52 },
   { name: '54° Wedge', type: 'wedge', loft: 54 },

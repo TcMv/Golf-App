@@ -73,12 +73,18 @@ const MAP_OPTIONS: google.maps.MapOptions = {
 };
 
 function clubType(name: string): Club['type'] {
-  const value = name.toLowerCase();
+  const value = name.trim().toLowerCase();
   if (value.includes('putter')) return 'putter';
   if (value.includes('driver')) return 'driver';
-  if (value.includes('wood')) return 'wood';
-  if (value.includes('hybrid')) return 'hybrid';
-  if (value.includes('wedge')) return 'wedge';
+  if (value.includes('wood') || /^\d+\s*w$/.test(value)) return 'wood';
+  if (value.includes('hybrid') || /^\d+\s*h$/.test(value)) return 'hybrid';
+  if (
+    value.includes('wedge')
+    || value.includes('°')
+    || /^(pw|gw|sw|lw)$/.test(value)
+  ) {
+    return 'wedge';
+  }
   return 'iron';
 }
 

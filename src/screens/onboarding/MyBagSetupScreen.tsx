@@ -42,7 +42,7 @@ export default function MyBagSetupScreen() {
   const { user } = useAuth();
   const returnTo = route.params?.returnTo ?? 'Main';
 
-  // Wizard state: 0 = Splash, 1-N = Wizard Club Steps
+  // Wizard state: 0 = splash, -1 = club selection, 1-N = distance steps
   const [step, setStep] = useState(0);
 
   // Distances record (club name -> carry distance string)
@@ -54,7 +54,10 @@ export default function MyBagSetupScreen() {
   );
 
   // Excluded clubs record (club name -> boolean)
-  const [excludedClubs, setExcludedClubs] = useState<Record<string, boolean>>({});
+  const [excludedClubs, setExcludedClubs] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(SETUP_CLUBS.map(club => [club.name, !club.defaultSelected])),
+  );
+  const selectedClubs = SETUP_CLUBS.filter(club => !excludedClubs[club.name]);
 
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -94,7 +97,7 @@ export default function MyBagSetupScreen() {
 
   const handleNext = () => {
     Keyboard.dismiss();
-    if (step === SETUP_CLUBS.length) {
+    if (step === selectedClubs.length) {
       handleFinish();
     } else {
       setStep(step + 1);
@@ -103,7 +106,9 @@ export default function MyBagSetupScreen() {
 
   const handleBack = () => {
     Keyboard.dismiss();
-    if (step > 0) {
+    if (step === 1) {
+      setStep(-1);
+    } else if (step > 1) {
       setStep(step - 1);
     }
   };
@@ -139,12 +144,8 @@ export default function MyBagSetupScreen() {
         carry_distance_metres: number;
       }[] = [];
 
-      for (let i = 0; i < SETUP_CLUBS.length; i++) {
-        const club = SETUP_CLUBS[i];
-
-        if (excludedClubs[club.name]) {
-          continue;
-        }
+      for (let i = 0; i < selectedClubs.length; i++) {
+        const club = selectedClubs[i];
 
         const carry = parseInt(carries[club.name], 10);
         if (!isValidClubCarry(club, carry)) {
@@ -216,7 +217,7 @@ export default function MyBagSetupScreen() {
           <View style={styles.splashFooter}>
             <TouchableOpacity
               style={styles.primaryBtn}
-              onPress={() => setStep(1)}
+              onPress={() => setStep(-1)}
               activeOpacity={0.85}
             >
               <Text style={styles.primaryBtnText}>Let's Enter Distances</Text>
@@ -242,9 +243,70 @@ export default function MyBagSetupScreen() {
     );
   }
 
-  // 2. Render Club Wizard Steps (Step 1-14)
-  const currentClub = SETUP_CLUBS[step - 1];
-  const isExcluded = excludedClubs[currentClub.name] === true;
+  if (step === -1) {
+    const groups = [
+      { type: 'driver', label: 'Driver' },
+      { type: 'wood', label: 'Fairway Woods' },
+      { type: 'hybrid', label: 'Hybrids' },
+      { type: 'iron', label: 'Irons' },
+      { type: 'wedge', label: 'Wedges' },
+    ] as const;
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
+        <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
+        <View style={styles.selectionHeader}>
+          <Text style={styles.selectionTitle}>Build Your Bag</Text>
+          <Text style={styles.selectionDesc}>
+            Select only the clubs you carry. You can change this later in Settings.
+          </Text>
+        </View>
+        <ScrollView contentContainerStyle={styles.selectionContent}>
+          {groups.map(group => (
+            <View key={group.type} style={styles.selectionGroup}>
+              <Text style={styles.selectionGroupTitle}>{group.label}</Text>
+              <View style={styles.clubGrid}>
+                {SETUP_CLUBS.filter(club => club.type === group.type).map(club => {
+                  const selected = !excludedClubs[club.name];
+                  return (
+                    <TouchableOpacity
+                      key={club.name}
+                      style={[styles.clubChip, selected && styles.clubChipSelected]}
+                      onPress={() => toggleExclude(club.name)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.clubChipText, selected && styles.clubChipTextSelected]}>
+                        {selected ? '✓ ' : ''}{club.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+        <View style={styles.selectionFooter}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => setStep(0)}>
+            <Text style={styles.backBtnText}>← Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.nextBtn, selectedClubs.length === 0 && styles.nextBtnDisabled]}
+            onPress={() => {
+              if (selectedClubs.length === 0) {
+                Alert.alert('Select Your Clubs', 'Choose at least one club for your bag.');
+                return;
+              }
+              setStep(1);
+            }}
+          >
+            <Text style={styles.nextBtnText}>Set {selectedClubs.length} Distances →</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // 2. Render distance wizard for the selected clubs
+  const currentClub = selectedClubs[step - 1];
   const carryVal = carries[currentClub.name] ?? '';
 
   return (
@@ -259,7 +321,7 @@ export default function MyBagSetupScreen() {
         {/* Progress Bar & Skip option */}
         <View style={styles.wizardHeader}>
           <View style={styles.progressDots}>
-            {SETUP_CLUBS.map((_, idx) => (
+            {selectedClubs.map((_, idx) => (
               <View
                 key={idx}
                 style={[
@@ -286,14 +348,14 @@ export default function MyBagSetupScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.wizardStepInfo}>
-            <Text style={styles.stepCount}>Club {step} of {SETUP_CLUBS.length}</Text>
+            <Text style={styles.stepCount}>Club {step} of {selectedClubs.length}</Text>
             <Text style={styles.clubName}>{currentClub.name}</Text>
             <Text style={styles.clubDesc}>{currentClub.desc}</Text>
           </View>
 
           {/* Input Block */}
           <View style={styles.inputBlock}>
-            <Text style={[styles.inputLabel, isExcluded && styles.mutedText]}>
+            <Text style={styles.inputLabel}>
               Carry Distance (Metres)
             </Text>
             <TextInput
@@ -301,7 +363,6 @@ export default function MyBagSetupScreen() {
               style={[
                 styles.inputField,
                 averageClubs[currentClub.name] && styles.inputFieldAverage,
-                isExcluded && styles.inputFieldDisabled,
               ]}
               value={carryVal}
               onChangeText={val => {
@@ -309,11 +370,10 @@ export default function MyBagSetupScreen() {
                 setAverageClubs(prev => ({ ...prev, [currentClub.name]: false }));
               }}
               keyboardType="number-pad"
-              editable={!isExcluded}
               placeholder="e.g. 150"
               placeholderTextColor={Colors.textMuted}
             />
-            {averageClubs[currentClub.name] && !isExcluded && (
+            {averageClubs[currentClub.name] && (
               <Text style={styles.averageNote}>Average golfer estimate</Text>
             )}
           </View>
@@ -321,7 +381,7 @@ export default function MyBagSetupScreen() {
           <TouchableOpacity
             style={[
               styles.averageToggle,
-              averageClubs[currentClub.name] && !isExcluded && styles.averageToggleActive,
+              averageClubs[currentClub.name] && styles.averageToggleActive,
             ]}
             onPress={() => useAverageForClub(currentClub.name, currentClub.defaultCarry)}
             activeOpacity={0.7}
@@ -333,20 +393,16 @@ export default function MyBagSetupScreen() {
               </Text>
             </View>
             <Text style={styles.averageCheck}>
-              {averageClubs[currentClub.name] && !isExcluded ? '✓' : 'Use'}
+              {averageClubs[currentClub.name] ? '✓' : 'Use'}
             </Text>
           </TouchableOpacity>
 
-          {/* Exclude Toggle */}
           <TouchableOpacity
-            style={[styles.excludeToggle, isExcluded && styles.excludeToggleActive]}
-            onPress={() => toggleExclude(currentClub.name)}
+            style={styles.excludeToggle}
+            onPress={() => setStep(-1)}
             activeOpacity={0.7}
           >
-            <View style={[styles.checkbox, isExcluded && styles.checkboxActive]}>
-              {isExcluded && <Text style={styles.checkboxCheck}>✓</Text>}
-            </View>
-            <Text style={styles.excludeToggleText}>I don't carry this club in my bag</Text>
+            <Text style={styles.excludeToggleText}>Edit the clubs in my bag</Text>
           </TouchableOpacity>
         </ScrollView>
 
@@ -369,7 +425,7 @@ export default function MyBagSetupScreen() {
               <ActivityIndicator color={Colors.bg} />
             ) : (
               <Text style={styles.nextBtnText}>
-                {step === SETUP_CLUBS.length ? 'Finish & Save →' : 'Next →'}
+                {step === selectedClubs.length ? 'Finish & Save →' : 'Next →'}
               </Text>
             )}
           </TouchableOpacity>
@@ -478,6 +534,77 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.semibold,
     color: Colors.text,
     fontFamily: Font.semibold,
+  },
+  selectionHeader: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.base,
+    gap: Spacing.sm,
+  },
+  selectionTitle: {
+    color: Colors.text,
+    fontFamily: Font.black,
+    fontWeight: FontWeight.black,
+    fontSize: FontSize.xxl,
+  },
+  selectionDesc: {
+    color: Colors.textSecondary,
+    fontFamily: Font.regular,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+  },
+  selectionContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
+    gap: Spacing.lg,
+  },
+  selectionGroup: {
+    gap: Spacing.sm,
+  },
+  selectionGroupTitle: {
+    color: Colors.textMuted,
+    fontFamily: Font.bold,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  clubGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  clubChip: {
+    minWidth: 68,
+    minHeight: 44,
+    paddingHorizontal: Spacing.base,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clubChipSelected: {
+    borderColor: Colors.green,
+    backgroundColor: Colors.greenMuted,
+  },
+  clubChipText: {
+    color: Colors.textSecondary,
+    fontFamily: Font.semibold,
+    fontWeight: FontWeight.semibold,
+    fontSize: FontSize.sm,
+  },
+  clubChipTextSelected: {
+    color: Colors.green,
+  },
+  selectionFooter: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    padding: Spacing.base,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    backgroundColor: Colors.bg,
   },
 
   // Wizard General Styling
