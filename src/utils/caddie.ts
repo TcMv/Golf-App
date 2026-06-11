@@ -12,7 +12,7 @@ type ActiveHazard = {
 };
 export type CaddieLie = Lie | 'trees';
 export type CaddieZone = {
-  zone_type: 'green' | 'fairway';
+  zone_type: 'green' | 'fairway' | 'fairway_centreline';
   coordinates: { lat: number; lng: number }[];
 };
 
@@ -140,6 +140,7 @@ export function buildCaddieAdvice(params: {
   lie?: CaddieLie;
   customTarget?: LatLng | null;
   clubMisses?: Record<string, 'left' | 'right' | 'short' | 'long'>;
+  fairwayCentreline?: CaddieZone['coordinates'];
 }): CaddieAdvice | null {
   const {
     playerPos,
@@ -158,6 +159,7 @@ export function buildCaddieAdvice(params: {
     lie = 'rough',
     customTarget = null,
     clubMisses = {},
+    fairwayCentreline = [],
   } = params;
   const elevDiff = Math.round(greenElevation - playerElevation);
 
@@ -215,29 +217,6 @@ export function buildCaddieAdvice(params: {
 
   if (usable.length === 0) return null;
 
-  // Inspect only the finite shot corridor. Polygon projection bounds can
-  // invent crossings for large or concave hazards well beyond the shot.
-  const activeHazards = hazards
-    .map(h => {
-      if (h.coordinates.length < 3) return null;
-      const geometry = hazardAlongShot(
-        playerPos,
-        bToGreen,
-        distToObjective + 35,
-        h.coordinates,
-        isCourseBoundary(h, playerPos, shotObjective),
-      );
-      if (!geometry || geometry.farDistance < 5) return null;
-      return {
-        hazard: h,
-        nearDistance: geometry.nearDistance,
-        farDistance: geometry.farDistance,
-        side: geometry.side,
-        crossesShotCorridor: geometry.crossesShotCorridor,
-      };
-    })
-    .filter(Boolean) as ActiveHazard[];
-
   // Score each club
   function evaluateClub(club: Club): ClubOption {
     const stddev = club.carry_stddev_metres ?? 12;
@@ -246,7 +225,31 @@ export function buildCaddieAdvice(params: {
     const adjusted = Math.round(
       elevationCarryAdjustment(windAdj, playerElevation, greenElevation) * lieFactor,
     );
-    const warnings = warningsForShot(activeHazards, adjusted, stddev);
+    const routeTarget = !customTarget && distToObjective > adjusted + 12
+      ? targetAlongFairwayRoute(playerPos, greenMid, fairwayCentreline, adjusted)
+      : null;
+    const clubBearing = routeTarget ? calcBearing(playerPos, routeTarget) : bToGreen;
+    const clubHazards = hazards
+      .map(hazard => {
+        if (hazard.coordinates.length < 3) return null;
+        const geometry = hazardAlongShot(
+          playerPos,
+          clubBearing,
+          adjusted + stddev + 35,
+          hazard.coordinates,
+          isCourseBoundary(hazard, playerPos, shotObjective),
+        );
+        if (!geometry || geometry.farDistance < 5) return null;
+        return {
+          hazard,
+          nearDistance: geometry.nearDistance,
+          farDistance: geometry.farDistance,
+          side: geometry.side,
+          crossesShotCorridor: geometry.crossesShotCorridor,
+        };
+      })
+      .filter(Boolean) as ActiveHazard[];
+    const warnings = warningsForShot(clubHazards, adjusted, stddev);
 
     return {
       club,
@@ -315,13 +318,16 @@ export function buildCaddieAdvice(params: {
   const targetDistance = customTarget
     ? Math.max(1, distToObjective)
     : Math.min(recommended.adjustedCarry, Math.max(1, distToObjective));
+  const routeTarget = !customTarget && shotType === 'layup'
+    ? targetAlongFairwayRoute(playerPos, greenMid, fairwayCentreline, targetDistance)
+    : null;
   const targetPlan = customTarget
     ? { coordinate: customTarget, offsetDegrees: 0, hazardType: null }
     : chooseTarget({
         playerPos,
         greenMid,
         targetDistance,
-        bearingToGreen: bToGreen,
+        bearingToGreen: routeTarget ? calcBearing(playerPos, routeTarget) : bToGreen,
         hazards,
         shotType,
         missDirection: selectedMiss,
@@ -380,7 +386,9 @@ export function buildCaddieAdvice(params: {
     : customTarget
     ? `Play to the selected recovery target, ${targetDistance}m away.`
     : targetPlan.offsetDegrees !== 0
-    ? `Aim ${targetPlan.offsetDegrees < 0 ? 'left' : 'right'} of the direct line${targetPlan.hazardType ? `, away from ${targetPlan.hazardType}` : ''}.`
+    ? `Aim ${targetPlan.offsetDegrees < 0 ? 'left' : 'right'} of the ${routeTarget ? 'fairway route' : 'direct line'}${targetPlan.hazardType ? `, away from ${targetPlan.hazardType}` : ''}.`
+    : routeTarget
+      ? `Follow the fairway route to the marked landing area and leave about ${remainingDistance}m.`
     : shotType === 'layup'
       ? `Aim at the centre of the fairway and leave about ${remainingDistance}m.`
       : 'Aim at the centre of the green.';
@@ -521,6 +529,70 @@ function destinationPoint(from: LatLng, bearingDegrees: number, distanceMetres: 
     latitude: targetLatitude * 180 / Math.PI,
     longitude: targetLongitude * 180 / Math.PI,
   };
+}
+
+function targetAlongFairwayRoute(
+  player: LatLng,
+  green: LatLng,
+  coordinates: CaddieZone['coordinates'],
+  targetDistance: number,
+): LatLng | null {
+  if (coordinates.length < 2) return null;
+  const route = coordinates.map(point => ({
+    latitude: point.lat,
+    longitude: point.lng,
+  }));
+  if (haversineMetres(route[0], green) < haversineMetres(route[route.length - 1], green)) {
+    route.reverse();
+  }
+
+  const latitudeScale = 111_320;
+  const longitudeScale = latitudeScale * Math.cos(player.latitude * Math.PI / 180);
+  let nearestSegment = 0;
+  let nearestRatio = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < route.length - 1; index += 1) {
+    const start = route[index];
+    const end = route[index + 1];
+    const startX = (start.longitude - player.longitude) * longitudeScale;
+    const startY = (start.latitude - player.latitude) * latitudeScale;
+    const endX = (end.longitude - player.longitude) * longitudeScale;
+    const endY = (end.latitude - player.latitude) * latitudeScale;
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+    const ratio = deltaX === 0 && deltaY === 0
+      ? 0
+      : Math.max(0, Math.min(1, -(startX * deltaX + startY * deltaY)
+        / (deltaX * deltaX + deltaY * deltaY)));
+    const distance = Math.hypot(startX + ratio * deltaX, startY + ratio * deltaY);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestSegment = index;
+      nearestRatio = ratio;
+    }
+  }
+
+  let remaining = targetDistance;
+  let current = {
+    latitude: route[nearestSegment].latitude
+      + (route[nearestSegment + 1].latitude - route[nearestSegment].latitude) * nearestRatio,
+    longitude: route[nearestSegment].longitude
+      + (route[nearestSegment + 1].longitude - route[nearestSegment].longitude) * nearestRatio,
+  };
+  for (let index = nearestSegment; index < route.length - 1; index += 1) {
+    const segmentEnd = route[index + 1];
+    const segmentLength = haversineMetres(current, segmentEnd);
+    if (remaining <= segmentLength) {
+      const ratio = segmentLength === 0 ? 0 : remaining / segmentLength;
+      return {
+        latitude: current.latitude + (segmentEnd.latitude - current.latitude) * ratio,
+        longitude: current.longitude + (segmentEnd.longitude - current.longitude) * ratio,
+      };
+    }
+    remaining -= segmentLength;
+    current = segmentEnd;
+  }
+  return route[route.length - 1];
 }
 
 function chooseTarget(params: {

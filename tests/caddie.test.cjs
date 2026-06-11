@@ -178,6 +178,51 @@ assert.equal(
   'Hit Driver to the marked 210m landing area, leaving 43m.',
 );
 
+const doglegAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.002, longitude: -0.001 },
+  hazards: [{
+    id: 'dogleg-trees',
+    course_id: 'course',
+    hole_number: 1,
+    hole_numbers: [1],
+    type: 'trees',
+    label: null,
+    coordinates: [
+      { lat: 0.00075, lng: -0.00048 },
+      { lat: 0.00095, lng: -0.00048 },
+      { lat: 0.00095, lng: -0.00032 },
+      { lat: 0.00075, lng: -0.00032 },
+    ],
+    created_at: '',
+  }],
+  clubs: [{
+    ...clubs[0],
+    id: 'dogleg-driver',
+    name: 'Driver',
+    type: 'driver',
+    carry_metres: 170,
+    carry_stddev_metres: 12,
+  }],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  fairwayCentreline: [
+    { lat: 0, lng: 0 },
+    { lat: 0.0015, lng: 0 },
+    { lat: 0.002, lng: -0.001 },
+  ],
+});
+assert.ok(doglegAdvice);
+assert.equal(doglegAdvice.shotType, 'layup');
+assert.ok(doglegAdvice.target.latitude > 0.0014);
+assert.ok(Math.abs(doglegAdvice.target.longitude) < 0.00015);
+assert.match(doglegAdvice.aimInstruction, /fairway route/);
+assert.equal(doglegAdvice.recommended.clearsHazards, true);
+assert.doesNotMatch(doglegAdvice.strategy.join(' '), /trees/);
+
 const shortClubAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },
   greenMid: { latitude: 0.00162, longitude: 0 },

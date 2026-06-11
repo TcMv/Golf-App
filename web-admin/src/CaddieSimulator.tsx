@@ -210,6 +210,10 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
     (zones as (CaddieZone & { hole_number?: number })[])
       .filter(zone => zone.hole_number === holeNumber)
   ), [holeNumber, zones]);
+  const fairwayCentreline = useMemo(
+    () => holeZones.find(zone => zone.zone_type === 'fairway_centreline')?.coordinates ?? [],
+    [holeZones],
+  );
   const playerLie = useMemo(() => (
     playerPosition
       ? detectCaddieLie({ playerPos: playerPosition, hazards: holeHazards, zones: holeZones, tee })
@@ -250,6 +254,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
       lie: playerLie,
       customTarget,
       clubMisses,
+      fairwayCentreline,
     });
   }, [
     clubs,
@@ -258,6 +263,7 @@ export default function CaddieSimulator({ courseId, userId, onBack }: Props) {
     greenMid,
     hole,
     holeHazards,
+    fairwayCentreline,
     playerPosition,
     customTarget,
     playerLie,

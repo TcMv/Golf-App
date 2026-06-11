@@ -230,6 +230,10 @@ export default function ActiveRoundScreen() {
       ? detectCaddieLie({ playerPos: location, hazards: holeHazards, zones, tee })
       : 'rough'
   ), [holeHazards, location, tee, zones]);
+  const fairwayCentreline = useMemo(
+    () => zones.find(zone => zone.zone_type === 'fairway_centreline')?.coordinates ?? [],
+    [zones],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -340,6 +344,7 @@ export default function ActiveRoundScreen() {
         lie: playerLie,
         customTarget,
         clubMisses,
+        fairwayCentreline,
       });
       setCaddieAdvice(addLearnedMissAdvice(advice, learning));
     }, 600);
@@ -360,6 +365,7 @@ export default function ActiveRoundScreen() {
     playerLie,
     windData,
     holeHazards,
+    fairwayCentreline,
   ]);
 
   useEffect(() => {
@@ -575,6 +581,7 @@ export default function ActiveRoundScreen() {
       lie: playerLie,
       customTarget,
       clubMisses,
+      fairwayCentreline,
     }), learning);
     if (advice) {
       setCaddieAdvice(advice);
@@ -596,7 +603,7 @@ export default function ActiveRoundScreen() {
         .catch(() => { /* fall back to deterministic lines */ })
         .finally(() => setCaddieLlmLoading(false));
     }
-  }, [activeRound?.course.name, clubMisses, customTarget, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location, playerLie]);
+  }, [activeRound?.course.name, clubMisses, customTarget, fairwayCentreline, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location, playerLie]);
 
   if (!activeRound || !hole) {
     return (

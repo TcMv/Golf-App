@@ -31,6 +31,7 @@ import {
   LoadScript,
   Marker,
   Polygon,
+  Polyline,
 } from '@react-google-maps/api';
 import { supabase } from './lib/supabase';
 import { magicTrace } from './lib/magicTrace';
@@ -49,7 +50,7 @@ type TraceImage = {
   imageData: ImageData;
   bounds: ImageBounds;
 };
-type PrimaryZoneType = 'green' | 'fairway';
+type PrimaryZoneType = 'green' | 'fairway' | 'fairway_centreline';
 type HazardType = 'bunker' | 'water' | 'trees' | 'ob' | 'red_zone';
 type DrawingType = PrimaryZoneType | HazardType;
 
@@ -96,6 +97,7 @@ const ZONE_CONFIG: Record<DrawingType, {
 }> = {
   green: { label: 'Green', color: '#4caf50', fillOpacity: 0.25 },
   fairway: { label: 'Fairway', color: '#ffc107', fillOpacity: 0.15 },
+  fairway_centreline: { label: 'Fairway Line', color: '#ff8f00', fillOpacity: 0 },
   bunker: { label: 'Bunker', color: '#f5d76e', fillOpacity: 0.3 },
   water: { label: 'Water', color: '#42a5f5', fillOpacity: 0.3 },
   trees: { label: 'Trees', color: '#2e7d32', fillOpacity: 0.28 },
@@ -103,12 +105,13 @@ const ZONE_CONFIG: Record<DrawingType, {
   red_zone: { label: 'Red Penalty', color: '#ef5350', fillOpacity: 0.25 },
 };
 
-const PRIMARY_TYPES: PrimaryZoneType[] = ['green', 'fairway'];
+const PRIMARY_TYPES: PrimaryZoneType[] = ['green', 'fairway', 'fairway_centreline'];
 const HAZARD_TYPES: HazardType[] = ['bunker', 'water', 'red_zone', 'ob', 'trees'];
 const LAYER_TYPES: LayerType[] = [...PRIMARY_TYPES, ...HAZARD_TYPES, 'markers'];
 const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   green: true,
   fairway: true,
+  fairway_centreline: true,
   bunker: true,
   water: true,
   red_zone: true,
@@ -118,7 +121,7 @@ const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
 };
 
 function isPrimaryZone(type: DrawingType): type is PrimaryZoneType {
-  return type === 'green' || type === 'fairway';
+  return type === 'green' || type === 'fairway' || type === 'fairway_centreline';
 }
 
 function hazardDeleteScope(hazard: Hazard) {
@@ -185,6 +188,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
   const holeZones = allZones.filter(z => z.hole_number === holeNumber);
   const greenZone = holeZones.find(z => z.zone_type === 'green');
   const fairwayZone = holeZones.find(z => z.zone_type === 'fairway');
+  const fairwayCentreline = holeZones.find(z => z.zone_type === 'fairway_centreline');
   const holeHazards = hazards.filter(hazard =>
     (hazard.hole_number == null && (!hazard.hole_numbers || hazard.hole_numbers.length === 0))
     || hazard.hole_number === holeNumber
@@ -384,6 +388,10 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
     setDrawing(current => current === type ? null : type);
     setDraftCoords([]);
     setSelectedPolygon(null);
+    if (type === 'fairway_centreline') {
+      setTraceMode(false);
+      setTraceMessage('');
+    }
   }, [setLayerVisible]);
 
   const toggleHazardHole = useCallback((number: number) => {
@@ -524,7 +532,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
     const coords = removeDoubleClickPoint && draftCoords.length > 1
       ? draftCoords.slice(0, -1)
       : draftCoords;
-    if (coords.length < 3) return;
+    if (coords.length < (drawing === 'fairway_centreline' ? 2 : 3)) return;
 
     const type = drawing;
     setDrawing(null);
@@ -595,6 +603,21 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
   const onFairwayLoad = useCallback((p: google.maps.Polygon) => {
     attachZoneEditListeners(p, 'fairway');
   }, [attachZoneEditListeners]);
+
+  const onCentrelineLoad = useCallback((line: google.maps.Polyline) => {
+    const sync = () => {
+      const path = line.getPath();
+      const coords: LatLng[] = Array.from({ length: path.getLength() }, (_, index) => ({
+        lat: path.getAt(index).lat(),
+        lng: path.getAt(index).lng(),
+      }));
+      void saveDrawingRef.current('fairway_centreline', coords);
+    };
+    const path = line.getPath();
+    path.addListener('set_at', sync);
+    path.addListener('insert_at', sync);
+    path.addListener('remove_at', sync);
+  }, []);
 
   const attachHazardEditListeners = useCallback((
     polygon: google.maps.Polygon,
@@ -763,7 +786,9 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
             </span>
             <div style={S.toolbarActions}>
               {PRIMARY_TYPES.map(type => {
-                const existing = type === 'green' ? greenZone : fairwayZone;
+                const existing = type === 'green'
+                  ? greenZone
+                  : type === 'fairway' ? fairwayZone : fairwayCentreline;
                 const config = ZONE_CONFIG[type];
                 return (
                   <div key={type} style={S.toolGroup}>
@@ -880,6 +905,7 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                   setLayerVisibility({
                     green: false,
                     fairway: false,
+                    fairway_centreline: false,
                     bunker: false,
                     water: false,
                     red_zone: false,
@@ -1086,6 +1112,31 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
                 }}
               />
             )}
+            {fairwayCentreline && layerVisibility.fairway_centreline && (
+              <Polyline
+                key={`centreline-${fairwayCentreline.id}`}
+                path={fairwayCentreline.coordinates}
+                editable={!selectedPolygon || selectedPolygon.id === fairwayCentreline.id}
+                onLoad={onCentrelineLoad}
+                onClick={() => {
+                  if (!drawing) {
+                    setSelectedPolygon({
+                      kind: 'zone',
+                      id: fairwayCentreline.id,
+                      type: 'fairway_centreline',
+                    });
+                  }
+                }}
+                options={{
+                  strokeColor: selectedPolygon?.id === fairwayCentreline.id
+                    ? '#ffffff'
+                    : ZONE_CONFIG.fairway_centreline.color,
+                  strokeWeight: selectedPolygon?.id === fairwayCentreline.id ? 5 : 3,
+                  strokeOpacity: 0.95,
+                  zIndex: selectedPolygon?.id === fairwayCentreline.id ? 20 : 4,
+                }}
+              />
+            )}
             {holeHazards.filter(hazard => layerVisibility[hazard.type]).map(hazard => {
               const config = ZONE_CONFIG[hazard.type];
               return (
@@ -1211,21 +1262,34 @@ export default function ZoneEditor({ initialCourseId, onBack }: ZoneEditorProps)
               />
             )}
 
-            {/* Draft polygon while drawing */}
+            {/* Draft polygon or centreline while drawing */}
             {drawing && draftCoords.length >= 2 && (
-              <Polygon
-                paths={draftCoords}
-                editable={traceMode}
-                onLoad={traceMode ? attachDraftEditListeners : undefined}
-                options={{
-                  fillColor: ZONE_CONFIG[drawing].color,
-                  fillOpacity: ZONE_CONFIG[drawing].fillOpacity,
-                  strokeColor: ZONE_CONFIG[drawing].color,
-                  strokeWeight: 2,
-                  strokeOpacity: 0.7,
-                  clickable: traceMode,
-                }}
-              />
+              drawing === 'fairway_centreline'
+                ? (
+                    <Polyline
+                      path={draftCoords}
+                      options={{
+                        strokeColor: ZONE_CONFIG[drawing].color,
+                        strokeWeight: 3,
+                        strokeOpacity: 0.9,
+                      }}
+                    />
+                  )
+                : (
+                    <Polygon
+                      paths={draftCoords}
+                      editable={traceMode}
+                      onLoad={traceMode ? attachDraftEditListeners : undefined}
+                      options={{
+                        fillColor: ZONE_CONFIG[drawing].color,
+                        fillOpacity: ZONE_CONFIG[drawing].fillOpacity,
+                        strokeColor: ZONE_CONFIG[drawing].color,
+                        strokeWeight: 2,
+                        strokeOpacity: 0.7,
+                        clickable: traceMode,
+                      }}
+                    />
+                  )
             )}
             {/* Draft vertex dots */}
             {drawing && !traceMode && draftCoords.map((pt, i) => (
