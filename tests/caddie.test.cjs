@@ -164,6 +164,7 @@ const longHoleAdvice = buildCaddieAdvice({
   greenElevation: 0,
   holeNumber: 1,
   holePar: 4,
+  lie: 'tee',
 });
 
 assert.ok(longHoleAdvice);
@@ -177,6 +178,37 @@ assert.equal(
   authoritativeShotLine(longHoleAdvice),
   'Hit Driver toward the marked landing area, carrying about 210m and leaving 43m.',
 );
+
+const fairwayDriverExcludedAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.0027, longitude: 0 },
+  hazards: [],
+  clubs: [
+    {
+      ...clubs[0],
+      id: 'fairway-driver',
+      name: 'Driver',
+      type: 'driver',
+      carry_metres: 210,
+    },
+    {
+      ...clubs[0],
+      id: 'fairway-wood',
+      name: '3 Wood',
+      type: 'wood',
+      carry_metres: 190,
+    },
+  ],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  lie: 'fairway',
+});
+assert.ok(fairwayDriverExcludedAdvice);
+assert.equal(fairwayDriverExcludedAdvice.recommended.club.id, 'fairway-wood');
+assert.ok(!fairwayDriverExcludedAdvice.alternatives.some(option => option.club.type === 'driver'));
 
 const doglegAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },
@@ -209,6 +241,7 @@ const doglegAdvice = buildCaddieAdvice({
   windLabel: 'Calm',
   playerElevation: 0,
   greenElevation: 0,
+  lie: 'tee',
   fairwayCentreline: [
     { lat: 0, lng: 0 },
     { lat: 0.0015, lng: 0 },
@@ -264,6 +297,7 @@ const cornerCutAdvice = buildCaddieAdvice({
   windLabel: 'Calm',
   playerElevation: 0,
   greenElevation: 0,
+  lie: 'tee',
   fairwayCentreline: [
     { lat: 0, lng: 0 },
     { lat: 0.0018, lng: 0 },
@@ -318,6 +352,7 @@ const pathLandingHazardAdvice = buildCaddieAdvice({
   windLabel: 'Calm',
   playerElevation: 0,
   greenElevation: 0,
+  lie: 'tee',
   fairwayCentreline: [
     { lat: 0, lng: 0 },
     { lat: 0.003, lng: 0 },
@@ -344,6 +379,7 @@ const shortClubAdvice = buildCaddieAdvice({
   windLabel: 'Calm',
   playerElevation: 0,
   greenElevation: 0,
+  lie: 'tee',
 });
 
 assert.ok(shortClubAdvice);
@@ -396,6 +432,7 @@ const rightHazardAdvice = buildCaddieAdvice({
   windLabel: 'Calm',
   playerElevation: 0,
   greenElevation: 0,
+  lie: 'tee',
 });
 
 assert.ok(rightHazardAdvice);
@@ -598,6 +635,7 @@ const beyondShotWaterAdvice = buildCaddieAdvice({
   windLabel: 'Calm',
   playerElevation: 0,
   greenElevation: 0,
+  lie: 'tee',
 });
 
 assert.ok(beyondShotWaterAdvice);

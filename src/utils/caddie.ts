@@ -208,6 +208,7 @@ export function buildCaddieAdvice(params: {
   const usable = clubs
     .filter(c => {
       if (c.carry_metres == null || c.type === 'putter') return false;
+      if (c.type === 'driver' && lie !== 'tee') return false;
       if (lie === 'bunker') return c.type === 'wedge' || c.type === 'iron';
       if (lie === 'trees' || lie === 'recovery') {
         return c.type === 'wedge' || c.type === 'iron' || c.type === 'hybrid';
