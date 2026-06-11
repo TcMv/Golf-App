@@ -53,6 +53,7 @@ type ActiveHazard = {
   farDistance: number;
   side: HazardWarning['side'];
   crossesShotCorridor: boolean;
+  crossesDirectLine: boolean;
 };
 
 type ClubOption = {
@@ -262,6 +263,7 @@ export function buildCaddieAdvice(params: {
           farDistance: geometry.farDistance,
           side: geometry.side,
           crossesShotCorridor: geometry.crossesShotCorridor,
+          crossesDirectLine: geometry.crossesDirectLine,
         };
       })
       .filter(Boolean) as ActiveHazard[];
@@ -283,8 +285,9 @@ export function buildCaddieAdvice(params: {
     return option.adjustedCarry >= distToObjective - allowance + shortProtection
       && option.adjustedCarry <= distToObjective + longLimit;
   });
-  const shotType: CaddieAdvice['shotType'] = customTarget || lie === 'trees' || lie === 'recovery'
+  const shotType: CaddieAdvice['shotType'] = lie === 'trees' || lie === 'recovery'
     ? 'recovery'
+    : customTarget ? 'layup'
     : reachableOptions.length > 0 ? 'attack' : 'layup';
   const recommended =
     shotType === 'attack'
@@ -368,7 +371,8 @@ export function buildCaddieAdvice(params: {
         nearDistance: geometry.nearDistance,
         farDistance: geometry.farDistance,
         side: geometry.side,
-        crossesShotCorridor: true,
+        crossesShotCorridor: geometry.crossesShotCorridor,
+        crossesDirectLine: geometry.crossesDirectLine,
       };
     })
     .filter(Boolean) as ActiveHazard[];
@@ -394,12 +398,28 @@ export function buildCaddieAdvice(params: {
     ) ? 'warning' : 'clear',
   }));
   const primaryHazard = finalWarnings[0] ?? null;
-  const visibleHazard = plannedHazards
-    .sort((left, right) => left.nearDistance - right.nearDistance)[0] ?? null;
+  const visibleHazards = [...plannedHazards]
+    .sort((left, right) => {
+      const leftLandingDistance = Math.abs(
+        (left.nearDistance + left.farDistance) / 2 - targetDistance,
+      );
+      const rightLandingDistance = Math.abs(
+        (right.nearDistance + right.farDistance) / 2 - targetDistance,
+      );
+      return leftLandingDistance - rightLandingDistance;
+    });
+  const visibleHazard = visibleHazards[0] ?? null;
+  const primaryHazardGeometry = primaryHazard
+    ? plannedHazards.find(item =>
+        item.hazard.type === primaryHazard.type
+        && primaryHazard.distanceMetres >= item.nearDistance - 5
+        && primaryHazard.distanceMetres <= item.farDistance + 5
+      ) ?? null
+    : null;
   const aimInstruction = !customTarget && (lie === 'trees' || lie === 'recovery')
     ? 'Select a clear recovery target on the map before choosing the shot.'
     : customTarget
-    ? `Play to the selected recovery target, ${targetDistance}m away.`
+    ? `Play to the selected fairway target, ${targetDistance}m away.`
     : targetPlan.offsetDegrees !== 0
     ? `Aim ${targetPlan.offsetDegrees < 0 ? 'left' : 'right'} of the ${routeTarget ? 'fairway path' : 'direct line'}${targetPlan.hazardType ? `, away from ${targetPlan.hazardType}` : ''}.`
     : routeTarget
@@ -423,8 +443,9 @@ export function buildCaddieAdvice(params: {
     aimInstruction,
   ];
   if (primaryHazard) {
-    strategy.push(
-      `${primaryHazard.type} is in play at ${primaryHazard.distanceMetres}m ${primaryHazard.side}; favour the opposite side.`,
+    strategy.push(primaryHazardGeometry && !primaryHazardGeometry.crossesDirectLine
+      ? `${primaryHazard.type} sits ${primaryHazard.side} of the shot near ${primaryHazard.distanceMetres}m; keep the ball on the marked line.`
+      : `${primaryHazard.type} is in play at ${primaryHazard.distanceMetres}m ${primaryHazard.side}; favour the opposite side.`,
     );
   } else if (visibleHazard) {
     const reliableCarry = recommended.adjustedCarry
@@ -433,9 +454,13 @@ export function buildCaddieAdvice(params: {
       strategy.push(
         `The ${targetDistance}m landing target finishes about ${Math.round(visibleHazard.nearDistance - targetDistance)}m short of ${visibleHazard.hazard.type}.`,
       );
-    } else {
+    } else if (visibleHazard.crossesDirectLine) {
       strategy.push(
         `${visibleHazard.hazard.type} crosses the shot line from ${Math.round(visibleHazard.nearDistance)}m to ${Math.round(visibleHazard.farDistance)}m; reliable carry clears it by ${Math.max(0, Math.round(reliableCarry - visibleHazard.farDistance))}m.`,
+      );
+    } else {
+      strategy.push(
+        `${visibleHazard.hazard.type} sits ${visibleHazard.side} of the shot near ${Math.round((visibleHazard.nearDistance + visibleHazard.farDistance) / 2)}m; keep the ball on the marked line.`,
       );
     }
   } else {
@@ -449,9 +474,24 @@ export function buildCaddieAdvice(params: {
     );
   }
 
+  const secondaryHazard = visibleHazards.find(item =>
+    item.hazard.id !== (primaryHazardGeometry?.hazard.id ?? visibleHazard?.hazard.id)
+    && (
+      Math.abs((item.nearDistance + item.farDistance) / 2 - targetDistance) <= 45
+      || item.hazard.type === 'water'
+      || item.hazard.type === 'red_zone'
+      || item.hazard.type === 'ob'
+    )
+  );
+  if (secondaryHazard) {
+    strategy.push(
+      `${secondaryHazard.hazard.type} is also ${secondaryHazard.side} near ${Math.round((secondaryHazard.nearDistance + secondaryHazard.farDistance) / 2)}m.`,
+    );
+  }
+
   const hazardLines = plannedHazards
-    .map(({ hazard, nearDistance, farDistance, side }) =>
-      `  - ${hazard.type} ${Math.round(nearDistance)}-${Math.round(farDistance)}m ${side}`
+    .map(({ hazard, nearDistance, farDistance, side, crossesDirectLine }) =>
+      `  - ${hazard.type} ${Math.round(nearDistance)}-${Math.round(farDistance)}m ${side} (${crossesDirectLine ? 'crosses line' : 'beside line'})`
     )
     .join('\n');
   const elevationLine = elevDiff === 0
@@ -491,7 +531,7 @@ export function buildCaddieAdvice(params: {
         ? `${windLabel}. Recovery with ${clubLabel} to the selected ${targetDistance}m target.`
         : 'Recovery required. Select the safest visible gap on the map.'
       : shotType === 'layup'
-      ? `${windLabel}. Hit ${clubLabel} to the ${targetDistance}m target. ${aimInstruction}`
+      ? `${windLabel}. Hit ${clubLabel} to the ${targetDistance}m ${customTarget ? 'fairway ' : ''}target. ${aimInstruction}`
       : `${windLabel}. Play ${playingDistance}m. ${clubLabel}. ${missLine}`,
     context,
   };
@@ -729,6 +769,7 @@ function warningsForShot(
     farDistance,
     side,
     crossesShotCorridor,
+    crossesDirectLine,
   } of activeHazards) {
     const landMin = adjustedCarry - stddev;
     const landMax = adjustedCarry + stddev * 0.5;
@@ -736,11 +777,11 @@ function warningsForShot(
       && farDistance >= landMin
       && nearDistance <= landMax;
     const reliableCarry = adjustedCarry - stddev;
-    const requiresCarry = crossesShotCorridor
+    const requiresCarry = crossesDirectLine
       && (hazard.type === 'water' || hazard.type === 'red_zone')
       && nearDistance <= landMax
       && reliableCarry < farDistance + 5;
-    const blocksFlight = crossesShotCorridor
+    const blocksFlight = crossesDirectLine
       && hazard.type === 'trees'
       && nearDistance <= landMax;
     if (landingOverlap || requiresCarry || blocksFlight) {
@@ -812,6 +853,7 @@ function hazardAlongShot(
   nearDistance: number;
   farDistance: number;
   crossesShotCorridor: boolean;
+  crossesDirectLine: boolean;
   side: HazardWarning['side'];
 } | null {
   const sampleStep = 3;
@@ -834,7 +876,8 @@ function hazardAlongShot(
   return {
     nearDistance: Math.max(0, Math.min(...distanceHits) - sampleStep),
     farDistance: Math.min(shotDistance, Math.max(...distanceHits) + sampleStep),
-    crossesShotCorridor: true,
+    crossesShotCorridor: hits.length > 0,
+    crossesDirectLine: lineHits.length > 0,
     side: lineHits.length > 0 ? 'centre' : hazardSide(player, shotBearing, polygon),
   };
 }

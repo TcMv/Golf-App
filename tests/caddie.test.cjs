@@ -705,6 +705,66 @@ assert.ok(recoveryAdvice.targetDistance >= 55 && recoveryAdvice.targetDistance <
 assert.ok(recoveryAdvice.recommended.adjustedCarry < recoveryAdvice.recommended.club.carry_metres);
 assert.match(recoveryAdvice.strategy[0], /Recovery shot/);
 
+const selectedFairwayAdvice = buildCaddieAdvice({
+  playerPos: { latitude: 0, longitude: 0 },
+  greenMid: { latitude: 0.0027, longitude: 0 },
+  hazards: [
+    {
+      id: 'selected-water-left',
+      course_id: 'course',
+      hole_number: 1,
+      hole_numbers: [1],
+      type: 'water',
+      label: null,
+      coordinates: [
+        { lat: 0.00005, lng: -0.0002 },
+        { lat: 0.0015, lng: -0.0002 },
+        { lat: 0.0015, lng: -0.00011 },
+        { lat: 0.00005, lng: -0.00011 },
+      ],
+      created_at: '',
+    },
+    {
+      id: 'selected-bunker-right',
+      course_id: 'course',
+      hole_number: 1,
+      hole_numbers: [1],
+      type: 'bunker',
+      label: null,
+      coordinates: [
+        { lat: 0.00118, lng: 0.00011 },
+        { lat: 0.00136, lng: 0.00011 },
+        { lat: 0.00136, lng: 0.0002 },
+        { lat: 0.00118, lng: 0.0002 },
+      ],
+      created_at: '',
+    },
+  ],
+  clubs: [{
+    ...clubs[0],
+    id: 'selected-five',
+    name: '5 Iron',
+    carry_metres: 155,
+    carry_stddev_metres: 8,
+  }],
+  windSpeed: 0,
+  windDir: 0,
+  windLabel: 'Calm',
+  playerElevation: 0,
+  greenElevation: 0,
+  lie: 'tee',
+  customTarget: { latitude: 0.00144, longitude: 0 },
+});
+
+assert.ok(selectedFairwayAdvice);
+assert.equal(selectedFairwayAdvice.shotType, 'layup');
+assert.equal(selectedFairwayAdvice.customTarget, true);
+assert.match(selectedFairwayAdvice.aimInstruction, /selected fairway target/);
+assert.doesNotMatch(selectedFairwayAdvice.strategy.join(' '), /Recovery/);
+assert.doesNotMatch(selectedFairwayAdvice.strategy.join(' '), /water crosses the shot line/);
+assert.match(selectedFairwayAdvice.strategy.join(' '), /water sits left/);
+assert.match(selectedFairwayAdvice.strategy.join(' '), /bunker/);
+
 const bunkerAdvice = buildCaddieAdvice({
   playerPos: { latitude: 0, longitude: 0 },
   greenMid: { latitude: 0.0009, longitude: 0 },
