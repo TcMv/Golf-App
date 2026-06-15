@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -13,16 +15,18 @@ import {
 import MapView, { Marker, Polygon, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import * as Location from 'expo-location';
 import { supabase } from '../../lib/supabase';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 import type { Hazard, HazardType } from '../../types';
 
-type Mode = 'view' | 'edit' | 'draw';
+type Mode = 'view' | 'edit' | 'draw' | 'gps';
 type LatLng = { latitude: number; longitude: number };
 type LayerKey = 'tees' | 'greens' | 'bunker' | 'water' | 'trees' | 'ob' | 'red_zone';
 type Layers = Record<LayerKey, boolean>;
+type GpsField = 'tee' | 'green_front' | 'green_mid' | 'green_back';
 
-const COURSE_ID = '00000000-0000-0000-0000-000000000001';
+type Course = { id: string; name: string; lat: number; lng: number };
 
 const HAZARD_COLORS: Record<HazardType, string> = {
   bunker: Colors.eagle,
@@ -54,6 +58,13 @@ const LAYER_DEFS: { key: LayerKey; label: string; color: string }[] = [
   { key: 'red_zone', label: 'Red Zone', color: Colors.doublePlus },
 ];
 
+const GPS_STAMPS: { field: GpsField; label: string }[] = [
+  { field: 'tee', label: 'Tee' },
+  { field: 'green_front', label: 'Front' },
+  { field: 'green_mid', label: 'Mid' },
+  { field: 'green_back', label: 'Back' },
+];
+
 type HoleMarker = {
   id: string;
   number: number;
@@ -72,11 +83,23 @@ const midpt = (a: LatLng, b: LatLng): LatLng => ({
   longitude: (a.longitude + b.longitude) / 2,
 });
 
+function holeHasGps(hole: HoleMarker | undefined, field: GpsField): boolean {
+  if (!hole) return false;
+  switch (field) {
+    case 'tee': return hole.tee_lat != null;
+    case 'green_front': return hole.green_front_lat != null;
+    case 'green_mid': return hole.green_mid_lat != null;
+    case 'green_back': return hole.green_back_lat != null;
+  }
+}
+
 export default function AdminMapScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
+  const [courseId, setCourseId] = useState('00000000-0000-0000-0000-000000000001');
+  const [courses, setCourses] = useState<Course[]>([]);
   const [mode, setMode] = useState<Mode>('view');
   const [layers, setLayers] = useState<Layers>(DEFAULT_LAYERS);
   const [holes, setHoles] = useState<HoleMarker[]>([]);
@@ -95,23 +118,47 @@ export default function AdminMapScreen() {
   const [editingVertices, setEditingVertices] = useState<LatLng[]>([]);
   const [selectedVertexIdx, setSelectedVertexIdx] = useState<number | null>(null);
 
+  // GPS capture mode
+  const [gpsCaptureHole, setGpsCaptureHole] = useState(1);
+  const [stampingField, setStampingField] = useState<GpsField | null>(null);
+  const [lastSaved, setLastSaved] = useState<GpsField | null>(null);
+
+  const loadCourses = useCallback(async () => {
+    const { data } = await supabase.from('courses').select('id,name,lat,lng').order('name');
+    if (data) setCourses(data as Course[]);
+  }, []);
+
   const loadData = useCallback(async () => {
     const [{ data: holesData }, { data: hazardsData }] = await Promise.all([
       supabase
         .from('holes')
         .select('id,number,tee_lat,tee_lng,green_front_lat,green_front_lng,green_mid_lat,green_mid_lng,green_back_lat,green_back_lng')
-        .eq('course_id', COURSE_ID)
+        .eq('course_id', courseId)
         .order('number'),
       supabase
         .from('hazards')
         .select('id, course_id, hole_number, hole_numbers, type, label, coordinates, created_at')
-        .eq('course_id', COURSE_ID),
+        .eq('course_id', courseId),
     ]);
     if (holesData) setHoles(holesData as HoleMarker[]);
     if (hazardsData) setHazards(hazardsData as Hazard[]);
-  }, []);
+  }, [courseId]);
 
+  useEffect(() => { loadCourses(); }, [loadCourses]);
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Pan map to selected course
+  useEffect(() => {
+    const course = courses.find(c => c.id === courseId);
+    if (course && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: course.lat,
+        longitude: course.lng,
+        latitudeDelta: 0.013,
+        longitudeDelta: 0.013,
+      }, 800);
+    }
+  }, [courseId, courses]);
 
   const toggleLayer = useCallback((key: LayerKey) => {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -211,11 +258,45 @@ export default function AdminMapScreen() {
     );
   }, []);
 
+  const captureGps = useCallback(async (field: GpsField) => {
+    const hole = holes.find(h => h.number === gpsCaptureHole);
+    if (!hole) {
+      Alert.alert('Hole not found', `Hole ${gpsCaptureHole} is not in the database for this course.`);
+      return;
+    }
+    setStampingField(field);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Location permission is required to stamp GPS coordinates.');
+        setStampingField(null);
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const update = {
+        [`${field}_lat`]: pos.coords.latitude,
+        [`${field}_lng`]: pos.coords.longitude,
+      };
+      const { error } = await supabase.from('holes').update(update).eq('id', hole.id);
+      if (error) {
+        Alert.alert('Save failed', error.message);
+        setStampingField(null);
+        return;
+      }
+      setHoles(prev => prev.map(h => h.id === hole.id ? { ...h, ...update } : h));
+      setLastSaved(field);
+      setTimeout(() => setLastSaved(null), 2500);
+    } catch (err) {
+      Alert.alert('GPS Error', err instanceof Error ? err.message : 'Failed to get location');
+    }
+    setStampingField(null);
+  }, [holes, gpsCaptureHole]);
+
   const saveHazard = useCallback(async () => {
     if (drawVertices.length < 3) return;
     setSaving(true);
     const { error } = await supabase.from('hazards').insert({
-      course_id: COURSE_ID,
+      course_id: courseId,
       hole_number: hazardHoles.length === 1 ? hazardHoles[0] : null,
       hole_numbers: hazardHoles.length > 0 ? hazardHoles : null,
       type: hazardType,
@@ -226,7 +307,7 @@ export default function AdminMapScreen() {
     if (error) { Alert.alert('Error', error.message); return; }
     clearDraw();
     loadData();
-  }, [drawVertices, hazardHoles, hazardType, hazardLabel, clearDraw, loadData]);
+  }, [drawVertices, hazardHoles, hazardType, hazardLabel, courseId, clearDraw, loadData]);
 
   const isVertexEditing = editingHazardId !== null;
   const canDeleteVertex = selectedVertexIdx !== null && editingVertices.length > 3;
@@ -235,6 +316,8 @@ export default function AdminMapScreen() {
     drawVertices.length >= 3
       ? [drawVertices[drawVertices.length - 1], drawVertices[0]]
       : [];
+
+  const selectedHole = holes.find(h => h.number === gpsCaptureHole);
 
   return (
     <View style={styles.container}>
@@ -246,8 +329,8 @@ export default function AdminMapScreen() {
         provider={PROVIDER_GOOGLE}
         mapType="satellite"
         initialRegion={{
-          latitude: -26.609,
-          longitude: 152.969,
+          latitude: -26.6317,
+          longitude: 152.9587,
           latitudeDelta: 0.013,
           longitudeDelta: 0.013,
         }}
@@ -380,7 +463,7 @@ export default function AdminMapScreen() {
         )}
       </MapView>
 
-      {/* Overlay: header + mode bar + layer toggles */}
+      {/* Overlay: header + course selector + mode bar + layer toggles */}
       <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.overlay}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -390,15 +473,41 @@ export default function AdminMapScreen() {
           <View style={{ width: 36 }} />
         </View>
 
+        {/* Course selector */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.courseScroll}
+          contentContainerStyle={styles.courseScrollContent}
+        >
+          {courses.map(c => (
+            <TouchableOpacity
+              key={c.id}
+              style={[styles.courseChip, courseId === c.id && styles.courseChipActive]}
+              onPress={() => {
+                setCourseId(c.id);
+                setHoles([]);
+                setHazards([]);
+                setGpsCaptureHole(1);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.courseChipText, courseId === c.id && styles.courseChipTextActive]}>
+                {c.name.replace(' Golf Club', '').replace(' Golf Course', '')}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
         <View style={styles.modeBar}>
-          {(['view', 'edit', 'draw'] as Mode[]).map(m => (
+          {(['view', 'edit', 'draw', 'gps'] as Mode[]).map(m => (
             <TouchableOpacity
               key={m}
               style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
               onPress={() => { setMode(m); clearDraw(); cancelVertexEdit(); }}
             >
               <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
-                {m === 'view' ? 'View' : m === 'edit' ? 'Edit' : 'Draw'}
+                {m === 'view' ? 'View' : m === 'edit' ? 'Edit' : m === 'draw' ? 'Draw' : 'GPS'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -493,6 +602,55 @@ export default function AdminMapScreen() {
             </View>
           </View>
         )}
+        {!isVertexEditing && mode === 'gps' && (
+          <View style={styles.gpsPanel}>
+            <View style={styles.gpsHoleRow}>
+              <Text style={styles.gpsLabel}>Hole</Text>
+              <View style={styles.gpsHoleStepper}>
+                <TouchableOpacity
+                  style={styles.gpsStepBtn}
+                  onPress={() => setGpsCaptureHole(h => Math.max(1, h - 1))}
+                >
+                  <Text style={styles.gpsStepBtnText}>‹</Text>
+                </TouchableOpacity>
+                <Text style={styles.gpsHoleNumber}>{gpsCaptureHole}</Text>
+                <TouchableOpacity
+                  style={styles.gpsStepBtn}
+                  onPress={() => setGpsCaptureHole(h => Math.min(18, h + 1))}
+                >
+                  <Text style={styles.gpsStepBtnText}>›</Text>
+                </TouchableOpacity>
+              </View>
+              {lastSaved ? (
+                <Text style={styles.gpsSavedText}>✓ {lastSaved.replace('_', ' ')} saved</Text>
+              ) : (
+                <Text style={styles.gpsAccuracyHint}>stand still for best accuracy</Text>
+              )}
+            </View>
+            <View style={styles.gpsStampRow}>
+              {GPS_STAMPS.map(({ field, label }) => {
+                const done = holeHasGps(selectedHole, field);
+                const stamping = stampingField === field;
+                return (
+                  <TouchableOpacity
+                    key={field}
+                    style={[
+                      styles.gpsStampBtn,
+                      done && styles.gpsStampBtnDone,
+                      stamping && { opacity: 0.6 },
+                    ]}
+                    onPress={() => captureGps(field)}
+                    disabled={stampingField !== null}
+                  >
+                    <Text style={[styles.gpsStampBtnText, done && styles.gpsStampBtnTextDone]}>
+                      {stamping ? '…' : done ? `✓ ${label}` : `📍 ${label}`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Tag polygon modal */}
@@ -502,6 +660,7 @@ export default function AdminMapScreen() {
         animationType="slide"
         onRequestClose={() => setTagModalVisible(false)}
       >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Tag Polygon</Text>
@@ -578,6 +737,7 @@ export default function AdminMapScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -602,6 +762,24 @@ const styles = StyleSheet.create({
   },
   backBtnText: { fontSize: FontSize.base, color: Colors.text },
   title: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
+  courseScroll: { marginTop: 2 },
+  courseScrollContent: {
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  courseChip: {
+    paddingHorizontal: Spacing.base, paddingVertical: 7,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.mapOverlay,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  courseChipActive: {
+    borderColor: Colors.green,
+    backgroundColor: Colors.greenMuted,
+  },
+  courseChipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textMuted },
+  courseChipTextActive: { color: Colors.green, fontWeight: FontWeight.semibold },
   modeBar: {
     flexDirection: 'row',
     marginHorizontal: Spacing.base,
@@ -688,6 +866,55 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md, backgroundColor: Colors.green,
   },
   greenBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.bg },
+  gpsPanel: {
+    width: '100%',
+    backgroundColor: Colors.mapOverlay,
+    borderRadius: Radius.lg,
+    padding: Spacing.base,
+    gap: Spacing.md,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  gpsHoleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  gpsLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textMuted },
+  gpsHoleStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface2,
+    borderRadius: Radius.md,
+    paddingHorizontal: 2,
+  },
+  gpsStepBtn: {
+    width: 36, height: 36,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  gpsStepBtnText: { fontSize: 22, color: Colors.text, lineHeight: 28 },
+  gpsHoleNumber: {
+    fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text,
+    minWidth: 28, textAlign: 'center',
+  },
+  gpsSavedText: { fontSize: FontSize.sm, color: Colors.green, fontWeight: FontWeight.semibold, marginLeft: 'auto' as any },
+  gpsAccuracyHint: { fontSize: FontSize.xs, color: Colors.textMuted, marginLeft: 'auto' as any },
+  gpsStampRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  gpsStampBtn: {
+    flex: 1, height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface2,
+    borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  gpsStampBtnDone: {
+    backgroundColor: Colors.greenMuted,
+    borderColor: Colors.green,
+  },
+  gpsStampBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text },
+  gpsStampBtnTextDone: { color: Colors.green },
   vertexHandle: {
     width: 28, height: 28, borderRadius: 14,
     backgroundColor: Colors.eagle,
