@@ -131,6 +131,7 @@ type DistanceBlockProps = {
   mid: number | null;
   back: number | null;
   fallback: number | null;
+  accuracy: number | null;
   stale: boolean;
   error: string | null;
   units: DistanceUnits;
@@ -141,12 +142,14 @@ const DistanceBlock = React.memo(function DistanceBlock({
   mid,
   back,
   fallback,
+  accuracy,
   stale,
   error,
   units,
 }: DistanceBlockProps) {
   const display = (value: number | null) => value == null ? '—' : convertDistance(value, units);
   const unit = distanceUnitLabel(units);
+  const gpsBad = accuracy != null && accuracy > 15;
   return (
     <View style={styles.distanceBlock}>
       {mid != null ? (
@@ -156,6 +159,11 @@ const DistanceBlock = React.memo(function DistanceBlock({
           {(stale || error) && (
             <Text style={styles.gpsStatus}>
               {error ? 'GPS unavailable - using last known position' : 'GPS signal stale'}
+            </Text>
+          )}
+          {!stale && !error && accuracy != null && (
+            <Text style={[styles.gpsStatus, gpsBad && { color: '#F5A623' }]}>
+              {gpsBad ? `GPS ±${accuracy}m — move to open sky` : `GPS ±${accuracy}m`}
             </Text>
           )}
         </>
@@ -402,7 +410,7 @@ export default function ActiveRoundScreen() {
   const { activeRound, updateScore, setCurrentHole } = useRound();
   const { user, profile } = useAuth();
   const units = profile?.units_preference ?? 'metres';
-  const { location, stale: locationStale, error: locationError } = useLocation();
+  const { location, accuracy: locationAccuracy, stale: locationStale, error: locationError } = useLocation();
   const mapRef = useRef<MapView>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const caddieTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -810,6 +818,7 @@ export default function ActiveRoundScreen() {
           mid={distToMid}
           back={distToBack}
           fallback={hole.white_metres}
+          accuracy={locationAccuracy}
           stale={locationStale}
           error={locationError}
           units={units}

@@ -4,10 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Coordinate } from '../types';
 
 const LAST_LOCATION_KEY = '@golf_last_location_v1';
-const STALE_AFTER_MS = 15_000;
+const STALE_AFTER_MS = 10_000;
+const MAX_ACCURACY_M = 20; // ignore fixes worse than 20m horizontal accuracy
 
 interface UseLocationResult {
   location: Coordinate | null;
+  accuracy: number | null;  // metres — lower is better
   error: string | null;
   loading: boolean;
   stale: boolean;
@@ -23,6 +25,7 @@ interface UseLocationResult {
  */
 export function useLocation(): UseLocationResult {
   const [location, setLocation] = useState<Coordinate | null>(null);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
@@ -39,13 +42,15 @@ export function useLocation(): UseLocationResult {
       setLoading(true);
       setError(null);
 
+      // Cached position is only used to seed the map view — NOT for distance
+      // calculations — so we restore it as stale immediately. Live GPS replaces it.
       const cached = await AsyncStorage.getItem(LAST_LOCATION_KEY);
       if (cached && !cancelled) {
         try {
           const parsed = JSON.parse(cached) as { coordinate: Coordinate; updatedAt: number };
           setLocation(parsed.coordinate);
           setUpdatedAt(parsed.updatedAt);
-          setStale(Date.now() - parsed.updatedAt > STALE_AFTER_MS);
+          setStale(true); // always stale until a live fix arrives
           setLoading(false);
         } catch {
           // Ignore malformed cache and wait for a live GPS fix.
@@ -66,12 +71,16 @@ export function useLocation(): UseLocationResult {
       try {
         const sub = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 5000,
-            distanceInterval: 0,
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 2000,
+            distanceInterval: 1,
           },
           (pos) => {
             if (cancelled) return;
+            const fixAccuracy = pos.coords.accuracy ?? 999;
+            setAccuracy(Math.round(fixAccuracy));
+            // Discard fixes worse than MAX_ACCURACY_M to avoid wild distance jumps
+            if (fixAccuracy > MAX_ACCURACY_M) return;
             const coordinate = {
               latitude: pos.coords.latitude,
               longitude: pos.coords.longitude,
@@ -121,5 +130,5 @@ export function useLocation(): UseLocationResult {
     };
   }, []);
 
-  return { location, error, loading, stale, updatedAt };
+  return { location, accuracy, error, loading, stale, updatedAt };
 }
