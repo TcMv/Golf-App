@@ -69,6 +69,8 @@ type PendingShot = {
   startLie: Lie;
 };
 
+const OFF_COURSE_PREVIEW_DISTANCE_METRES = 700;
+
 const HAZARD_COLORS: Record<HazardType, string> = {
   bunker: Colors.eagle,
   water: '#4A90D9',
@@ -174,9 +176,16 @@ export default function ActiveRoundScreen() {
     longitude: activeRound?.course.lng ?? 152.9587,
   };
 
+  const offCoursePreview = useMemo(() => (
+    location != null
+    && tee != null
+    && haversineMetres(location, tee) > OFF_COURSE_PREVIEW_DISTANCE_METRES
+  ), [location?.latitude, location?.longitude, tee?.latitude, tee?.longitude]);
+  const effectiveLocation: Coordinate | null = offCoursePreview ? tee : location;
+
   const distanceTo = useCallback((target: Coordinate | null) => (
-    location && target ? Math.round(haversineMetres(location, target)) : null
-  ), [location]);
+    effectiveLocation && target ? Math.round(haversineMetres(effectiveLocation, target)) : null
+  ), [effectiveLocation]);
   const frontDistance = distanceTo(greenFront);
   const midDistance = distanceTo(greenMid);
   const backDistance = distanceTo(greenBack);
@@ -221,10 +230,10 @@ export default function ActiveRoundScreen() {
     [learning],
   );
   const playerLie = useMemo(() => (
-    location
-      ? detectCaddieLie({ playerPos: location, hazards: holeHazards, zones, tee })
+    effectiveLocation
+      ? detectCaddieLie({ playerPos: effectiveLocation, hazards: holeHazards, zones, tee })
       : 'rough'
-  ), [holeHazards, location, tee, zones]);
+  ), [effectiveLocation, holeHazards, tee, zones]);
   const fairwayCentreline = useMemo(
     () => zones.find(zone => zone.zone_type === 'fairway_centreline')?.coordinates ?? [],
     [zones],
@@ -294,10 +303,10 @@ export default function ActiveRoundScreen() {
   }, [activeRound?.currentHoleNumber, activeRound?.round.course_id]);
 
   useEffect(() => {
-    if (!windData && location) {
-      fetchWind(location.latitude, location.longitude).then(value => value && setWindData(value));
+    if (!windData && effectiveLocation) {
+      fetchWind(effectiveLocation.latitude, effectiveLocation.longitude).then(value => value && setWindData(value));
     }
-  }, [location, windData]);
+  }, [effectiveLocation, windData]);
 
   useEffect(() => {
     let cancelled = false;
@@ -319,11 +328,11 @@ export default function ActiveRoundScreen() {
   }, []);
 
   useEffect(() => {
-    if (!location || !greenMid || learnedClubs.length === 0) return;
+    if (!effectiveLocation || !greenMid || learnedClubs.length === 0) return;
     if (caddieTimer.current) clearTimeout(caddieTimer.current);
     caddieTimer.current = setTimeout(() => {
       const advice = buildCaddieAdvice({
-        playerPos: location,
+        playerPos: effectiveLocation,
         greenMid,
         hazards: holeHazards,
         clubs: learnedClubs,
@@ -353,8 +362,8 @@ export default function ActiveRoundScreen() {
     holeHistory,
     learnedClubs,
     learning,
-    location?.latitude,
-    location?.longitude,
+    effectiveLocation?.latitude,
+    effectiveLocation?.longitude,
     customTarget,
     clubMisses,
     playerLie,
@@ -554,13 +563,13 @@ export default function ActiveRoundScreen() {
   }, [activeRound, addShot, hole, holeShots.length, pendingShot, savingShot]);
 
   const openCaddie = useCallback(async () => {
-    if (!location || !greenMid || !hole || learnedClubs.length === 0) return;
+    if (!effectiveLocation || !greenMid || !hole || learnedClubs.length === 0) return;
     const [wind, greenElevation] = await Promise.all([
-      fetchWind(location.latitude, location.longitude),
+      fetchWind(effectiveLocation.latitude, effectiveLocation.longitude),
       fetchElevation(greenMid.latitude, greenMid.longitude),
     ]);
     const advice = addLearnedMissAdvice(buildCaddieAdvice({
-      playerPos: location,
+      playerPos: effectiveLocation,
       greenMid,
       hazards: holeHazards,
       clubs: learnedClubs,
@@ -598,7 +607,7 @@ export default function ActiveRoundScreen() {
         .catch(() => { /* fall back to deterministic lines */ })
         .finally(() => setCaddieLlmLoading(false));
     }
-  }, [activeRound?.course.name, clubMisses, customTarget, fairwayCentreline, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, location, playerLie]);
+  }, [activeRound?.course.name, clubMisses, customTarget, effectiveLocation, fairwayCentreline, greenMid, hole, holeHazards, holeHistory, learnedClubs, learning, playerLie]);
 
   if (!activeRound || !hole) {
     return (
@@ -662,10 +671,10 @@ export default function ActiveRoundScreen() {
             <View style={styles.greenMarker}><Text style={styles.flag}>⚑</Text></View>
           </Marker>
         )}
-        {location && greenMid && !needsRecoveryTarget && (
+        {effectiveLocation && greenMid && !needsRecoveryTarget && (
           <>
             <Polyline
-              coordinates={[location, caddieAdvice?.target ?? greenMid]}
+              coordinates={[effectiveLocation, caddieAdvice?.target ?? greenMid]}
               strokeColor={caddieAdvice ? Colors.green : 'rgba(255,255,255,0.55)'}
               strokeWidth={caddieAdvice ? 4 : 2}
             />
@@ -794,7 +803,7 @@ export default function ActiveRoundScreen() {
                   : caddieAdvice.shotType === 'layup'
                   ? `${recommendedClub} · target ${convertDistance(caddieAdvice.targetDistance, units)}${distanceUnitLabel(units, true)} · ${convertDistance(caddieAdvice.remainingDistance, units)} left`
                   : `${recommendedClub} · play ${convertDistance(caddieAdvice.playingDistance, units)}${distanceUnitLabel(units, true)}`
-                : location ? 'Calculating recommendation...' : 'Waiting for GPS...'}
+                : effectiveLocation ? 'Calculating recommendation...' : 'Waiting for GPS...'}
             </Text>
             {learnedNote && <Text style={styles.learnedText} numberOfLines={1}>{learnedNote}</Text>}
             <Text style={styles.lieText}>{playerLie.toUpperCase()} LIE</Text>
