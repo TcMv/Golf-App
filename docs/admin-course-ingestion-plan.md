@@ -18,15 +18,15 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Existing admin map editor can edit tee/green points and draw/edit hazard polygons.
 - [x] Admin map editor now supports dynamic course selection.
 - [x] Missing tee/green points can be placed directly on the map.
-- [ ] New-course creation is not yet an efficient guided workflow.
-- [ ] No completeness/validation workflow exists before considering a course ready.
+- [x] Phase 2 branch now has a guided new-course + scorecard workflow.
+- [ ] No completeness/validation workflow exists before considering a mapped course ready.
 
 ---
 
 ## Phase 1 — Make the existing admin editor efficient for multiple courses ✅
-**Status:** Implementation complete and automated validation passed.
+**Status:** Complete, validated and merged to `main`.
 
-**Tracking:** GitHub issue #3 — Admin Course Ingestion V2 — Phase 1.
+**Tracking:** GitHub issue #3 — closed. PR #4 — merged.
 
 ### 1.1 Dynamic course selection
 - [x] Remove hard-coded `COURSE_ID` from `AdminMapScreen`.
@@ -54,34 +54,42 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Keep multi-hole assignment for shared hazards.
 
 ### Phase 1 validation
-- [x] Added GitHub Actions validation workflow.
+- [x] GitHub Actions validation workflow added.
 - [x] `npm ci` passed.
 - [x] `npm run typecheck` passed.
 - [x] Existing unit-test suite passed.
 - [x] Static review confirms selected-course IDs are used for reads/writes and course switching resets in-progress editor state.
-- [ ] Manual Android/live-Supabase smoke testing remains recommended when convenient, especially Nambour/Maroochydore switching and persistence, but is not blocking Phase 2 development.
+- [ ] Manual Android/live-Supabase smoke testing remains recommended when convenient, especially Nambour/Maroochydore switching and persistence.
 
 ---
 
 ## Phase 2 — New-course setup and scorecard ingestion 🚧
-**Status:** Active.
+**Status:** Active on `feature/admin-course-ingestion-phase2` / PR #6.
 
 **Goal:** Create the basic data structure for a new course quickly.
 
 ### 2.1 Create course
-- [ ] Add `Create Course` workflow.
-- [ ] Capture name, centre latitude/longitude, and hole count.
-- [ ] Create empty hole rows automatically (9/18 initially; support other counts if useful).
-- [ ] Validate duplicate course names/nearby coordinates before creation.
+- [x] Add guided `Create Course` workflow.
+- [x] Capture name, centre latitude/longitude, and 9/18-hole count.
+- [x] Generate the full hole-entry draft automatically in the UI.
+- [x] Prevent persistence until the full scorecard validates, so incomplete placeholder courses are not exposed to golfers.
+- [x] Validate duplicate course names.
+- [ ] Add nearby-coordinate duplicate warning/check.
 
 ### 2.2 Tee set setup
-- [ ] Add/edit/delete tee sets.
-- [ ] Capture name, colour, total distance, course rating, and slope.
+- [ ] Add/edit/delete tee sets for existing courses.
+- [x] Capture initial tee name, colour, calculated total distance, course rating, and slope during course creation.
 
 ### 2.3 Scorecard editor
-- [ ] Editable hole grid for par, stroke index, and current supported distance fields.
+- [x] Editable hole grid for par, stroke index, and current supported distance field.
 - [ ] Bulk paste/import path for structured scorecard data.
-- [ ] Validate par/SI completeness and duplicate stroke indexes.
+- [x] Validate par/SI completeness and duplicate stroke indexes.
+- [x] Validate plausible hole lengths and slope/rating inputs.
+
+### Phase 2 validation so far
+- [x] New screen registered in navigation and Settings.
+- [x] CI install/typecheck/unit tests pass for the first Phase 2 slice.
+- [ ] Manual creation test against live Supabase before Phase 2 merge.
 
 **Phase 2 exit criteria**
 - A new course can be created in-app and have a complete basic scorecard without SQL/manual Supabase work.
@@ -154,7 +162,9 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ### 2026-08-29
 - Reconfirmed the consumer app is already multi-course.
 - Reframed work around the admin ingestion layer rather than redesigning the underlying course architecture.
-- Implemented Phase 1: dynamic course selection, hole focus, point placement, and explicit hazard scope.
+- Implemented and merged Phase 1.
 - Added GitHub Actions CI covering install, TypeScript typecheck, and all existing unit tests.
 - Phase 1 CI passed cleanly.
-- Phase 2 started.
+- Started Phase 2 on a fresh branch.
+- Added guided new-course creation, initial tee setup, scorecard entry, validation, duplicate-name protection, and rollback cleanup on partial creation failure.
+- First Phase 2 CI slice passed typecheck and the full existing unit-test suite.
