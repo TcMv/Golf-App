@@ -108,4 +108,4 @@ Active: `feature/admin-course-ingestion-phase7`, Issue #15, draft PR #16.
 - Courses now become visibly due for re-verification after tracked publication, mapping, source or approved-geometry changes.
 - Added a dedicated Needs Verification queue filter and selective approved-geometry edit auditing.
 - Latest Phase 7 head passed TypeScript and the full test suite.
-- Next: complete static review, merge Phase 7, then use the private build to smoke-test the full ingestion workflow against real course data.
+- Next merge gate: re-run CI on the final branch head, inspect the full PR diff and migration ordering, then merge Phase 7 if clean. Live Supabase/device smoke testing remains a separate private-build step after migrations are applied.
