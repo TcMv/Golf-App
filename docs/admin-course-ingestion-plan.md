@@ -25,32 +25,22 @@ Phases 1–8 are implemented and merged to `main`.
 Live device/Supabase smoke testing remains intentionally separate from automated CI and can be run through Data Health in the private build.
 
 ## Phase 9 — Continuous course onboarding ✅
-**Status:** Automated implementation and validation complete. Issue #19 / PR #20. Merge-ready.
+Issue #19 / PR #20.
 
-### 9.1 Carry course identity through the workflow
-- [x] Make new-course persistence return the created `courseId`.
-- [x] After course creation, offer **Generate Mapping** without backing out to Settings.
-- [x] Pass the new `courseId` into OpenStreetMap generation.
-- [x] OSM generation preselects a supplied course while preserving normal manual course switching.
-- [x] Queueing OSM suggestions can continue directly into Mapping Review with the same course selected.
-- [x] Mapping Review preselects the supplied course.
-- [x] Mapping Review can continue directly into Course Readiness with the same course selected.
-- [x] Course Readiness preselects the supplied course and preserves the onboarding context through publication.
+- New-course persistence returns the created `courseId`.
+- Course creation can continue directly into OSM generation.
+- OSM generation preselects the supplied course.
+- Queueing suggestions can continue directly into Mapping Review with the same course selected.
+- Mapping Review can continue directly into Course Readiness with the same course selected.
+- Course Readiness preserves the onboarding course through publication.
+- Course Operations passes the selected `courseId` directly into Map/Rescan, Review AI and Readiness.
+- Course Operations surfaces a simple next-workflow-stage cue.
+- Draft, human-review and readiness publication boundaries remain unchanged.
+- Dependency install, TypeScript and the full automated test suite passed on the final code head.
 
-### 9.2 Onboarding safety and UX
-- [x] Newly created courses remain draft throughout mapping/review.
-- [x] Machine geometry remains pending until explicit human accept/reject.
-- [x] Course Readiness remains the publication gate.
-- [x] Publishing from an onboarding flow offers a direct return to Course Operations.
-- [x] Course Operations passes the selected `courseId` directly into Map/Rescan, Review AI and Readiness.
-- [x] Course Operations surfaces a simple next-workflow-stage cue based on publication and pending-review state.
-- [ ] Optional compact visual progress strip can be added later if device testing shows the text cues are insufficient.
-
-### 9.3 Validation
-- [x] Workflow slice passed dependency install, TypeScript and the complete automated test suite.
-- [x] Final Course Operations-enhanced code head passed the same CI gate.
-- [ ] Private-build smoke test: create a disposable draft course and confirm course selection persists through Create → OSM → Review → Readiness.
-- [ ] Confirm cancelling/choosing “Later” at each stage still leaves a valid draft and does not alter published course flow.
+Private-build follow-up remains:
+- create a disposable draft and confirm Create → OSM → Review → Readiness selection persistence;
+- confirm cancelling/choosing Later leaves a valid draft and does not affect normal published-course flow.
 
 ## Next — Phase 10: Source coverage lab
 Measure how much useful course geometry the free/testing OSM path actually provides before spending money on a commercial 40k+ course licence.
@@ -64,7 +54,6 @@ Planned:
 - use the results to inform whether commercial course licensing is worth its annual cost.
 
 ## Later scale decisions
-These remain demand-driven rather than blockers for the private product:
 - richer course-operations aggregate metrics without N+1 queries;
 - confidence calibration against review outcomes;
 - second permitted geometry/imagery source if OSM coverage proves insufficient;
@@ -75,8 +64,5 @@ These remain demand-driven rather than blockers for the private product:
 ## Progress log
 ### 2026-08-30
 - Phases 7 and 8 are merged to `main`.
-- Phase 9 continuous onboarding passed dependency install, TypeScript and the full automated test suite.
-- New-course creation carries the actual course ID through OSM generation, Mapping Review and Course Readiness.
-- Course Operations launches mapping, review and readiness with the correct selected course instead of forcing repeated selection.
-- Draft/publication safety boundaries remain unchanged.
-- Phase 9 is merge-ready; the next development phase is a Source Coverage Lab so the commercial-course-database decision can be driven by measured gaps rather than assumptions.
+- Phase 9 continuous onboarding is implemented and automated-validation clean.
+- Next development phase is Source Coverage Lab so course-licensing decisions are driven by measured coverage gaps.
