@@ -25,7 +25,7 @@ Phases 1–8 are implemented and merged to `main`.
 Live device/Supabase smoke testing remains intentionally separate from automated CI and can be run through Data Health in the private build.
 
 ## Phase 9 — Continuous course onboarding 🚧
-**Status:** Active on `feature/admin-course-ingestion-phase9`. Issue #19.
+**Status:** Active on `feature/admin-course-ingestion-phase9`. Issue #19. Draft PR #20.
 
 ### 9.1 Carry course identity through the workflow
 - [x] Make new-course persistence return the created `courseId`.
@@ -42,11 +42,13 @@ Live device/Supabase smoke testing remains intentionally separate from automated
 - [x] Machine geometry remains pending until explicit human accept/reject.
 - [x] Course Readiness remains the publication gate.
 - [x] Publishing from an onboarding flow offers a direct return to Course Operations.
-- [ ] Add a compact onboarding progress indicator (Created → Mapping → Review → Readiness → Published).
-- [ ] Add direct selected-course handoff from Course Operations into readiness/review/generator where useful.
+- [x] Course Operations now passes the selected `courseId` directly into Map/Rescan, Review AI and Readiness.
+- [x] Course Operations surfaces a simple next-workflow-stage cue based on publication and pending-review state.
+- [ ] Optional compact visual progress strip (Created → Mapping → Review → Readiness → Published) can be added later if the text cues are not enough in device testing.
 
 ### 9.3 Validation
-- [ ] Phase 9 branch must pass dependency install, TypeScript and the complete automated test suite.
+- [x] First workflow slice passed dependency install, TypeScript and the complete automated test suite.
+- [ ] Final Phase 9 head after Course Operations shortcuts must pass the same CI gate.
 - [ ] Private-build smoke test: create a disposable draft course and confirm course selection persists through Create → OSM → Review → Readiness.
 - [ ] Confirm cancelling/choosing “Later” at each stage still leaves a valid draft and does not alter published course flow.
 
@@ -62,8 +64,9 @@ These remain demand-driven rather than blockers for the private product:
 ## Progress log
 ### 2026-08-30
 - Phases 7 and 8 are merged to `main`.
-- Started Phase 9 / Issue #19 from the Phase 8 main head.
+- Started Phase 9 / Issue #19 and opened draft PR #20.
 - New-course creation now returns the actual created course ID and can continue directly into OSM generation.
-- OSM generation, Mapping Review and Course Readiness now accept and preserve the selected course through the onboarding chain.
+- OSM generation, Mapping Review and Course Readiness accept and preserve the selected course through the onboarding chain.
+- Course Operations now launches mapping, review and readiness with the correct selected course instead of forcing a second selection.
 - Draft/publication safety boundaries remain unchanged: generated geometry is pending until human review and Course Readiness remains the publish gate.
-- Next gate: CI/typecheck/tests, then add the progress indicator and selected-course shortcuts from Course Operations if the slice is clean.
+- Initial Phase 9 workflow slice passed CI; final operations-enhanced head is the next merge gate.
