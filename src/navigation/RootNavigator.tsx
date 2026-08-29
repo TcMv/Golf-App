@@ -34,6 +34,7 @@ import AdminOsmMappingScreen from '../screens/admin/AdminOsmMappingScreen';
 import AdminCourseOperationsScreen from '../screens/admin/AdminCourseOperationsScreen';
 import AdminCourseHistoryScreen from '../screens/admin/AdminCourseHistoryScreen';
 import AdminDataHealthScreen from '../screens/admin/AdminDataHealthScreen';
+import AdminSourceCoverageScreen from '../screens/admin/AdminSourceCoverageScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -81,6 +82,7 @@ function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
       <Stack.Screen name="AdminCourseOperations" component={AdminCourseOperationsScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminCourseHistory" component={AdminCourseHistoryScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminDataHealth" component={AdminDataHealthScreen} options={{ presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="AdminSourceCoverage" component={AdminSourceCoverageScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminCourseSetup" component={AdminCourseSetupScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminTeeSets" component={AdminTeeSetsScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminHoleZones" component={AdminHoleZonesScreen} options={{ presentation: 'fullScreenModal' }} />
