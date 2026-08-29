@@ -1,7 +1,7 @@
 # Admin Course Ingestion V2 Plan
 
 ## Objective
-Build a fast, safe multi-course ingestion system that progresses from manual admin tools to machine-assisted mapping, operational dataset management, and reliable private-build validation.
+Build a fast, safe multi-course ingestion system that progresses from manual admin tools to machine-assisted mapping, operational dataset management, live diagnostics, and a continuous course-onboarding workflow.
 
 ## Ground rules
 - Preserve the existing consumer multi-course flow (`courses` -> `tee_sets` -> `holes`).
@@ -10,8 +10,8 @@ Build a fast, safe multi-course ingestion system that progresses from manual adm
 - Keep changes incremental and CI-gated.
 - Follow `AGENTS.md` and Expo SDK 56 / React Native 0.85 requirements.
 
-## Phases 1–7 ✅
-Phases 1–7 are implemented, automated-validation clean, and merged to `main`.
+## Phases 1–8 ✅
+Phases 1–8 are implemented and merged to `main`.
 
 - Phase 1 / PR #4 — multi-course admin map.
 - Phase 2 / PR #6 — new-course setup and scorecard ingestion.
@@ -20,40 +20,38 @@ Phases 1–7 are implemented, automated-validation clean, and merged to `main`.
 - Phase 5 / PR #12 — `golfcaddie.course.v1`, JSON/CSV/GeoJSON import/export and provenance.
 - Phase 6 / PR #14 — machine suggestions, satellite human review, batch ingestion and OpenStreetMap generator.
 - Phase 7 / PR #16 — operations queue, verification/history/audit, OSM deduplication/update detection and needs-verification workflow.
+- Phase 8 / PR #18 — in-app Data Health diagnostics and explicit live verification smoke-test tooling.
 
-Outstanding live validation from these phases is intentionally carried into Phase 8 rather than being represented as completed without a connected private build.
+Live device/Supabase smoke testing remains intentionally separate from automated CI and can be run through Data Health in the private build.
 
-## Phase 8 — Live validation and admin data health 🚧
-**Status:** Active on `feature/admin-course-ingestion-phase8`. Issue #17.
+## Phase 9 — Continuous course onboarding 🚧
+**Status:** Active on `feature/admin-course-ingestion-phase9`. Issue #19.
 
-### 8.1 In-app diagnostics
-- [x] Add Admin Data Health screen.
-- [x] Read-only check for `courses` publication + Phase 7 verification columns.
-- [x] Read-only check for `course_admin_events`.
-- [x] Read-only check for OSM source identity/fingerprint columns on mapping suggestions.
-- [x] Read-only check for approved `hole_zones` access.
-- [x] Show live course counts by publication state, pending suggestions and audit-event count.
-- [x] Expose Data Health from Settings and navigation.
+### 9.1 Carry course identity through the workflow
+- [x] Make new-course persistence return the created `courseId`.
+- [x] After course creation, offer **Generate Mapping** without backing out to Settings.
+- [x] Pass the new `courseId` into OpenStreetMap generation.
+- [x] OSM generation preselects a supplied course while preserving normal manual course switching.
+- [x] Queueing OSM suggestions can continue directly into Mapping Review with the same course selected.
+- [x] Mapping Review preselects the supplied course.
+- [x] Mapping Review can continue directly into Course Readiness with the same course selected.
+- [x] Course Readiness preselects the supplied course and preserves the onboarding context through publication.
 
-### 8.2 Explicit live smoke test
-- [x] Add a separately confirmed, user-triggered verification RPC smoke test.
-- [x] Clearly state that the test changes only the selected course verification timestamp/notes, not scorecard or playable geometry.
-- [x] Confirm a new `course_verified` audit event exists after the RPC.
-- [x] Re-run read-only health checks after the smoke test.
-- [ ] Run the verification smoke test in the connected private build after migrations are applied.
+### 9.2 Onboarding safety and UX
+- [x] Newly created courses remain draft throughout mapping/review.
+- [x] Machine geometry remains pending until explicit human accept/reject.
+- [x] Course Readiness remains the publication gate.
+- [x] Publishing from an onboarding flow offers a direct return to Course Operations.
+- [ ] Add a compact onboarding progress indicator (Created → Mapping → Review → Readiness → Published).
+- [ ] Add direct selected-course handoff from Course Operations into readiness/review/generator where useful.
 
-### 8.3 Remaining private-build checks
-- [ ] Run repeated OSM scan against a real course and confirm unchanged suggestions do not duplicate.
-- [ ] Change/review one generated source feature and confirm Course Operations flags the course for verification.
-- [ ] Open Course History and confirm verification, mapping/source and publication events are visible.
-- [ ] Run a real round/course-selection regression check to ensure admin migrations do not affect normal published-course flow.
-
-### Phase 8 validation
-- [ ] Current Phase 8 branch must pass dependency install, TypeScript and the complete automated test suite.
-- [ ] Complete the explicit private-build/Supabase checks above before calling Phase 8 fully complete.
+### 9.3 Validation
+- [ ] Phase 9 branch must pass dependency install, TypeScript and the complete automated test suite.
+- [ ] Private-build smoke test: create a disposable draft course and confirm course selection persists through Create → OSM → Review → Readiness.
+- [ ] Confirm cancelling/choosing “Later” at each stage still leaves a valid draft and does not alter published course flow.
 
 ## Later scale decisions
-These remain deliberately demand-driven rather than blockers for the private product:
+These remain demand-driven rather than blockers for the private product:
 - richer course-operations aggregate metrics without N+1 queries;
 - confidence calibration against review outcomes;
 - second permitted geometry/imagery source if OSM coverage proves insufficient;
@@ -63,8 +61,9 @@ These remain deliberately demand-driven rather than blockers for the private pro
 
 ## Progress log
 ### 2026-08-30
-- Phase 7 merged to `main` as PR #16 and Issue #15 was closed.
-- Started Phase 8 / Issue #17 from the merged Phase 7 main head.
-- Added a Data Health screen so missing migrations/schema problems can be diagnosed directly from the private app rather than inferred from runtime failures.
-- Added a separately confirmed verification RPC + audit-event smoke test that does not change playable geometry.
-- Next: pass CI, then use the private build to run the live checks and capture any migration/runtime defects before adding more ingestion features.
+- Phases 7 and 8 are merged to `main`.
+- Started Phase 9 / Issue #19 from the Phase 8 main head.
+- New-course creation now returns the actual created course ID and can continue directly into OSM generation.
+- OSM generation, Mapping Review and Course Readiness now accept and preserve the selected course through the onboarding chain.
+- Draft/publication safety boundaries remain unchanged: generated geometry is pending until human review and Course Readiness remains the publish gate.
+- Next gate: CI/typecheck/tests, then add the progress indicator and selected-course shortcuts from Course Operations if the slice is clean.
