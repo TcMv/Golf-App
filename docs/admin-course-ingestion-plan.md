@@ -57,8 +57,8 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 
 ---
 
-## Phase 4 — Completeness, validation, and publication safety 🚧
-**Status:** Active on `feature/admin-course-ingestion-phase4` / PR #10. Issue #9.
+## Phase 4 — Completeness, validation, and publication safety ✅
+**Status:** Feature-complete and automated validation passed on `feature/admin-course-ingestion-phase4` / PR #10. Issue #9.
 
 **Goal:** Know whether a course is actually ready and prevent poor/incomplete data reaching users.
 
@@ -82,21 +82,27 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Add Settings/navigation entry point.
 
 ### 4.3 Publication safety
-- [ ] Decide final `draft` / `review` / `published` workflow.
-- [ ] If status is introduced, migrate existing courses safely to `published`.
-- [ ] Make newly created courses non-public by default.
-- [ ] Filter every player-facing course query by publication state.
-- [ ] Gate publish action on readiness rules.
+- [x] Add `draft` / `review` / `published` course workflow.
+- [x] Migrate existing courses safely to `published`.
+- [x] Change the database default so newly-created courses are `draft`.
+- [x] Filter Start Round to `published` courses only.
+- [x] Filter Home Course selection to `published` courses only.
+- [x] Defensively re-check `published` status when a round starts.
+- [x] Gate draft -> review and review -> published transitions on readiness rules.
+- [x] Allow published courses to be intentionally unpublished back to draft.
+- [x] Keep draft/review courses visible in admin tools.
 
 ### Phase 4 validation
-- [x] `npm ci` passed on the current implementation slice.
+- [x] `npm ci` passed on completed Phase 4 branch.
 - [x] `npm run typecheck` passed.
-- [x] Existing tests + new course-readiness tests passed.
-- [ ] Manual live-Supabase readiness-screen smoke test remains recommended.
+- [x] Existing tests + course-readiness tests passed.
+- [ ] Manual live-Supabase readiness/status smoke test remains recommended.
 
 ---
 
-## Phase 5 — Standard import format and bulk ingestion
+## Phase 5 — Standard import format and bulk ingestion 🚧
+**Status:** Next active phase after Phase 4 merge.
+
 - [ ] Define versioned GolfCaddie course JSON format.
 - [ ] JSON import/export.
 - [ ] GeoJSON geometry import.
@@ -129,5 +135,9 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ## Progress log
 ### 2026-08-29
 - Implemented, validated and merged Phases 1–3.
-- Phase 4 started with a tested readiness engine and admin Course Readiness dashboard.
-- Publication status is intentionally the next decision: it will only be introduced together with player-query filtering so draft courses cannot leak into normal course selection.
+- Built the Phase 4 readiness engine and Course Readiness dashboard.
+- Added publication-state migration with existing courses preserved as published and new courses safe-by-default as drafts.
+- Added readiness-gated draft -> review -> published workflow.
+- Player course selection and home-course selection now exclude unpublished courses; round start defensively rechecks status.
+- Completed Phase 4 automated validation successfully.
+- Phase 5 is next: one standard import/export contract feeding the existing course, scorecard, hazard and hole-zone models.
