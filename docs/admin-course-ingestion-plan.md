@@ -150,7 +150,7 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Carry provider/reference/license metadata from the batch into every queued suggestion.
 - [x] Add admin batch-import screen that verifies the target course and queues suggestions as pending only.
 - [x] Add dedicated batch tests and wire them into CI.
-- [ ] Identify imagery/data sources that explicitly permit automated commercial extraction.
+- [ ] Identify imagery/data sources that explicitly permit automated commercial extraction. First candidates should include OSM/vector bootstrap and genuinely open/licensed aerial imagery; do not use Google satellite imagery for automated extraction.
 - [ ] Build the first permitted-source adapter/generator for tees/greens/fairways/hazards/centrelines.
 - [ ] Calibrate confidence thresholds against human review outcomes.
 - [ ] Normalize accepted/generated course packages through `golfcaddie.course.v1` where appropriate.
