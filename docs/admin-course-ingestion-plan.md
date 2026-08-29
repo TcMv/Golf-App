@@ -25,7 +25,7 @@ Phases 1–8 are implemented and merged to `main`.
 Live device/Supabase smoke testing remains intentionally separate from automated CI and can be run through Data Health in the private build.
 
 ## Phase 9 — Continuous course onboarding ✅
-**Status:** Automated implementation complete on `feature/admin-course-ingestion-phase9`. Issue #19 / PR #20.
+**Status:** Automated implementation and validation complete. Issue #19 / PR #20.
 
 ### 9.1 Carry course identity through the workflow
 - [x] Make new-course persistence return the created `courseId`.
@@ -75,8 +75,8 @@ These remain demand-driven rather than blockers for the private product:
 ## Progress log
 ### 2026-08-30
 - Phases 7 and 8 are merged to `main`.
-- Phase 9 continuous onboarding is automated-validation clean.
+- Phase 9 continuous onboarding passed final CI: dependency install, TypeScript and full automated tests.
 - New-course creation carries the actual course ID through OSM generation, Mapping Review and Course Readiness.
-- Course Operations now launches mapping, review and readiness with the correct selected course instead of forcing repeated selection.
+- Course Operations launches mapping, review and readiness with the correct selected course instead of forcing repeated selection.
 - Draft/publication safety boundaries remain unchanged.
 - Next development phase is a Source Coverage Lab so the commercial-course-database decision can be driven by measured gaps rather than assumptions.
