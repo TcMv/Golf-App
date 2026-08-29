@@ -191,7 +191,7 @@ export default function MappingSuggestionPreview({ suggestion, onSaved }: Props)
 
       <View style={styles.mapFrame}>
         {loading ? <ActivityIndicator color={Colors.green} style={styles.loader} /> : (
-          <MapView ref={mapRef} provider={PROVIDER_GOOGLE} mapType="satellite" style={StyleSheet.absoluteFillObject}>
+          <MapView ref={mapRef} provider={PROVIDER_GOOGLE} mapType="satellite" style={styles.map}>
             {contextPoints.map(item => <Marker key={item.label} coordinate={toMapCoordinate(item.point)} title={item.label} pinColor={Colors.blue} opacity={0.55} />)}
 
             {existing.map((item, index) => item.geometry === 'point'
@@ -257,6 +257,7 @@ const styles = StyleSheet.create({
   legendText: { color: Colors.textSecondary, fontFamily: Font.medium, fontSize: FontSize.xs },
   hint: { flex: 1, textAlign: 'right', color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.xs },
   mapFrame: { height: 310, borderRadius: Radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface2 },
+  map: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   loader: { flex: 1 },
   actions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
   secondaryButton: { flex: 1, minHeight: 42, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surface3 },
