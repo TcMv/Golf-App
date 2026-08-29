@@ -37,3 +37,4 @@ jobs:
           npm run test:profile
           npm run test:units
           npm run test:shots
+          npm run test:course-validation
