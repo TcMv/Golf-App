@@ -16,40 +16,57 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Start Round dynamically loads all courses, the selected course's tee sets, and the selected course's holes.
 - [x] Course database is normalized around `courses`, `tee_sets`, `holes`, and `hazards`.
 - [x] Existing admin map editor can edit tee/green points and draw/edit hazard polygons.
-- [ ] Admin map editor still uses a hard-coded course UUID.
+- [x] Admin map editor no longer relies on a hard-coded course UUID on the Phase 1 branch.
 - [ ] New-course creation is not yet an efficient guided workflow.
-- [ ] Missing GPS markers are awkward to create because current markers render only after coordinates exist.
+- [x] Phase 1 branch adds map-tap placement for missing GPS markers.
 - [ ] No completeness/validation workflow exists before considering a course ready.
 
 ---
 
 ## Phase 1 — Make the existing admin editor efficient for multiple courses
+**Status:** Implementation complete on `feature/admin-course-ingestion-v2`; runtime/device validation pending before merge.
+
+**Tracking:** GitHub issue #3 — Admin Course Ingestion V2 — Phase 1.
+
 **Goal:** Use the current editor safely for any course already in Supabase and make basic mapping much faster.
 
 ### 1.1 Dynamic course selection
-- [ ] Remove hard-coded `COURSE_ID` from `AdminMapScreen`.
-- [ ] Load available courses from Supabase.
-- [ ] Add a course selector to the admin editor.
-- [ ] Reload holes/hazards when the selected course changes.
-- [ ] Re-centre the map on the selected course.
-- [ ] Reset active drawing/edit state when changing courses.
+- [x] Remove hard-coded `COURSE_ID` from `AdminMapScreen`.
+- [x] Load available courses from Supabase.
+- [x] Add a course selector to the admin editor.
+- [x] Reload holes/hazards when the selected course changes.
+- [x] Re-centre the map on the selected course.
+- [x] Reset active drawing/edit state when changing courses.
 
 ### 1.2 Hole-focused workflow
-- [ ] Add a horizontal Hole 1..N selector.
-- [ ] Allow `All` view for whole-course inspection.
-- [ ] Filter/highlight hazards and markers to the active hole.
-- [ ] Auto-fit the map to the active hole when tee/green coordinates exist.
+- [x] Add a horizontal Hole 1..N selector.
+- [x] Allow `All` view for whole-course inspection.
+- [x] Filter/highlight hazards and markers to the active hole.
+- [x] Auto-fit the map to the active hole when tee/green coordinates exist.
 
 ### 1.3 Place missing GPS points
-- [ ] Add placement mode for Tee / Green Front / Green Centre / Green Back.
-- [ ] Allow map-tap placement when a coordinate is currently null.
-- [ ] Preserve drag-to-adjust behaviour for existing points.
-- [ ] Make the active placement mode visually obvious and cancellable.
+- [x] Add placement mode for Tee / Green Front / Green Centre / Green Back.
+- [x] Allow map-tap placement when a coordinate is currently null.
+- [x] Preserve drag-to-adjust behaviour for existing points.
+- [x] Make the active placement mode visually obvious and cancellable.
 
 ### 1.4 Safer hazard assignment
-- [ ] Default a new polygon to the currently selected hole.
-- [ ] Make course-wide assignment explicit rather than treating no selection as course-wide.
-- [ ] Keep multi-hole assignment for shared hazards.
+- [x] Default a new polygon to the currently selected hole.
+- [x] Make course-wide assignment explicit rather than treating no selection as course-wide.
+- [x] Keep multi-hole assignment for shared hazards.
+
+### Phase 1 validation checklist
+- [ ] Run project TypeScript/typecheck against the Phase 1 branch.
+- [ ] Open Course Editor on Android and confirm the course chips load from live Supabase.
+- [ ] Confirm Nambour loads its own holes/hazards.
+- [ ] Confirm Maroochydore loads its own holes/hazards.
+- [ ] Switch courses with a polygon partly drawn and confirm the drawing is cleared.
+- [ ] Select a hole and confirm map auto-fit works with tee/green data.
+- [ ] Place a missing Tee / Front / Centre / Back point and confirm Supabase persistence.
+- [ ] Drag an existing point and confirm persistence still works.
+- [ ] Create a hazard for the active hole and confirm it is not treated as course-wide.
+- [ ] Create an explicitly course-wide polygon and confirm it remains visible hole-by-hole.
+- [ ] Confirm existing polygon vertex edit/delete flows still work.
 
 **Phase 1 exit criteria**
 - Admin can select Nambour, Maroochydore, or any other existing course and edit the correct records.
@@ -149,4 +166,6 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - Reframed work around the admin ingestion layer rather than redesigning the underlying course architecture.
 - Created branch `feature/admin-course-ingestion-v2`.
 - Created this maintained implementation plan.
-- Phase 1 is now active.
+- Opened GitHub issue #3 to track Phase 1.
+- Implemented Phase 1 admin changes on the feature branch: dynamic course selection, hole focus, point placement, and explicit hazard scope.
+- No GitHub Actions workflow is configured/running for the implementation commit, so runtime/typecheck validation remains outstanding before merge.
