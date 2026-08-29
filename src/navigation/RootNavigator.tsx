@@ -31,6 +31,7 @@ import ProfileScreen from '../screens/profile/ProfileScreen';
 import MyBagScreen from '../screens/settings/MyBagScreen';
 import AdminMapScreen from '../screens/admin/AdminMapScreen';
 import AdminCourseSetupScreen from '../screens/admin/AdminCourseSetupScreen';
+import AdminTeeSetsScreen from '../screens/admin/AdminTeeSetsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -64,13 +65,7 @@ function MainTabs() {
             Profile: ['person', 'person-outline'],
           };
           const [active, inactive] = icons[route.name] ?? ['circle', 'circle-outline'];
-          return (
-            <Ionicons
-              name={(focused ? active : inactive) as any}
-              size={size}
-              color={color}
-            />
-          );
+          return <Ionicons name={(focused ? active : inactive) as any} size={size} color={color} />;
         },
       })}
     >
@@ -85,10 +80,7 @@ function MainTabs() {
 
 function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
   return (
-    <Stack.Navigator
-      screenOptions={{ headerShown: false }}
-      initialRouteName={onboardingDone ? 'Main' : 'Welcome'}
-    >
+    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={onboardingDone ? 'Main' : 'Welcome'}>
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="HandicapSetup" component={HandicapSetupScreen} />
       <Stack.Screen name="MyBagSetup" component={MyBagSetupScreen} options={{ presentation: 'fullScreenModal' }} />
@@ -100,6 +92,7 @@ function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
       <Stack.Screen name="MyBag" component={MyBagScreen} />
       <Stack.Screen name="SettingsDetail" component={SettingsScreen} />
       <Stack.Screen name="AdminCourseSetup" component={AdminCourseSetupScreen} options={{ presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="AdminTeeSets" component={AdminTeeSetsScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminMap" component={AdminMapScreen} options={{ presentation: 'fullScreenModal' }} />
     </Stack.Navigator>
   );
@@ -124,6 +117,5 @@ export default function RootNavigator() {
     );
   }
 
-  // Signed in — skip onboarding (profile exists already)
   return <AuthedStack onboardingDone={true} />;
 }
