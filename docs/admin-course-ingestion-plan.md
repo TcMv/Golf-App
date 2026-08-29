@@ -58,57 +58,56 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ---
 
 ## Phase 4 — Completeness, validation, and publication safety ✅
-**Status:** Feature-complete and automated validation passed on `feature/admin-course-ingestion-phase4` / PR #10. Issue #9.
+**Status:** Complete, validated and merged to `main`. Issue #9 closed. PR #10 merged.
 
-**Goal:** Know whether a course is actually ready and prevent poor/incomplete data reaching users.
-
-### 4.1 Readiness engine
-- [x] Add pure `validateCourseReadiness` engine.
-- [x] Separate core/basic completeness from rich-geometry completeness.
-- [x] Validate hole-row count, tee sets, par, stroke index, tee distance and duplicate stroke indexes.
-- [x] Validate tee GPS and green front/centre/back coverage.
-- [x] Add tee-to-green GPS sanity check.
-- [x] Validate minimum polygon/centreline point counts.
-- [x] Make geometry expectations par-aware: par 3s do not require fairway/centreline.
-- [x] Return actionable error/warning codes and per-hole messages.
-- [x] Add dedicated unit tests and run them in CI.
-
-### 4.2 Admin readiness UI
-- [x] Add Course Readiness screen.
-- [x] Add course selector + refresh.
-- [x] Show overall/core/geometry completeness.
-- [x] Show coverage metrics for holes, tees, GPS, greens, fairways and centrelines.
-- [x] Separate must-fix errors from recommended geometry improvements.
-- [x] Add Settings/navigation entry point.
-
-### 4.3 Publication safety
-- [x] Add `draft` / `review` / `published` course workflow.
-- [x] Migrate existing courses safely to `published`.
-- [x] Change the database default so newly-created courses are `draft`.
-- [x] Filter Start Round to `published` courses only.
-- [x] Filter Home Course selection to `published` courses only.
-- [x] Defensively re-check `published` status when a round starts.
-- [x] Gate draft -> review and review -> published transitions on readiness rules.
-- [x] Allow published courses to be intentionally unpublished back to draft.
-- [x] Keep draft/review courses visible in admin tools.
-
-### Phase 4 validation
-- [x] `npm ci` passed on completed Phase 4 branch.
-- [x] `npm run typecheck` passed.
-- [x] Existing tests + course-readiness tests passed.
+- [x] Pure course-readiness/completeness engine.
+- [x] Core vs geometry completeness scoring.
+- [x] Scorecard, GPS and geometry sanity checks.
+- [x] Course Readiness admin dashboard.
+- [x] `draft` / `review` / `published` workflow.
+- [x] Existing courses preserved as published; new courses default to draft.
+- [x] Player course and home-course selection expose published courses only.
+- [x] Readiness-gated review/publish transitions.
+- [x] CI install/typecheck/all tests passed.
 - [ ] Manual live-Supabase readiness/status smoke test remains recommended.
 
 ---
 
 ## Phase 5 — Standard import format and bulk ingestion 🚧
-**Status:** Next active phase after Phase 4 merge.
+**Status:** Active on `feature/admin-course-ingestion-phase5` / PR #12. Issue #11.
 
-- [ ] Define versioned GolfCaddie course JSON format.
-- [ ] JSON import/export.
-- [ ] GeoJSON geometry import.
-- [ ] CSV/structured scorecard import.
-- [ ] Import preview + validation before committing.
-- [ ] Provenance fields/metadata where commercially necessary.
+### 5.1 Canonical interchange contract
+- [x] Define `golfcaddie.course.v1` JSON schema contract.
+- [x] Include source/provenance metadata in the interchange format.
+- [x] Keep v1 aligned with the current data model rather than silently discarding unsupported per-hole/per-tee distances.
+- [x] Document mapping from the contract into `courses`, `holes`, `tee_sets`, `hole_zones` and `hazards`.
+- [x] Document draft-by-default import safety model and versioning policy.
+
+### 5.2 Parser and validation
+- [x] Add pure JSON parser/validator.
+- [x] Validate schema version, course centre, 9/18-hole count, complete scorecard, par, SI, distances and tee sets.
+- [x] Validate optional hole GPS, zone types/geometry and hazard types/geometry.
+- [x] Return structured errors and warnings with field paths.
+- [x] Add dedicated import tests and wire them into CI.
+
+### 5.3 JSON import workflow
+- [x] Add Import Course JSON admin screen.
+- [x] Paste JSON and validate before any database writes.
+- [x] Show course summary, errors, warnings and import preview.
+- [x] Block duplicate names.
+- [x] Warn for nearby course centres within 250m and require explicit second action.
+- [x] Import course, tee sets, holes/GPS, zones and hazards into the existing schema.
+- [x] Imported courses are explicitly created as draft.
+- [x] Cleanup the course record if a downstream insert fails so cascades remove the partial import.
+- [x] Register the import screen in navigation and Settings.
+- [x] Current Phase 5 slice passes install, typecheck and all tests including import tests.
+
+### 5.4 Remaining Phase 5 work
+- [ ] JSON export for an existing course.
+- [ ] CSV/structured scorecard converter into v1.
+- [ ] GeoJSON geometry converter into v1.
+- [ ] Persist source/provenance metadata alongside imported courses.
+- [ ] Manual live-Supabase import smoke test.
 
 ---
 
@@ -134,10 +133,8 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 
 ## Progress log
 ### 2026-08-29
-- Implemented, validated and merged Phases 1–3.
-- Built the Phase 4 readiness engine and Course Readiness dashboard.
-- Added publication-state migration with existing courses preserved as published and new courses safe-by-default as drafts.
-- Added readiness-gated draft -> review -> published workflow.
-- Player course selection and home-course selection now exclude unpublished courses; round start defensively rechecks status.
-- Completed Phase 4 automated validation successfully.
-- Phase 5 is next: one standard import/export contract feeding the existing course, scorecard, hazard and hole-zone models.
+- Implemented, validated and merged Phases 1–4.
+- Started Phase 5 with a canonical versioned import contract rather than adding another provider-specific ingestion path.
+- Added a tested parser/validator for the contract.
+- Added an admin JSON import preview and safe draft import path that writes course, scorecard/GPS, tee sets, zones and hazards with duplicate checks and rollback cleanup.
+- Remaining Phase 5 work is export plus CSV/GeoJSON normalization and source-provenance persistence.
