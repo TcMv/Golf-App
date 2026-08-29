@@ -17,18 +17,7 @@ import { Colors, Font, FontSize, Radius, Spacing } from '../../constants/theme';
 
 type CourseStatus = 'draft' | 'review' | 'published';
 type StatusFilter = 'all' | 'needs-verification' | CourseStatus;
-
-type CourseRow = {
-  id: string;
-  name: string;
-  holes: number;
-  publication_status: CourseStatus;
-  lat: number | null;
-  lng: number | null;
-  last_verified_at: string | null;
-  created_at: string;
-};
-
+type CourseRow = { id: string; name: string; holes: number; publication_status: CourseStatus; lat: number | null; lng: number | null; last_verified_at: string | null; created_at: string };
 type SuggestionRow = { course_id: string; review_status: 'pending' | 'accepted' | 'rejected' };
 type ChangeEventRow = { course_id: string; event_type: string; created_at: string };
 
@@ -47,27 +36,17 @@ export default function AdminCourseOperationsScreen() {
     const [courseResult, suggestionResult, eventResult] = await Promise.all([
       supabase.from('courses').select('id, name, holes, publication_status, lat, lng, last_verified_at, created_at').order('name'),
       supabase.from('course_mapping_suggestions').select('course_id, review_status').eq('review_status', 'pending'),
-      supabase
-        .from('course_admin_events')
-        .select('course_id, event_type, created_at')
-        .neq('event_type', 'course_verified')
-        .order('created_at', { ascending: false })
-        .limit(1000),
+      supabase.from('course_admin_events').select('course_id, event_type, created_at').neq('event_type', 'course_verified').order('created_at', { ascending: false }).limit(1000),
     ]);
     setLoading(false);
-
     const error = courseResult.error ?? suggestionResult.error ?? eventResult.error;
     if (error) { Alert.alert('Course Operations Error', error.message); return; }
-
     setCourses((courseResult.data ?? []) as CourseRow[]);
     const counts: Record<string, number> = {};
     for (const row of (suggestionResult.data ?? []) as SuggestionRow[]) counts[row.course_id] = (counts[row.course_id] ?? 0) + 1;
     setPendingByCourse(counts);
-
     const latest: Record<string, string> = {};
-    for (const row of (eventResult.data ?? []) as ChangeEventRow[]) {
-      if (!latest[row.course_id]) latest[row.course_id] = row.created_at;
-    }
+    for (const row of (eventResult.data ?? []) as ChangeEventRow[]) if (!latest[row.course_id]) latest[row.course_id] = row.created_at;
     setLatestChangeByCourse(latest);
   }, []);
 
@@ -82,11 +61,7 @@ export default function AdminCourseOperationsScreen() {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return courses
-      .filter(course => {
-        if (filter === 'all') return true;
-        if (filter === 'needs-verification') return needsVerification(course);
-        return course.publication_status === filter;
-      })
+      .filter(course => filter === 'all' ? true : filter === 'needs-verification' ? needsVerification(course) : course.publication_status === filter)
       .filter(course => !needle || course.name.toLowerCase().includes(needle))
       .sort((a, b) => {
         const verifyDiff = Number(needsVerification(b)) - Number(needsVerification(a));
@@ -115,6 +90,8 @@ export default function AdminCourseOperationsScreen() {
     await load();
   }, [load, verifyingId]);
 
+  const open = (screen: string, courseId: string) => (navigation as any).navigate(screen, { courseId });
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
@@ -125,81 +102,43 @@ export default function AdminCourseOperationsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.metricsRow}>
-          <Metric value={totals.all} label="Courses" />
-          <Metric value={totals.pending} label="Pending AI" />
-          <Metric value={totals.verify} label="Verify" />
-        </View>
-
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search courses…"
-          placeholderTextColor={Colors.textMuted}
-          style={styles.search}
-          autoCorrect={false}
-        />
-
+        <View style={styles.metricsRow}><Metric value={totals.all} label="Courses" /><Metric value={totals.pending} label="Pending AI" /><Metric value={totals.verify} label="Verify" /></View>
+        <TextInput value={query} onChangeText={setQuery} placeholder="Search courses…" placeholderTextColor={Colors.textMuted} style={styles.search} autoCorrect={false} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           {(['all', 'needs-verification', 'draft', 'review', 'published'] as const).map(value => {
             const active = value === filter;
             const count = value === 'all' ? totals.all : value === 'needs-verification' ? totals.verify : totals[value];
             const label = value === 'needs-verification' ? 'Needs verification' : value === 'all' ? 'All' : value;
-            return (
-              <TouchableOpacity key={value} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setFilter(value)}>
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>{label} · {count}</Text>
-              </TouchableOpacity>
-            );
+            return <TouchableOpacity key={value} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setFilter(value)}><Text style={[styles.filterText, active && styles.filterTextActive]}>{label} · {count}</Text></TouchableOpacity>;
           })}
         </ScrollView>
 
-        {loading ? <ActivityIndicator color={Colors.green} style={{ marginTop: Spacing.xl }} /> : visible.length === 0 ? (
-          <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No courses match</Text><Text style={styles.emptyText}>Change the search or status filter.</Text></View>
-        ) : visible.map(course => {
+        {loading ? <ActivityIndicator color={Colors.green} style={{ marginTop: Spacing.xl }} /> : visible.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No courses match</Text><Text style={styles.emptyText}>Change the search or status filter.</Text></View> : visible.map(course => {
           const pending = pendingByCourse[course.id] ?? 0;
           const needsCheck = needsVerification(course);
           const latestChange = latestChangeByCourse[course.id];
           const verifiedLabel = course.last_verified_at ? `Verified ${new Date(course.last_verified_at).toLocaleDateString()}` : 'Never verified';
-          const changeLabel = latestChange ? `Latest change ${new Date(latestChange).toLocaleDateString()}` : 'No recorded changes';
-          return (
-            <View key={course.id} style={styles.card}>
-              <View style={styles.cardTop}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.courseName}>{course.name}</Text>
-                  <Text style={styles.meta}>{course.holes} holes · {verifiedLabel}</Text>
-                  {needsCheck && <Text style={styles.changeMeta}>{changeLabel}</Text>}
-                </View>
-                <View style={styles.pillColumn}>
-                  <View style={[styles.statusPill, course.publication_status === 'published' && styles.statusPublished, course.publication_status === 'review' && styles.statusReview]}>
-                    <Text style={styles.statusText}>{course.publication_status}</Text>
-                  </View>
-                  {needsCheck && <View style={styles.verifyPill}><Text style={styles.verifyPillText}>Needs verification</Text></View>}
-                </View>
-              </View>
-
-              <View style={styles.workRow}>
-                <View style={styles.workItem}><Text style={styles.workValue}>{pending}</Text><Text style={styles.workLabel}>pending suggestions</Text></View>
-                <View style={styles.workItem}><Text style={styles.workValue}>{course.lat != null && course.lng != null ? '✓' : '—'}</Text><Text style={styles.workLabel}>course centre</Text></View>
-              </View>
-
-              <View style={styles.actions}>
-                <TouchableOpacity style={styles.secondaryButton} onPress={() => (navigation as any).navigate('AdminCourseValidation')}><Text style={styles.secondaryText}>Readiness</Text></TouchableOpacity>
-                {pending > 0 && <TouchableOpacity style={styles.secondaryButton} onPress={() => (navigation as any).navigate('AdminMappingSuggestions')}><Text style={styles.secondaryText}>Review AI</Text></TouchableOpacity>}
-                <TouchableOpacity style={[styles.verifyButton, verifyingId === course.id && styles.disabled]} onPress={() => void markVerified(course)} disabled={verifyingId === course.id}>
-                  {verifyingId === course.id ? <ActivityIndicator color={Colors.bg} /> : <Text style={styles.verifyText}>{needsCheck ? 'Mark verified' : 'Re-verify'}</Text>}
-                </TouchableOpacity>
-              </View>
+          const stage = course.publication_status === 'published' ? 'Published' : pending > 0 ? 'Review mapping' : course.publication_status === 'review' ? 'Ready to publish' : 'Map / readiness';
+          return <View key={course.id} style={styles.card}>
+            <View style={styles.cardTop}>
+              <View style={{ flex: 1 }}><Text style={styles.courseName}>{course.name}</Text><Text style={styles.meta}>{course.holes} holes · {verifiedLabel}</Text>{needsCheck && <Text style={styles.changeMeta}>{latestChange ? `Latest change ${new Date(latestChange).toLocaleDateString()}` : 'No verification recorded'}</Text>}</View>
+              <View style={styles.pillColumn}><View style={[styles.statusPill, course.publication_status === 'published' && styles.statusPublished, course.publication_status === 'review' && styles.statusReview]}><Text style={styles.statusText}>{course.publication_status}</Text></View>{needsCheck && <View style={styles.verifyPill}><Text style={styles.verifyPillText}>Needs verification</Text></View>}</View>
             </View>
-          );
+            <View style={styles.workRow}><View style={styles.workItem}><Text style={styles.workValue}>{pending}</Text><Text style={styles.workLabel}>pending suggestions</Text></View><View style={styles.workItem}><Text style={styles.workValue}>{stage}</Text><Text style={styles.workLabel}>next workflow stage</Text></View></View>
+            <View style={styles.workflowActions}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => open('AdminOsmMapping', course.id)}><Text style={styles.secondaryText}>Map / Rescan</Text></TouchableOpacity>
+              {pending > 0 && <TouchableOpacity style={styles.secondaryButton} onPress={() => open('AdminMappingSuggestions', course.id)}><Text style={styles.secondaryText}>Review AI</Text></TouchableOpacity>}
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => open('AdminCourseValidation', course.id)}><Text style={styles.secondaryText}>Readiness</Text></TouchableOpacity>
+            </View>
+            <TouchableOpacity style={[styles.verifyButton, verifyingId === course.id && styles.disabled]} onPress={() => void markVerified(course)} disabled={verifyingId === course.id}>{verifyingId === course.id ? <ActivityIndicator color={Colors.bg} /> : <Text style={styles.verifyText}>{needsCheck ? 'Mark verified' : 'Re-verify'}</Text>}</TouchableOpacity>
+          </View>;
         })}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function Metric({ value, label }: { value: number; label: string }) {
-  return <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>;
-}
+function Metric({ value, label }: { value: number; label: string }) { return <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>; }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
@@ -238,12 +177,12 @@ const styles = StyleSheet.create({
   verifyPillText: { color: Colors.yellow, fontFamily: Font.bold, fontSize: FontSize.xs },
   workRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
   workItem: { flex: 1, padding: Spacing.sm, borderRadius: Radius.md, backgroundColor: Colors.surface2 },
-  workValue: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.md },
+  workValue: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.sm },
   workLabel: { marginTop: 2, color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.xs },
-  actions: { flexDirection: 'row', gap: Spacing.xs, marginTop: Spacing.md },
-  secondaryButton: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.surface3 },
-  secondaryText: { color: Colors.textSecondary, fontFamily: Font.bold, fontSize: FontSize.xs },
-  verifyButton: { flex: 1.2, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.green },
+  workflowActions: { flexDirection: 'row', gap: Spacing.xs, marginTop: Spacing.md },
+  secondaryButton: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.surface3, paddingHorizontal: 4 },
+  secondaryText: { color: Colors.textSecondary, fontFamily: Font.bold, fontSize: FontSize.xs, textAlign: 'center' },
+  verifyButton: { marginTop: Spacing.xs, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.green },
   verifyText: { color: Colors.bg, fontFamily: Font.bold, fontSize: FontSize.xs },
   disabled: { opacity: 0.5 },
 });
