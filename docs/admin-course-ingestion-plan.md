@@ -1,7 +1,7 @@
 # Admin Course Ingestion V2 Plan
 
 ## Objective
-Build a fast, safe multi-course ingestion system that progresses from manual admin tools to machine-assisted mapping and scalable dataset operations.
+Build a fast, safe multi-course ingestion system that progresses from manual admin tools to machine-assisted mapping, operational dataset management, and reliable private-build validation.
 
 ## Ground rules
 - Preserve the existing consumer multi-course flow (`courses` -> `tee_sets` -> `holes`).
@@ -10,102 +10,61 @@ Build a fast, safe multi-course ingestion system that progresses from manual adm
 - Keep changes incremental and CI-gated.
 - Follow `AGENTS.md` and Expo SDK 56 / React Native 0.85 requirements.
 
-## Phase 1 — Multi-course admin map ✅
-Merged: PR #4 / Issue #3.
-- Dynamic course selection.
-- Hole-focused editing.
-- Missing tee/green point placement.
-- Safer hazard assignment.
-- CI passed.
+## Phases 1–7 ✅
+Phases 1–7 are implemented, automated-validation clean, and merged to `main`.
 
-## Phase 2 — New-course setup and scorecard ingestion ✅
-Merged: PR #6 / Issue #5.
-- Guided course creation.
-- Tee-set setup.
-- Editable and bulk-paste scorecards.
-- Duplicate/nearby-course warnings.
-- Tee-set management.
-- CI passed.
+- Phase 1 / PR #4 — multi-course admin map.
+- Phase 2 / PR #6 — new-course setup and scorecard ingestion.
+- Phase 3 / PR #8 — rich fairway/green/centreline geometry.
+- Phase 4 / PR #10 — readiness and draft/review/published safety.
+- Phase 5 / PR #12 — `golfcaddie.course.v1`, JSON/CSV/GeoJSON import/export and provenance.
+- Phase 6 / PR #14 — machine suggestions, satellite human review, batch ingestion and OpenStreetMap generator.
+- Phase 7 / PR #16 — operations queue, verification/history/audit, OSM deduplication/update detection and needs-verification workflow.
 
-## Phase 3 — Rich course geometry ✅
-Merged: PR #8 / Issue #7.
-- Hole Geometry screen.
-- Fairway, green, tee-box and centreline mapping.
-- Existing `hole_zones` model reused.
-- CI passed.
+Outstanding live validation from these phases is intentionally carried into Phase 8 rather than being represented as completed without a connected private build.
 
-## Phase 4 — Readiness and publication safety ✅
-Merged: PR #10 / Issue #9.
-- Completeness/readiness engine.
-- Draft / review / published workflow.
-- Only published courses exposed to golfers.
-- CI passed.
+## Phase 8 — Live validation and admin data health 🚧
+**Status:** Active on `feature/admin-course-ingestion-phase8`. Issue #17.
 
-## Phase 5 — Standard import/export ✅
-Merged: PR #12 / Issue #11.
-- `golfcaddie.course.v1` contract.
-- JSON / CSV / GeoJSON import.
-- JSON / GeoJSON export.
-- Draft-by-default import and provenance retention.
-- CI passed.
+### 8.1 In-app diagnostics
+- [x] Add Admin Data Health screen.
+- [x] Read-only check for `courses` publication + Phase 7 verification columns.
+- [x] Read-only check for `course_admin_events`.
+- [x] Read-only check for OSM source identity/fingerprint columns on mapping suggestions.
+- [x] Read-only check for approved `hole_zones` access.
+- [x] Show live course counts by publication state, pending suggestions and audit-event count.
+- [x] Expose Data Health from Settings and navigation.
 
-## Phase 6 — Assisted course mapping ✅
-Merged: PR #14 / Issue #13.
-- Isolated machine-suggestion store.
-- Confidence and source/licence provenance.
-- Atomic accept/reject into approved geometry.
-- Satellite compare and drag-to-correct review.
-- `golfcaddie.mapping-suggestions.v1` batch input.
-- First OpenStreetMap/Overpass generator.
-- CI passed.
+### 8.2 Explicit live smoke test
+- [x] Add a separately confirmed, user-triggered verification RPC smoke test.
+- [x] Clearly state that the test changes only the selected course verification timestamp/notes, not scorecard or playable geometry.
+- [x] Confirm a new `course_verified` audit event exists after the RPC.
+- [x] Re-run read-only health checks after the smoke test.
+- [ ] Run the verification smoke test in the connected private build after migrations are applied.
 
-Deferred from Phase 6 to operational hardening: real-course coverage measurement, confidence calibration, and a second permitted source if needed.
+### 8.3 Remaining private-build checks
+- [ ] Run repeated OSM scan against a real course and confirm unchanged suggestions do not duplicate.
+- [ ] Change/review one generated source feature and confirm Course Operations flags the course for verification.
+- [ ] Open Course History and confirm verification, mapping/source and publication events are visible.
+- [ ] Run a real round/course-selection regression check to ensure admin migrations do not affect normal published-course flow.
 
-## Phase 7 — Scale and dataset operations 🚧
-Active: `feature/admin-course-ingestion-phase7`, Issue #15, draft PR #16.
+### Phase 8 validation
+- [ ] Current Phase 8 branch must pass dependency install, TypeScript and the complete automated test suite.
+- [ ] Complete the explicit private-build/Supabase checks above before calling Phase 8 fully complete.
 
-### 7.1 Operations queue
-- [x] Searchable/filterable Course Operations screen.
-- [x] Draft/review/published and pending-suggestion workload.
-- [x] Prioritise courses needing verification.
-- [x] `Needs verification` visibility when tracked changes occur after last verification.
-- [x] Dedicated `Needs verification` filter.
-- [ ] Add richer completeness metrics without N+1 loading.
-
-### 7.2 Verification and audit
-- [x] `last_verified_at` and verification notes.
-- [x] `course_admin_events` audit table.
-- [x] Atomic `mark_course_verified` RPC.
-- [x] Publication-status audit events.
-- [x] Mapping accept/reject audit events.
-- [x] OSM source-change audit events.
-- [x] Course History screen.
-- [x] Selective audit of existing GPS, hole-zone and hazard edits/deletes without logging bulk-import inserts.
-
-### 7.3 OSM update/remapping operations
-- [x] Stable OSM source-feature identity (`osm_type:id:feature`).
-- [x] Exact repeat scans are idempotent.
-- [x] Changed pending source features refresh in place.
-- [x] Changed previously reviewed features create a new pending update candidate while retaining history.
-- [x] Backfill OSM identities and collapse duplicate pending rows before uniqueness enforcement.
-- [x] Course Operations surfaces changes occurring after verification.
-- [ ] Live-repeat-scan smoke test after Phase 7 migrations are applied.
-
-### 7.4 Later scale decisions
-- [ ] Production data-source hosting/caching only when usage requires it.
-- [ ] Re-evaluate commercial 40k+ course licensing if product traction makes the licence economically sensible.
-- [ ] External API/export boundary only if commercial dataset distribution becomes a product goal.
-
-### Phase 7 validation
-- [x] Current UI/operations slice passed dependency install, TypeScript and full automated tests.
-- [x] Audit/dedup changes passed the same CI gate.
-- [ ] Apply Phase 7 migrations and run live Supabase/device smoke tests.
+## Later scale decisions
+These remain deliberately demand-driven rather than blockers for the private product:
+- richer course-operations aggregate metrics without N+1 queries;
+- confidence calibration against review outcomes;
+- second permitted geometry/imagery source if OSM coverage proves insufficient;
+- production data-source hosting/caching when usage requires it;
+- reconsider a commercial 40k+ course licence if product traction makes its cost worthwhile;
+- external course-data API only if dataset distribution becomes a product goal.
 
 ## Progress log
 ### 2026-08-30
-- Phase 7 operational queue, verification, history and audit foundation built.
-- Repeated OSM scans now deduplicate at the database boundary and preserve source-change history.
-- Courses now become visibly due for re-verification after tracked publication, mapping, source or approved-geometry changes.
-- Added a dedicated Needs Verification queue filter and selective approved-geometry edit auditing.
-- Latest Phase 7 head passed TypeScript and the full test suite.
-- Next merge gate: re-run CI on the final branch head, inspect the full PR diff and migration ordering, then merge Phase 7 if clean. Live Supabase/device smoke testing remains a separate private-build step after migrations are applied.
+- Phase 7 merged to `main` as PR #16 and Issue #15 was closed.
+- Started Phase 8 / Issue #17 from the merged Phase 7 main head.
+- Added a Data Health screen so missing migrations/schema problems can be diagnosed directly from the private app rather than inferred from runtime failures.
+- Added a separately confirmed verification RPC + audit-event smoke test that does not change playable geometry.
+- Next: pass CI, then use the private build to run the live checks and capture any migration/runtime defects before adding more ingestion features.
