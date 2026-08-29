@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import MappingSuggestionPreview from '../../components/admin/MappingSuggestionPreview';
 import {
@@ -22,17 +22,15 @@ import {
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
 type CourseRow = { id: string; name: string; holes: number };
-type SuggestionRow = MappingSuggestion & {
-  id: string;
-  metadata: Record<string, unknown> | null;
-  review_status: 'pending' | 'accepted' | 'rejected';
-  created_at: string;
-};
+type SuggestionRow = MappingSuggestion & { id: string; metadata: Record<string, unknown> | null; review_status: 'pending' | 'accepted' | 'rejected'; created_at: string };
+type RouteParams = { courseId?: string; onboarding?: boolean };
 
 export default function AdminMappingSuggestionsScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
+  const params = (route.params ?? {}) as RouteParams;
   const [courses, setCourses] = useState<CourseRow[]>([]);
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(params.courseId ?? null);
   const [suggestions, setSuggestions] = useState<SuggestionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -45,8 +43,11 @@ export default function AdminMappingSuggestionsScreen() {
     if (error) { Alert.alert('Course Error', error.message); return; }
     const loaded = (data ?? []) as CourseRow[];
     setCourses(loaded);
-    setSelectedCourseId(current => current && loaded.some(course => course.id === current) ? current : loaded[0]?.id ?? null);
-  }, []);
+    setSelectedCourseId(current => {
+      const preferred = params.courseId && loaded.some(course => course.id === params.courseId) ? params.courseId : current;
+      return preferred && loaded.some(course => course.id === preferred) ? preferred : loaded[0]?.id ?? null;
+    });
+  }, [params.courseId]);
 
   const loadSuggestions = useCallback(async (courseId: string) => {
     setLoading(true);
@@ -79,22 +80,12 @@ export default function AdminMappingSuggestionsScreen() {
     if (savingId) return;
     if (status === 'accepted') {
       const validation = validateMappingSuggestion(suggestion);
-      if (!validation.valid) {
-        Alert.alert('Suggestion is not valid', validation.errors.join(' '));
-        return;
-      }
-      if (!suggestion.source_license?.trim()) {
-        Alert.alert('License confirmation required', 'This suggestion has no source license recorded. Add/confirm source licensing before approving it.');
-        return;
-      }
+      if (!validation.valid) { Alert.alert('Suggestion is not valid', validation.errors.join(' ')); return; }
+      if (!suggestion.source_license?.trim()) { Alert.alert('License confirmation required', 'This suggestion has no source license recorded.'); return; }
     }
-
     setSavingId(suggestion.id);
     try {
-      const { error } = await supabase.rpc('review_course_mapping_suggestion', {
-        p_suggestion_id: suggestion.id,
-        p_decision: status,
-      });
+      const { error } = await supabase.rpc('review_course_mapping_suggestion', { p_suggestion_id: suggestion.id, p_decision: status });
       if (error) throw error;
       setSuggestions(current => current.filter(item => item.id !== suggestion.id));
       setPreviewId(current => current === suggestion.id ? null : current);
@@ -105,15 +96,17 @@ export default function AdminMappingSuggestionsScreen() {
     }
   }, [savingId]);
 
+  const continueToReadiness = () => {
+    if (!selectedCourseId) return;
+    (navigation as any).replace('AdminCourseValidation', { courseId: selectedCourseId, onboarding: params.onboarding === true });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}><Text style={styles.backText}>‹</Text></TouchableOpacity>
-        <View style={styles.titleWrap}>
-          <Text style={styles.headerTitle}>Mapping Review</Text>
-          <Text style={styles.subtitle}>{selectedCourse?.name ?? 'Select a course'}</Text>
-        </View>
+        <View style={styles.titleWrap}><Text style={styles.headerTitle}>Mapping Review</Text><Text style={styles.subtitle}>{selectedCourse?.name ?? 'Select a course'}{params.onboarding ? ' · onboarding' : ''}</Text></View>
         <TouchableOpacity style={styles.refreshButton} onPress={() => selectedCourseId && void loadSuggestions(selectedCourseId)}><Text style={styles.refreshText}>↻</Text></TouchableOpacity>
       </View>
 
@@ -126,14 +119,15 @@ export default function AdminMappingSuggestionsScreen() {
           })}
         </ScrollView>
 
-        <View style={styles.notice}>
-          <Text style={styles.noticeTitle}>Human approval boundary</Text>
-          <Text style={styles.noticeText}>Machine suggestions do not affect playable course data until you accept them here. Review them against approved satellite geometry, correct vertices if needed, then approve. Missing source licensing still blocks approval.</Text>
-        </View>
+        <View style={styles.notice}><Text style={styles.noticeTitle}>Human approval boundary</Text><Text style={styles.noticeText}>Machine suggestions do not affect playable data until accepted here. Correct geometry if needed, then approve or reject each item.</Text></View>
 
         <Text style={styles.sectionLabel}>Pending suggestions</Text>
         {loading ? <ActivityIndicator color={Colors.green} style={{ marginTop: Spacing.xl }} /> : suggestions.length === 0 ? (
-          <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Nothing waiting for review</Text><Text style={styles.emptyText}>New machine-generated features will appear here before they can become approved course data.</Text></View>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Nothing waiting for review</Text>
+            <Text style={styles.emptyText}>This course has no remaining pending mapping suggestions.</Text>
+            {selectedCourseId && <TouchableOpacity style={styles.continueButton} onPress={continueToReadiness}><Text style={styles.continueText}>Continue to Course Readiness</Text></TouchableOpacity>}
+          </View>
         ) : suggestions.map(suggestion => (
           <SuggestionCard
             key={suggestion.id}
@@ -146,63 +140,28 @@ export default function AdminMappingSuggestionsScreen() {
             onReject={() => void markSuggestion(suggestion, 'rejected')}
           />
         ))}
+        {!loading && suggestions.length > 0 && selectedCourseId && <TouchableOpacity style={styles.secondaryContinue} onPress={continueToReadiness}><Text style={styles.secondaryContinueText}>Check Readiness Without Finishing Review</Text></TouchableOpacity>}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function SuggestionCard({
-  suggestion,
-  saving,
-  previewOpen,
-  onTogglePreview,
-  onCoordinatesSaved,
-  onAccept,
-  onReject,
-}: {
-  suggestion: SuggestionRow;
-  saving: boolean;
-  previewOpen: boolean;
-  onTogglePreview: () => void;
-  onCoordinatesSaved: (coordinates: SuggestionCoordinate[]) => void;
-  onAccept: () => void;
-  onReject: () => void;
-}) {
+function SuggestionCard({ suggestion, saving, previewOpen, onTogglePreview, onCoordinatesSaved, onAccept, onReject }: { suggestion: SuggestionRow; saving: boolean; previewOpen: boolean; onTogglePreview: () => void; onCoordinatesSaved: (coordinates: SuggestionCoordinate[]) => void; onAccept: () => void; onReject: () => void }) {
   const validation = validateMappingSuggestion(suggestion);
   const confidence = suggestion.confidence == null ? '—' : `${Math.round(suggestion.confidence * 100)}%`;
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardTop}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>Hole {suggestion.hole_number} · {featureLabel(suggestion.feature_type)}</Text>
-          <Text style={styles.cardMeta}>{suggestion.geometry_type} · {suggestion.coordinates.length} points · confidence {confidence}</Text>
-        </View>
-        <View style={[styles.confidencePill, suggestion.confidence != null && suggestion.confidence >= 0.85 && styles.confidenceStrong]}><Text style={styles.confidenceText}>{confidence}</Text></View>
-      </View>
-      <Text style={styles.sourceText}>Source: {suggestion.source_provider ?? 'unknown'}{suggestion.source_reference ? ` · ${suggestion.source_reference}` : ''}</Text>
-      <Text style={[styles.sourceText, !suggestion.source_license && styles.licenseMissing]}>License: {suggestion.source_license ?? 'MISSING'}</Text>
-      {validation.warnings.map((warning, index) => <Text key={index} style={styles.warningText}>⚠ {warning}</Text>)}
-      {validation.errors.map((error, index) => <Text key={index} style={styles.errorText}>✕ {error}</Text>)}
-
-      <TouchableOpacity style={styles.previewButton} onPress={onTogglePreview}>
-        <Text style={styles.previewButtonText}>{previewOpen ? 'Hide satellite review' : 'Review on satellite map'}</Text>
-      </TouchableOpacity>
-
-      {previewOpen && <MappingSuggestionPreview suggestion={suggestion} onSaved={onCoordinatesSaved} />}
-
-      <View style={styles.actions}>
-        <TouchableOpacity style={styles.rejectButton} onPress={onReject} disabled={saving}><Text style={styles.rejectText}>Reject</Text></TouchableOpacity>
-        <TouchableOpacity style={[styles.acceptButton, (!validation.valid || !suggestion.source_license || saving) && styles.disabled]} onPress={onAccept} disabled={!validation.valid || !suggestion.source_license || saving}>
-          {saving ? <ActivityIndicator color={Colors.bg} /> : <Text style={styles.acceptText}>Accept</Text>}
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+  return <View style={styles.card}>
+    <View style={styles.cardTop}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>Hole {suggestion.hole_number} · {featureLabel(suggestion.feature_type)}</Text><Text style={styles.cardMeta}>{suggestion.geometry_type} · {suggestion.coordinates.length} points · confidence {confidence}</Text></View><View style={[styles.confidencePill, suggestion.confidence != null && suggestion.confidence >= 0.85 && styles.confidenceStrong]}><Text style={styles.confidenceText}>{confidence}</Text></View></View>
+    <Text style={styles.sourceText}>Source: {suggestion.source_provider ?? 'unknown'}{suggestion.source_reference ? ` · ${suggestion.source_reference}` : ''}</Text>
+    <Text style={[styles.sourceText, !suggestion.source_license && styles.licenseMissing]}>License: {suggestion.source_license ?? 'MISSING'}</Text>
+    {validation.warnings.map((warning, index) => <Text key={index} style={styles.warningText}>⚠ {warning}</Text>)}
+    {validation.errors.map((error, index) => <Text key={index} style={styles.errorText}>✕ {error}</Text>)}
+    <TouchableOpacity style={styles.previewButton} onPress={onTogglePreview}><Text style={styles.previewButtonText}>{previewOpen ? 'Hide satellite review' : 'Review on satellite map'}</Text></TouchableOpacity>
+    {previewOpen && <MappingSuggestionPreview suggestion={suggestion} onSaved={onCoordinatesSaved} />}
+    <View style={styles.actions}><TouchableOpacity style={styles.rejectButton} onPress={onReject} disabled={saving}><Text style={styles.rejectText}>Reject</Text></TouchableOpacity><TouchableOpacity style={[styles.acceptButton, (!validation.valid || !suggestion.source_license || saving) && styles.disabled]} onPress={onAccept} disabled={!validation.valid || !suggestion.source_license || saving}>{saving ? <ActivityIndicator color={Colors.bg} /> : <Text style={styles.acceptText}>Accept</Text>}</TouchableOpacity></View>
+  </View>;
 }
 
-function featureLabel(feature: MappingSuggestionFeature) {
-  return feature.replaceAll('_', ' ');
-}
+function featureLabel(feature: MappingSuggestionFeature) { return feature.replaceAll('_', ' '); }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
@@ -227,6 +186,10 @@ const styles = StyleSheet.create({
   emptyCard: { padding: Spacing.xl, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface1, alignItems: 'center' },
   emptyTitle: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.base },
   emptyText: { marginTop: Spacing.sm, color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20 },
+  continueButton: { marginTop: Spacing.md, minHeight: 46, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.green },
+  continueText: { color: Colors.bg, fontFamily: Font.bold, fontSize: FontSize.sm },
+  secondaryContinue: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.surface2, borderWidth: 1, borderColor: Colors.border },
+  secondaryContinueText: { color: Colors.textSecondary, fontFamily: Font.bold, fontSize: FontSize.sm },
   card: { marginBottom: Spacing.md, padding: Spacing.base, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface1 },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.sm },
   cardTitle: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.base, textTransform: 'capitalize' },
