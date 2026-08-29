@@ -100,11 +100,43 @@ begin
         metadata = new.metadata,
         updated_at = now()
     where id = latest.id;
+
+    insert into public.course_admin_events (course_id, event_type, actor_user_id, details)
+    values (
+      new.course_id,
+      'mapping_source_changed',
+      auth.uid(),
+      jsonb_build_object(
+        'suggestion_id', latest.id,
+        'hole_number', new.hole_number,
+        'feature_type', new.feature_type,
+        'source_provider', new.source_provider,
+        'source_feature_key', new.source_feature_key,
+        'previous_review_status', latest.review_status
+      )
+    );
     return null;
   end if;
 
   -- A changed feature that was previously accepted/rejected is a new pending
   -- update candidate, preserving the reviewed record as history.
+  if found then
+    insert into public.course_admin_events (course_id, event_type, actor_user_id, details)
+    values (
+      new.course_id,
+      'mapping_source_changed',
+      auth.uid(),
+      jsonb_build_object(
+        'previous_suggestion_id', latest.id,
+        'hole_number', new.hole_number,
+        'feature_type', new.feature_type,
+        'source_provider', new.source_provider,
+        'source_feature_key', new.source_feature_key,
+        'previous_review_status', latest.review_status
+      )
+    );
+  end if;
+
   return new;
 end;
 $$;
