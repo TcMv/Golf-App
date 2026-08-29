@@ -74,7 +74,7 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ---
 
 ## Phase 5 — Standard import format and bulk ingestion ✅
-**Status:** Feature-complete and automated validation passed on `feature/admin-course-ingestion-phase5` / PR #12. Issue #11.
+**Status:** Complete, validated and merged to `main`. Issue #11 closed. PR #12 merged.
 
 ### 5.1 Canonical interchange contract
 - [x] Define `golfcaddie.course.v1` JSON schema contract.
@@ -117,16 +117,46 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ---
 
 ## Phase 6 — Assisted / AI course mapping 🚧
-**Status:** Next active phase after Phase 5 merge.
+**Status:** Active on `feature/admin-course-ingestion-phase6` / PR #14. Issue #13.
 
-- [ ] Identify imagery/data sources that permit automated commercial extraction.
-- [ ] Define machine-suggestion contract separate from approved course geometry.
-- [ ] Generate proposed tees/greens/fairways/hazards/centrelines.
-- [ ] Store suggestions separately from approved geometry.
-- [ ] Confidence scoring.
-- [ ] Accept/reject/edit workflow per feature and per hole.
-- [ ] Normalize approved/generated course data through `golfcaddie.course.v1` where appropriate.
-- [ ] Batch course review workflow.
+**Goal:** Move humans from drawing every feature to reviewing machine-generated suggestions, while keeping machine data isolated from approved/playable course geometry until explicitly accepted.
+
+### 6.1 Suggestion boundary
+- [x] Add separate `course_mapping_suggestions` persistence model.
+- [x] Support tee/green points, surface polygons, fairway centrelines and hazard polygons.
+- [x] Keep pending machine data separate from `holes`, `hole_zones` and `hazards`.
+- [x] Store confidence, source provider/reference and source license per suggestion.
+- [x] Add explicit `pending` / `accepted` / `rejected` review status.
+- [x] Add pure suggestion validator for geometry type, point count, coordinate ranges, confidence and source/licensing warnings.
+- [x] Add approval-action mapping into the existing approved-data model.
+- [x] Add dedicated suggestion tests and wire them into CI.
+
+### 6.2 Human review workflow
+- [x] Add Mapping Review admin screen.
+- [x] Add course selector and pending suggestion queue.
+- [x] Show feature type, geometry type, point count, confidence and source/licensing data.
+- [x] Block approval when source licensing is missing.
+- [x] Accept tee/green point suggestions into `holes`.
+- [x] Accept fairway/green/tee-box/centreline suggestions into `hole_zones`.
+- [x] Accept hazard suggestions into `hazards`.
+- [x] Reject suggestions without touching approved geometry.
+- [ ] Make acceptance atomic/idempotent, especially for hazards if an approved-data write succeeds but suggestion-status update fails.
+- [ ] Add satellite-map overlay comparing suggested geometry with currently approved geometry.
+- [ ] Add edit-before-accept for suggested points/lines/polygons where useful.
+
+### 6.3 Suggestion generation
+- [ ] Identify imagery/data sources that explicitly permit automated commercial extraction.
+- [ ] Define batch suggestion ingestion contract/API.
+- [ ] Generate initial proposed tees/greens/fairways/hazards/centrelines from a permitted source.
+- [ ] Calibrate confidence thresholds against human review outcomes.
+- [ ] Normalize accepted/generated course packages through `golfcaddie.course.v1` where appropriate.
+- [ ] Add batch course review workflow once single-course review is proven.
+
+### Phase 6 validation
+- [x] `npm ci` passed on the current Phase 6 slice.
+- [x] `npm run typecheck` passed.
+- [x] Existing tests + import/converter + mapping-suggestion tests passed.
+- [ ] Manual live-Supabase suggestion create/review/accept/reject smoke test remains recommended after applying Phase 6 migrations.
 
 ---
 
@@ -142,10 +172,10 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 
 ## Progress log
 ### 2026-08-29
-- Implemented, validated and merged Phases 1–4.
-- Completed Phase 5 canonical `golfcaddie.course.v1` ingestion contract.
-- Added safe JSON/CSV/GeoJSON normalization and preview-before-write import flow.
-- Added JSON/GeoJSON export for existing courses.
-- Added persistent source/licensing provenance fields so commercially relevant origin data survives import/export cycles.
-- Full automated Phase 5 validation passed; live Supabase smoke testing remains recommended after migrations are applied.
-- Phase 6 is next: machine-generated suggestions and human approval rather than direct AI writes into approved geometry.
+- Implemented, validated and merged Phases 1–5.
+- Started Phase 6 on a fresh branch with Issue #13 and draft PR #14.
+- Added a separate machine-suggestion table so AI/generated geometry cannot directly change playable course data.
+- Added feature/geometry validation, confidence and source-license checks, and approval mapping into existing course structures.
+- Added a human Mapping Review queue with accept/reject actions and license-gated approval.
+- Current Phase 6 slice passed install, typecheck and the full automated test suite.
+- Next focus: atomic/idempotent acceptance, map overlay and edit-before-accept, then legally permitted machine-generation sources.
