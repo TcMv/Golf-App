@@ -32,7 +32,7 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Full editable scorecard.
 - [x] Bulk scorecard paste with human review before save.
 - [x] Duplicate-name and nearby-course warning.
-- [x] Existing tee-set add/edit/delete management.
+- [x] Existing-course tee-set add/edit/delete management.
 - [x] Validation and cleanup on partial creation failure.
 - [x] CI install/typecheck/tests passed.
 - [ ] Manual Android/live-Supabase creation/edit smoke test remains recommended.
@@ -140,7 +140,7 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Accept fairway/green/tee-box/centreline suggestions into `hole_zones`.
 - [x] Accept hazard suggestions into `hazards`.
 - [x] Reject suggestions without touching approved geometry.
-- [ ] Make acceptance atomic/idempotent, especially for hazards if an approved-data write succeeds but suggestion-status update fails.
+- [x] Make accept/reject atomic with a database RPC so approved-data writes and review status cannot diverge; repeated review is rejected and hazard duplication from partial approval is prevented.
 - [ ] Add satellite-map overlay comparing suggested geometry with currently approved geometry.
 - [ ] Add edit-before-accept for suggested points/lines/polygons where useful.
 
@@ -156,6 +156,7 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] `npm ci` passed on the current Phase 6 slice.
 - [x] `npm run typecheck` passed.
 - [x] Existing tests + import/converter + mapping-suggestion tests passed.
+- [x] Atomic-review client changes passed the same CI gate.
 - [ ] Manual live-Supabase suggestion create/review/accept/reject smoke test remains recommended after applying Phase 6 migrations.
 
 ---
@@ -177,5 +178,6 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - Added a separate machine-suggestion table so AI/generated geometry cannot directly change playable course data.
 - Added feature/geometry validation, confidence and source-license checks, and approval mapping into existing course structures.
 - Added a human Mapping Review queue with accept/reject actions and license-gated approval.
+- Replaced the two-step approval path with an atomic database review function, preventing partial approvals and duplicate hazards on retry.
 - Current Phase 6 slice passed install, typecheck and the full automated test suite.
-- Next focus: atomic/idempotent acceptance, map overlay and edit-before-accept, then legally permitted machine-generation sources.
+- Next focus: map overlay and edit-before-accept, then batch suggestion ingestion and legally permitted machine-generation sources.
