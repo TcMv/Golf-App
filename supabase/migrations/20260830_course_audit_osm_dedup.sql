@@ -8,6 +8,36 @@ create index if not exists course_mapping_suggestions_source_key_idx
   on public.course_mapping_suggestions (course_id, source_provider, source_feature_key, created_at desc)
   where source_feature_key is not null;
 
+-- Backfill source identities for OSM rows created before this migration.
+update public.course_mapping_suggestions
+set source_feature_key = (metadata ->> 'osm_type') || ':' || (metadata ->> 'osm_id') || ':' || feature_type,
+    source_fingerprint = md5(
+      coalesce(hole_number::text, '') || '|' ||
+      coalesce(geometry_type, '') || '|' ||
+      coalesce(coordinates::text, '') || '|' ||
+      coalesce((metadata -> 'osm_tags')::text, '')
+    )
+where source_provider = 'OpenStreetMap'
+  and source_feature_key is null
+  and nullif(metadata ->> 'osm_type', '') is not null
+  and nullif(metadata ->> 'osm_id', '') is not null;
+
+-- If experimental scans were already run before this migration, keep only the
+-- newest pending row for each source feature. Reviewed history is retained.
+with ranked as (
+  select id,
+         row_number() over (
+           partition by course_id, source_provider, source_feature_key
+           order by created_at desc, id desc
+         ) as rn
+  from public.course_mapping_suggestions
+  where review_status = 'pending'
+    and source_feature_key is not null
+)
+delete from public.course_mapping_suggestions s
+using ranked r
+where s.id = r.id and r.rn > 1;
+
 create unique index if not exists course_mapping_suggestions_pending_source_key_uniq
   on public.course_mapping_suggestions (course_id, source_provider, source_feature_key)
   where review_status = 'pending' and source_feature_key is not null;
@@ -83,20 +113,6 @@ drop trigger if exists prepare_mapping_suggestion_source_identity on public.cour
 create trigger prepare_mapping_suggestion_source_identity
 before insert on public.course_mapping_suggestions
 for each row execute function public.prepare_mapping_suggestion_source_identity();
-
--- Backfill source identities for OSM rows created before this migration.
-update public.course_mapping_suggestions
-set source_feature_key = (metadata ->> 'osm_type') || ':' || (metadata ->> 'osm_id') || ':' || feature_type,
-    source_fingerprint = md5(
-      coalesce(hole_number::text, '') || '|' ||
-      coalesce(geometry_type, '') || '|' ||
-      coalesce(coordinates::text, '') || '|' ||
-      coalesce((metadata -> 'osm_tags')::text, '')
-    )
-where source_provider = 'OpenStreetMap'
-  and source_feature_key is null
-  and nullif(metadata ->> 'osm_type', '') is not null
-  and nullif(metadata ->> 'osm_id', '') is not null;
 
 create or replace function public.audit_course_publication_change()
 returns trigger
