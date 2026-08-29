@@ -23,6 +23,7 @@ type Nav = NativeStackNavigationProp<{
   AdminHoleZones: undefined;
   AdminCourseValidation: undefined;
   AdminCourseImport: undefined;
+  AdminCourseExport: undefined;
   AdminMap: undefined;
 }>;
 
@@ -39,12 +40,7 @@ function Row({ label, value, onPress, danger = false }: { label: string; value?:
 }
 
 function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Switch value={value} onValueChange={onChange} trackColor={{ false: Colors.surface3, true: Colors.greenDark }} thumbColor={value ? Colors.green : Colors.textMuted} />
-    </View>
-  );
+  return <View style={styles.row}><Text style={styles.rowLabel}>{label}</Text><Switch value={value} onValueChange={onChange} trackColor={{ false: Colors.surface3, true: Colors.greenDark }} thumbColor={value ? Colors.green : Colors.textMuted} /></View>;
 }
 
 export default function SettingsScreen() {
@@ -64,13 +60,11 @@ export default function SettingsScreen() {
   const deleteAccount = useCallback(() => {
     Alert.alert('Delete Account', 'This permanently deletes your profile, rounds, scores, achievements, and club data.', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete Permanently', style: 'destructive', onPress: async () => {
-          const { error } = await supabase.rpc('delete_own_account');
-          if (error) { Alert.alert('Delete Failed', error.message); return; }
-          await signOut();
-        },
-      },
+      { text: 'Delete Permanently', style: 'destructive', onPress: async () => {
+        const { error } = await supabase.rpc('delete_own_account');
+        if (error) { Alert.alert('Delete Failed', error.message); return; }
+        await signOut();
+      } },
     ]);
   }, [signOut]);
 
@@ -112,7 +106,9 @@ export default function SettingsScreen() {
           <View style={styles.divider} />
           <Row label="Add new course" value="Course & scorecard" onPress={() => navigation.navigate('AdminCourseSetup')} />
           <View style={styles.divider} />
-          <Row label="Import course JSON" value="Validate & preview" onPress={() => navigation.navigate('AdminCourseImport')} />
+          <Row label="Import course data" value="JSON, CSV & GeoJSON" onPress={() => navigation.navigate('AdminCourseImport')} />
+          <View style={styles.divider} />
+          <Row label="Export course data" value="JSON & GeoJSON" onPress={() => navigation.navigate('AdminCourseExport')} />
           <View style={styles.divider} />
           <Row label="Tee sets" value="Add, edit & delete" onPress={() => navigation.navigate('AdminTeeSets')} />
           <View style={styles.divider} />
@@ -134,7 +130,6 @@ export default function SettingsScreen() {
           <View style={styles.divider} />
           <Row label="Delete account" danger onPress={deleteAccount} />
         </View>
-
         <Text style={styles.appVersion}>GolfCaddie · Version 1.0.0 · Build 1</Text>
       </ScrollView>
     </SafeAreaView>
