@@ -24,8 +24,8 @@ Phases 1–8 are implemented and merged to `main`.
 
 Live device/Supabase smoke testing remains intentionally separate from automated CI and can be run through Data Health in the private build.
 
-## Phase 9 — Continuous course onboarding 🚧
-**Status:** Active on `feature/admin-course-ingestion-phase9`. Issue #19. Draft PR #20.
+## Phase 9 — Continuous course onboarding ✅
+**Status:** Automated implementation complete on `feature/admin-course-ingestion-phase9`. Issue #19 / PR #20.
 
 ### 9.1 Carry course identity through the workflow
 - [x] Make new-course persistence return the created `courseId`.
@@ -42,15 +42,26 @@ Live device/Supabase smoke testing remains intentionally separate from automated
 - [x] Machine geometry remains pending until explicit human accept/reject.
 - [x] Course Readiness remains the publication gate.
 - [x] Publishing from an onboarding flow offers a direct return to Course Operations.
-- [x] Course Operations now passes the selected `courseId` directly into Map/Rescan, Review AI and Readiness.
+- [x] Course Operations passes the selected `courseId` directly into Map/Rescan, Review AI and Readiness.
 - [x] Course Operations surfaces a simple next-workflow-stage cue based on publication and pending-review state.
-- [ ] Optional compact visual progress strip (Created → Mapping → Review → Readiness → Published) can be added later if the text cues are not enough in device testing.
+- [ ] Optional compact visual progress strip can be added later if device testing shows the text cues are insufficient.
 
 ### 9.3 Validation
-- [x] First workflow slice passed dependency install, TypeScript and the complete automated test suite.
-- [ ] Final Phase 9 head after Course Operations shortcuts must pass the same CI gate.
+- [x] Workflow slice passed dependency install, TypeScript and the complete automated test suite.
+- [x] Final Course Operations-enhanced head passed the same CI gate.
 - [ ] Private-build smoke test: create a disposable draft course and confirm course selection persists through Create → OSM → Review → Readiness.
 - [ ] Confirm cancelling/choosing “Later” at each stage still leaves a valid draft and does not alter published course flow.
+
+## Next — Phase 10: Source coverage lab
+Measure how much useful course geometry the free/testing OSM path actually provides before spending money on a commercial 40k+ course licence.
+
+Planned:
+- per-course source coverage report;
+- count numbered hole paths, greens, tees, fairways, bunkers, water and inferred assignments before queueing;
+- compare OSM coverage with already approved geometry;
+- save scan timestamp/source summary without modifying playable geometry;
+- rank courses by mapping gaps so manual/second-source work is targeted;
+- use the results to inform whether commercial course licensing is worth its annual cost.
 
 ## Later scale decisions
 These remain demand-driven rather than blockers for the private product:
@@ -64,9 +75,8 @@ These remain demand-driven rather than blockers for the private product:
 ## Progress log
 ### 2026-08-30
 - Phases 7 and 8 are merged to `main`.
-- Started Phase 9 / Issue #19 and opened draft PR #20.
-- New-course creation now returns the actual created course ID and can continue directly into OSM generation.
-- OSM generation, Mapping Review and Course Readiness accept and preserve the selected course through the onboarding chain.
-- Course Operations now launches mapping, review and readiness with the correct selected course instead of forcing a second selection.
-- Draft/publication safety boundaries remain unchanged: generated geometry is pending until human review and Course Readiness remains the publish gate.
-- Initial Phase 9 workflow slice passed CI; final operations-enhanced head is the next merge gate.
+- Phase 9 continuous onboarding is automated-validation clean.
+- New-course creation carries the actual course ID through OSM generation, Mapping Review and Course Readiness.
+- Course Operations now launches mapping, review and readiness with the correct selected course instead of forcing repeated selection.
+- Draft/publication safety boundaries remain unchanged.
+- Next development phase is a Source Coverage Lab so the commercial-course-database decision can be driven by measured gaps rather than assumptions.
