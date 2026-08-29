@@ -54,7 +54,8 @@
     "test:course-import": "tsc --ignoreConfig src/utils/courseImport.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-course-import-test && node tests/courseImport.test.cjs",
     "test:course-import-converters": "tsc --ignoreConfig src/utils/courseImport.ts src/utils/courseImportConverters.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-course-import-converters-test && node tests/courseImportConverters.test.cjs",
     "test:course-mapping-suggestions": "tsc --ignoreConfig src/utils/courseMappingSuggestions.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-course-mapping-suggestion-test && node tests/courseMappingSuggestions.test.cjs",
-    "test:course-mapping-batch": "tsc --ignoreConfig src/utils/courseMappingSuggestions.ts src/utils/courseMappingSuggestionBatch.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-course-mapping-batch-test && node tests/courseMappingSuggestionBatch.test.cjs"
+    "test:course-mapping-batch": "tsc --ignoreConfig src/utils/courseMappingSuggestions.ts src/utils/courseMappingSuggestionBatch.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-course-mapping-batch-test && node tests/courseMappingSuggestionBatch.test.cjs",
+    "test:osm-mapping": "tsc --ignoreConfig src/utils/courseMappingSuggestions.ts src/utils/courseMappingSuggestionBatch.ts src/utils/osmGolfMapping.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-osm-mapping-test && node tests/osmGolfMapping.test.cjs"
   },
   "private": true
 }
