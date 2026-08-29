@@ -5,7 +5,7 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 
 ## Ground rules
 - Preserve the existing consumer multi-course flow (`courses` -> `tee_sets` -> `holes`).
-- Reuse the existing map editor, polygon drawing, hazard tagging, and vertex editing rather than rewriting them.
+- Reuse existing course, hazard, and hole-zone models instead of creating parallel data structures.
 - Keep changes incremental and testable.
 - Do not change the tee/hole schema merely for theoretical cleanliness; only migrate it when a real product requirement needs per-tee GPS positions/distances.
 - New/incomplete course data must not accidentally affect existing playable courses.
@@ -14,12 +14,13 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ## Current state confirmed
 - [x] Consumer app already supports multiple courses.
 - [x] Start Round dynamically loads all courses, the selected course's tee sets, and the selected course's holes.
-- [x] Course database is normalized around `courses`, `tee_sets`, `holes`, and `hazards`.
+- [x] Course database is normalized around `courses`, `tee_sets`, `holes`, `hazards`, and `hole_zones`.
 - [x] Existing admin map editor can edit tee/green points and draw/edit hazard polygons.
-- [x] Admin map editor now supports dynamic course selection.
-- [x] Missing tee/green points can be placed directly on the map.
-- [x] Phase 2 branch now has a guided new-course + scorecard workflow.
-- [ ] No completeness/validation workflow exists before considering a mapped course ready.
+- [x] Admin map editor supports dynamic course selection and missing-point placement.
+- [x] Guided new-course, scorecard, bulk-paste and tee-set admin workflows exist.
+- [x] `hole_zones` already stores green, fairway, tee-box and fairway-centreline geometry.
+- [x] ActiveRound already fetches hole-zone geometry and the caddie already consumes fairway-centreline data.
+- [ ] No completeness/publication workflow exists before considering a mapped course ready.
 
 ---
 
@@ -64,7 +65,9 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ---
 
 ## Phase 2 — New-course setup and scorecard ingestion ✅
-**Status:** Feature-complete with automated validation passed on `feature/admin-course-ingestion-phase2` / PR #6.
+**Status:** Complete, validated and merged to `main`.
+
+**Tracking:** GitHub issue #5 — closed. PR #6 — merged.
 
 **Goal:** Create the basic data structure for a new course quickly.
 
@@ -97,26 +100,53 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Static review confirms course creation cleans up the course record if downstream tee/hole insertion fails.
 - [ ] Manual Android/live-Supabase creation/edit smoke test remains recommended before relying on the workflow for production data entry.
 
-**Phase 2 exit criteria**
-- [x] A new course can be created in-app and have a complete basic scorecard without SQL/manual Supabase work.
-- [x] Existing course tee sets can be maintained without direct Supabase editing.
-- [x] Structured scorecard data can be pasted in bulk and reviewed before save.
-
 ---
 
 ## Phase 3 — Rich course geometry for the caddie 🚧
-**Status:** Next active phase after Phase 2 merge.
+**Status:** Active on `feature/admin-course-ingestion-phase3` / PR #8.
 
-**Goal:** Give the caddie better spatial understanding while keeping the data model maintainable.
+**Tracking:** GitHub issue #7.
 
-- [ ] Add fairway geometry.
-- [ ] Add green polygon geometry.
-- [ ] Add fairway/hole centreline editor.
-- [ ] Decide whether tee-box polygons are useful enough to store.
-- [ ] Separate generic course geometry from hazard semantics where appropriate.
-- [ ] Ensure caddie queries can consume the richer geometry without breaking existing courses.
+**Goal:** Make the already-supported rich geometry practical to create and maintain from the admin layer.
 
-**Decision checkpoint:** Reassess whether per-tee GPS coordinates/distances require a `hole_tees`/equivalent table. Do not migrate earlier unless needed.
+### 3.0 Existing foundation discovered
+- [x] Confirm `hole_zones` already supports `green`, `fairway`, `tee_box`, and `fairway_centreline`.
+- [x] Confirm one zone per course/hole/type is enforced by the existing unique constraint.
+- [x] Confirm ActiveRound already loads zones for the active hole.
+- [x] Confirm caddie routing already consumes `fairway_centreline`.
+- [x] Confirm zone data already participates in lie detection.
+- [x] Avoid adding a duplicate geometry schema.
+
+### 3.1 Hole geometry editor
+- [x] Add dedicated course/hole geometry admin screen.
+- [x] Add course selector and Hole 1..N selector.
+- [x] Auto-fit the satellite map to tee/green context for the selected hole.
+- [x] Display existing fairway, green, tee-box and centreline geometry.
+- [x] Show which zone types are already mapped.
+
+### 3.2 Geometry creation and maintenance
+- [x] Draw/replace fairway polygons.
+- [x] Draw/replace green polygons.
+- [x] Draw/replace fairway-centreline routes.
+- [x] Allow tee-box polygons without making them mandatory.
+- [x] Upsert to the existing one-zone-per-hole/type record.
+- [x] Delete existing geometry.
+- [x] Support undo/cancel while drawing.
+- [ ] Decide whether direct vertex editing of an existing zone adds enough speed over redraw to include before Phase 3 closes.
+
+### 3.3 Integration
+- [x] Register Hole Geometry in navigation.
+- [x] Add Settings entry point: `Hole geometry — Fairway, green & centreline`.
+- [x] Keep hazard semantics in `hazards` and ordinary playable-surface geometry in `hole_zones`.
+- [x] Existing caddie queries continue to consume `hole_zones`; no consumer-path rewrite is required.
+
+### Phase 3 validation
+- [ ] `npm ci` on current Phase 3 head.
+- [ ] `npm run typecheck` on current Phase 3 head.
+- [ ] Existing unit-test suite on current Phase 3 head.
+- [ ] Manual live-Supabase draw/upsert/delete smoke test remains recommended.
+
+**Decision checkpoint — per-tee GPS:** Still deferred. The current product does not yet demonstrate enough pain to justify a `hole_tees` migration. Reassess when tee-specific GPS positions become necessary.
 
 ---
 
@@ -174,9 +204,9 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - Reframed work around the admin ingestion layer rather than redesigning the underlying course architecture.
 - Implemented and merged Phase 1.
 - Added GitHub Actions CI covering install, TypeScript typecheck, and all existing unit tests.
-- Started Phase 2 on a fresh branch.
-- Added guided new-course creation, initial tee setup, scorecard entry, validation, duplicate-name protection, and rollback cleanup on partial creation failure.
-- Added nearby-coordinate duplicate warning with explicit override.
-- Added bulk scorecard paste into the editable scorecard workflow.
-- Added existing-course tee-set add/edit/delete management.
-- Completed Phase 2 automated validation: install, typecheck and full existing unit-test suite all passed.
+- Implemented, validated and merged Phase 2.
+- Started Phase 3 on a fresh branch.
+- Discovered the repo already has `hole_zones` with green/fairway/tee-box/centreline support and that ActiveRound/caddie already consume this data.
+- Built a dedicated Hole Geometry admin screen against the existing model instead of creating a new schema.
+- Added drawing/replacement/deletion for fairway, green, centreline and optional tee-box geometry.
+- Added the Phase 3 navigation and Settings entry point.
