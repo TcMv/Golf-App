@@ -30,6 +30,7 @@ import SettingsScreen from '../screens/settings/SettingsScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import MyBagScreen from '../screens/settings/MyBagScreen';
 import AdminMapScreen from '../screens/admin/AdminMapScreen';
+import AdminCourseSetupScreen from '../screens/admin/AdminCourseSetupScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -98,6 +99,7 @@ function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
       <Stack.Screen name="RoundDetail" component={RoundDetailScreen} />
       <Stack.Screen name="MyBag" component={MyBagScreen} />
       <Stack.Screen name="SettingsDetail" component={SettingsScreen} />
+      <Stack.Screen name="AdminCourseSetup" component={AdminCourseSetupScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminMap" component={AdminMapScreen} options={{ presentation: 'fullScreenModal' }} />
     </Stack.Navigator>
   );
