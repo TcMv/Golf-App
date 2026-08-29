@@ -22,7 +22,7 @@ type CourseRow = {
   id: string;
   name: string;
   holes: number;
-  status: CourseStatus;
+  publication_status: CourseStatus;
   lat: number | null;
   lng: number | null;
   last_verified_at: string | null;
@@ -43,7 +43,7 @@ export default function AdminCourseOperationsScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     const [{ data: courseData, error: courseError }, { data: suggestionData, error: suggestionError }] = await Promise.all([
-      supabase.from('courses').select('id, name, holes, status, lat, lng, last_verified_at, created_at').order('name'),
+      supabase.from('courses').select('id, name, holes, publication_status, lat, lng, last_verified_at, created_at').order('name'),
       supabase.from('course_mapping_suggestions').select('course_id, review_status').eq('review_status', 'pending'),
     ]);
     setLoading(false);
@@ -61,7 +61,7 @@ export default function AdminCourseOperationsScreen() {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return courses
-      .filter(course => filter === 'all' || course.status === filter)
+      .filter(course => filter === 'all' || course.publication_status === filter)
       .filter(course => !needle || course.name.toLowerCase().includes(needle))
       .sort((a, b) => {
         const pendingDiff = (pendingByCourse[b.id] ?? 0) - (pendingByCourse[a.id] ?? 0);
@@ -72,9 +72,9 @@ export default function AdminCourseOperationsScreen() {
 
   const totals = useMemo(() => ({
     all: courses.length,
-    draft: courses.filter(course => course.status === 'draft').length,
-    review: courses.filter(course => course.status === 'review').length,
-    published: courses.filter(course => course.status === 'published').length,
+    draft: courses.filter(course => course.publication_status === 'draft').length,
+    review: courses.filter(course => course.publication_status === 'review').length,
+    published: courses.filter(course => course.publication_status === 'published').length,
     pending: Object.values(pendingByCourse).reduce((sum, value) => sum + value, 0),
   }), [courses, pendingByCourse]);
 
@@ -136,8 +136,8 @@ export default function AdminCourseOperationsScreen() {
                   <Text style={styles.courseName}>{course.name}</Text>
                   <Text style={styles.meta}>{course.holes} holes · {verifiedLabel}</Text>
                 </View>
-                <View style={[styles.statusPill, course.status === 'published' && styles.statusPublished, course.status === 'review' && styles.statusReview]}>
-                  <Text style={styles.statusText}>{course.status}</Text>
+                <View style={[styles.statusPill, course.publication_status === 'published' && styles.statusPublished, course.publication_status === 'review' && styles.statusReview]}>
+                  <Text style={styles.statusText}>{course.publication_status}</Text>
                 </View>
               </View>
 
