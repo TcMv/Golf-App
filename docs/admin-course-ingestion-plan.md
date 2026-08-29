@@ -11,19 +11,6 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - New/incomplete course data must not accidentally affect existing playable courses.
 - Follow Expo SDK 56 / React Native 0.85 constraints in `AGENTS.md`.
 
-## Current state confirmed
-- [x] Consumer app already supports multiple courses.
-- [x] Start Round dynamically loads all courses, the selected course's tee sets, and the selected course's holes.
-- [x] Course database is normalized around `courses`, `tee_sets`, `holes`, `hazards`, and `hole_zones`.
-- [x] Existing admin map editor can edit tee/green points and draw/edit hazard polygons.
-- [x] Admin map editor supports dynamic course selection and missing-point placement.
-- [x] Guided new-course, scorecard, bulk-paste and tee-set admin workflows exist.
-- [x] `hole_zones` stores green, fairway, tee-box and fairway-centreline geometry.
-- [x] ActiveRound already fetches hole-zone geometry and the caddie already consumes fairway-centreline data.
-- [ ] No completeness/publication workflow exists before considering a mapped course ready.
-
----
-
 ## Phase 1 — Multi-course admin map ✅
 **Status:** Complete, validated and merged to `main`. Issue #3 closed. PR #4 merged.
 
@@ -53,47 +40,59 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ---
 
 ## Phase 3 — Rich course geometry for the caddie ✅
-**Status:** Feature-complete and automated validation passed on `feature/admin-course-ingestion-phase3` / PR #8. Issue #7.
+**Status:** Complete, validated and merged to `main`. Issue #7 closed. PR #8 merged.
 
-**Key architecture discovery:** no new geometry schema was needed. Existing `hole_zones` already supports `green`, `fairway`, `tee_box`, and `fairway_centreline`; ActiveRound already loads the data and the caddie already uses fairway centrelines.
+**Key architecture discovery:** existing `hole_zones` already supports `green`, `fairway`, `tee_box`, and `fairway_centreline`; ActiveRound already loads the data and the caddie already consumes it.
 
-### Geometry admin
 - [x] Dedicated Hole Geometry screen.
 - [x] Course + hole selection and satellite-map auto-fit.
-- [x] Existing fairway, green, tee-box and centreline display.
-- [x] Draw/replace fairway polygons.
-- [x] Draw/replace green polygons.
-- [x] Draw/replace fairway centreline routes.
-- [x] Optional tee-box polygon support.
-- [x] Upsert to existing one-zone-per-hole/type records.
-- [x] Delete existing geometry.
-- [x] Undo/cancel while drawing.
-- [x] Navigation + Settings entry point.
+- [x] Display existing fairway, green, tee-box and centreline geometry.
+- [x] Draw/replace/delete fairway, green and centreline geometry.
+- [x] Optional tee-box support.
+- [x] Existing schema reused; no duplicate geometry model.
+- [x] CI install/typecheck/tests passed.
+- [ ] Manual live-Supabase geometry smoke test remains recommended.
 
-### Phase 3 decisions
-- Direct vertex editing of existing hole zones is deferred. Redraw is sufficient for the current ingestion workflow and avoids expanding this phase merely for convenience; add later if real mapping use shows it saves meaningful time.
-- Per-tee GPS schema remains deferred until tee-specific coordinate requirements become a demonstrated limitation.
-
-### Phase 3 validation
-- [x] `npm ci` passed.
-- [x] `npm run typecheck` passed.
-- [x] Existing unit-test suite passed.
-- [ ] Manual live-Supabase draw/upsert/delete smoke test remains recommended.
+**Deferred:** direct vertex editing and per-tee GPS schema remain demand-driven enhancements rather than Phase 3 blockers.
 
 ---
 
 ## Phase 4 — Completeness, validation, and publication safety 🚧
-**Status:** Next active phase after Phase 3 merge.
+**Status:** Active on `feature/admin-course-ingestion-phase4` / PR #10. Issue #9.
 
 **Goal:** Know whether a course is actually ready and prevent poor/incomplete data reaching users.
 
-- [ ] Course completeness calculation.
-- [ ] Missing tee/green/hole data checks.
-- [ ] Geometry sanity checks (distance, remote polygons, invalid vertices, etc.).
-- [ ] Scorecard sanity checks.
-- [ ] Decide and implement draft/review/published status.
-- [ ] Show actionable validation results to the admin.
-- [ ] Ensure player course lists only expose appropriate publication states once status is introduced.
+### 4.1 Readiness engine
+- [x] Add pure `validateCourseReadiness` engine.
+- [x] Separate core/basic completeness from rich-geometry completeness.
+- [x] Validate hole-row count, tee sets, par, stroke index, tee distance and duplicate stroke indexes.
+- [x] Validate tee GPS and green front/centre/back coverage.
+- [x] Add tee-to-green GPS sanity check.
+- [x] Validate minimum polygon/centreline point counts.
+- [x] Make geometry expectations par-aware: par 3s do not require fairway/centreline.
+- [x] Return actionable error/warning codes and per-hole messages.
+- [x] Add dedicated unit tests and run them in CI.
+
+### 4.2 Admin readiness UI
+- [x] Add Course Readiness screen.
+- [x] Add course selector + refresh.
+- [x] Show overall/core/geometry completeness.
+- [x] Show coverage metrics for holes, tees, GPS, greens, fairways and centrelines.
+- [x] Separate must-fix errors from recommended geometry improvements.
+- [x] Add Settings/navigation entry point.
+
+### 4.3 Publication safety
+- [ ] Decide final `draft` / `review` / `published` workflow.
+- [ ] If status is introduced, migrate existing courses safely to `published`.
+- [ ] Make newly created courses non-public by default.
+- [ ] Filter every player-facing course query by publication state.
+- [ ] Gate publish action on readiness rules.
+
+### Phase 4 validation
+- [x] `npm ci` passed on the current implementation slice.
+- [x] `npm run typecheck` passed.
+- [x] Existing tests + new course-readiness tests passed.
+- [ ] Manual live-Supabase readiness-screen smoke test remains recommended.
 
 ---
 
@@ -129,10 +128,6 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 
 ## Progress log
 ### 2026-08-29
-- Reconfirmed the consumer app was already multi-course.
-- Implemented, validated and merged Phase 1.
-- Added GitHub Actions CI covering install, TypeScript typecheck and existing unit tests.
-- Implemented, validated and merged Phase 2.
-- Discovered the existing `hole_zones` + caddie geometry foundation.
-- Built and validated the Phase 3 Hole Geometry admin workflow without duplicating the existing schema.
-- Phase 4 is next: completeness, validation and publication safety.
+- Implemented, validated and merged Phases 1–3.
+- Phase 4 started with a tested readiness engine and admin Course Readiness dashboard.
+- Publication status is intentionally the next decision: it will only be introduced together with player-query filtering so draft courses cannot leak into normal course selection.
