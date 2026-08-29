@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { summarizeCoverageBenchmarks } = require('../tmp-source-coverage-benchmarks/sourceCoverageBenchmarks.js');
+const { summarizeCoverageBenchmarks } = require('/tmp/golf-source-coverage-benchmarks-test/sourceCoverageBenchmarks.js');
 
 const courses = [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }];
 const scans = [
@@ -12,6 +12,7 @@ assert.equal(summary.scanCount, 3);
 assert.equal(summary.courseCount, 2);
 assert.equal(summary.averageSourceScore, 50);
 assert.equal(summary.averageApprovedScore, 60);
+assert.equal(summary.averageInferenceRate, 30);
 assert.equal(summary.latestByCourse[0].courseName, 'Beta');
 assert.equal(summary.latestByCourse[1].latest.source_score, 70);
 assert.equal(summary.latestByCourse[1].scans, 2);
