@@ -42,3 +42,4 @@ jobs:
           npm run test:course-import-converters
           npm run test:course-mapping-suggestions
           npm run test:course-mapping-batch
+          npm run test:osm-mapping
