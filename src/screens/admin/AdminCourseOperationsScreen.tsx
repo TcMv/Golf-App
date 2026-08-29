@@ -16,7 +16,7 @@ import { supabase } from '../../lib/supabase';
 import { Colors, Font, FontSize, Radius, Spacing } from '../../constants/theme';
 
 type CourseStatus = 'draft' | 'review' | 'published';
-type StatusFilter = 'all' | CourseStatus;
+type StatusFilter = 'all' | 'needs-verification' | CourseStatus;
 
 type CourseRow = {
   id: string;
@@ -82,7 +82,11 @@ export default function AdminCourseOperationsScreen() {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return courses
-      .filter(course => filter === 'all' || course.publication_status === filter)
+      .filter(course => {
+        if (filter === 'all') return true;
+        if (filter === 'needs-verification') return needsVerification(course);
+        return course.publication_status === filter;
+      })
       .filter(course => !needle || course.name.toLowerCase().includes(needle))
       .sort((a, b) => {
         const verifyDiff = Number(needsVerification(b)) - Number(needsVerification(a));
@@ -137,12 +141,13 @@ export default function AdminCourseOperationsScreen() {
         />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          {(['all', 'draft', 'review', 'published'] as const).map(value => {
+          {(['all', 'needs-verification', 'draft', 'review', 'published'] as const).map(value => {
             const active = value === filter;
-            const count = value === 'all' ? totals.all : totals[value];
+            const count = value === 'all' ? totals.all : value === 'needs-verification' ? totals.verify : totals[value];
+            const label = value === 'needs-verification' ? 'Needs verification' : value === 'all' ? 'All' : value;
             return (
               <TouchableOpacity key={value} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setFilter(value)}>
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>{value === 'all' ? 'All' : value} · {count}</Text>
+                <Text style={[styles.filterText, active && styles.filterTextActive]}>{label} · {count}</Text>
               </TouchableOpacity>
             );
           })}
