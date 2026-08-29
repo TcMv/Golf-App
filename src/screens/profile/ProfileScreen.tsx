@@ -50,7 +50,8 @@ export default function ProfileScreen() {
   useEffect(() => {
     supabase
       .from('courses')
-      .select('id, name, lat, lng, holes, created_at')
+      .select('id, name, lat, lng, holes, publication_status, created_at')
+      .eq('publication_status', 'published')
       .order('name')
       .then(({ data }) => setCourses((data ?? []) as Course[]));
   }, []);
