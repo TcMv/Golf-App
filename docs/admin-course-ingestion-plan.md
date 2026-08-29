@@ -141,23 +141,28 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Accept hazard suggestions into `hazards`.
 - [x] Reject suggestions without touching approved geometry.
 - [x] Make accept/reject atomic with a database RPC so approved-data writes and review status cannot diverge; repeated review is rejected and hazard duplication from partial approval is prevented.
-- [ ] Add satellite-map overlay comparing suggested geometry with currently approved geometry.
-- [ ] Add edit-before-accept for suggested points/lines/polygons where useful.
+- [x] Add satellite-map overlay comparing the suggestion with current approved geometry and tee/green context.
+- [x] Add edit-before-accept with draggable suggested point/line/polygon vertices and persisted corrections.
 
-### 6.3 Suggestion generation
+### 6.3 Suggestion generation and batch ingestion
+- [x] Define `golfcaddie.mapping-suggestions.v1` batch contract.
+- [x] Add pure batch parser/validator using the same single-suggestion validation rules.
+- [x] Carry provider/reference/license metadata from the batch into every queued suggestion.
+- [x] Add admin batch-import screen that verifies the target course and queues suggestions as pending only.
+- [x] Add dedicated batch tests and wire them into CI.
 - [ ] Identify imagery/data sources that explicitly permit automated commercial extraction.
-- [ ] Define batch suggestion ingestion contract/API.
-- [ ] Generate initial proposed tees/greens/fairways/hazards/centrelines from a permitted source.
+- [ ] Build the first permitted-source adapter/generator for tees/greens/fairways/hazards/centrelines.
 - [ ] Calibrate confidence thresholds against human review outcomes.
 - [ ] Normalize accepted/generated course packages through `golfcaddie.course.v1` where appropriate.
-- [ ] Add batch course review workflow once single-course review is proven.
+- [ ] Add batch course review workflow once single-course review is proven with live data.
 
 ### Phase 6 validation
 - [x] `npm ci` passed on the current Phase 6 slice.
 - [x] `npm run typecheck` passed.
-- [x] Existing tests + import/converter + mapping-suggestion tests passed.
+- [x] Existing tests + import/converter + mapping-suggestion + batch tests passed.
 - [x] Atomic-review client changes passed the same CI gate.
-- [ ] Manual live-Supabase suggestion create/review/accept/reject smoke test remains recommended after applying Phase 6 migrations.
+- [x] Satellite comparison/edit and batch-ingestion UI passed the same CI gate.
+- [ ] Manual live-Supabase suggestion create/import/review/edit/accept/reject smoke test remains recommended after applying Phase 6 migrations.
 
 ---
 
@@ -176,8 +181,8 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - Implemented, validated and merged Phases 1–5.
 - Started Phase 6 on a fresh branch with Issue #13 and draft PR #14.
 - Added a separate machine-suggestion table so AI/generated geometry cannot directly change playable course data.
-- Added feature/geometry validation, confidence and source-license checks, and approval mapping into existing course structures.
-- Added a human Mapping Review queue with accept/reject actions and license-gated approval.
-- Replaced the two-step approval path with an atomic database review function, preventing partial approvals and duplicate hazards on retry.
-- Current Phase 6 slice passed install, typecheck and the full automated test suite.
-- Next focus: map overlay and edit-before-accept, then batch suggestion ingestion and legally permitted machine-generation sources.
+- Added feature/geometry validation, confidence and source-license checks, and atomic human approval into existing course structures.
+- Added satellite comparison against approved geometry plus drag-to-correct editing before acceptance.
+- Added the `golfcaddie.mapping-suggestions.v1` batch contract and admin batch queue so an external mapping engine can now feed the review workflow without direct writes to playable geometry.
+- Current Phase 6 slice passes install, typecheck and the full automated test suite.
+- Next focus: choose a legally usable mapping source and build the first real suggestion generator, then measure its accuracy through the review queue.
