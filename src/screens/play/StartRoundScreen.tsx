@@ -109,7 +109,8 @@ export default function StartRoundScreen() {
       setSetupLoading(true);
       const { data, error } = await supabase
         .from('courses')
-        .select('id, name, lat, lng, holes, created_at')
+        .select('id, name, lat, lng, holes, publication_status, created_at')
+        .eq('publication_status', 'published')
         .order('name');
 
       if (error) {
@@ -209,8 +210,9 @@ export default function StartRoundScreen() {
       const [{ data: course }, { data: holes }] = await Promise.all([
         supabase
           .from('courses')
-          .select('id, name, lat, lng, holes, created_at')
+          .select('id, name, lat, lng, holes, publication_status, created_at')
           .eq('id', selectedCourse.id)
+          .eq('publication_status', 'published')
           .single(),
         supabase
           .from('holes')
@@ -267,8 +269,6 @@ export default function StartRoundScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
-
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backBtnText}>✕</Text>
@@ -278,7 +278,6 @@ export default function StartRoundScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Course */}
         <Text style={styles.sectionLabel}>Course</Text>
         <TextInput
           style={styles.courseSearch}
@@ -318,7 +317,6 @@ export default function StartRoundScreen() {
           })
         )}
 
-        {/* Round Type */}
         <Text style={styles.sectionLabel}>Round Type</Text>
         <View style={styles.segmented}>
           {(['18', 'front9', 'back9'] as RoundType[]).map((type) => (
@@ -339,7 +337,6 @@ export default function StartRoundScreen() {
           ))}
         </View>
 
-        {/* Starting Hole */}
         <Text style={styles.sectionLabel}>Starting Hole</Text>
         <View style={styles.holePickerRow}>
           {(roundType === 'back9'
@@ -361,7 +358,6 @@ export default function StartRoundScreen() {
           ))}
         </View>
 
-        {/* Tee Selection */}
         <Text style={styles.sectionLabel}>Tees</Text>
         {selectedCourse && teeSets.length === 0 && !setupLoading ? (
           <View style={styles.courseEmpty}>
@@ -394,7 +390,6 @@ export default function StartRoundScreen() {
           );
         })}
 
-        {/* AI Pre-round Briefing */}
         <Text style={styles.sectionLabel}>AI Caddie Briefing</Text>
         <View style={styles.briefingCard}>
           {briefingTips ? (
@@ -422,7 +417,6 @@ export default function StartRoundScreen() {
           )}
         </View>
 
-        {/* Exclude from handicap */}
         <View style={styles.toggleRow}>
           <View>
             <Text style={styles.toggleLabel}>Exclude from handicap</Text>
@@ -437,7 +431,6 @@ export default function StartRoundScreen() {
         </View>
       </ScrollView>
 
-      {/* Start button */}
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.startBtn, loading && styles.startBtnDisabled]}
@@ -458,214 +451,56 @@ export default function StartRoundScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surface2,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.base, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.surface2 },
   backBtnText: { fontSize: FontSize.base, color: Colors.textSecondary },
   headerTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, fontFamily: Font.semibold, color: Colors.text },
   scroll: { flex: 1 },
   scrollContent: { padding: Spacing.base, paddingBottom: Spacing.xxl },
-  courseSearch: {
-    minHeight: 48,
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.base,
-    color: Colors.text,
-    fontSize: FontSize.base,
-    fontFamily: Font.regular,
-    marginBottom: Spacing.sm,
-  },
+  courseSearch: { minHeight: 48, backgroundColor: Colors.surface1, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.base, color: Colors.text, fontSize: FontSize.base, fontFamily: Font.regular, marginBottom: Spacing.sm },
   setupLoader: { marginVertical: Spacing.lg },
-  courseEmpty: {
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.base,
-  },
+  courseEmpty: { backgroundColor: Colors.surface1, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: Spacing.base },
   courseEmptyText: { color: Colors.textMuted, fontSize: FontSize.sm, fontFamily: Font.regular },
-  courseRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.base,
-    marginBottom: Spacing.base,
-  },
+  courseRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.surface1, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: Spacing.base, marginBottom: Spacing.base },
   courseRowActive: { borderColor: Colors.green },
   courseName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, fontFamily: Font.semibold, color: Colors.text },
   courseLocation: { fontSize: FontSize.sm, fontFamily: Font.regular, color: Colors.textMuted, marginTop: Spacing.xs },
-  courseTag: {
-    backgroundColor: Colors.greenMuted,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-  },
+  courseTag: { backgroundColor: Colors.greenMuted, borderRadius: Radius.sm, paddingHorizontal: Spacing.sm, paddingVertical: 4 },
   courseTagText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.green },
   courseTagActive: { backgroundColor: Colors.greenMuted },
-  sectionLabel: {
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.bold,
-    fontFamily: Font.bold,
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1.1,
-    marginBottom: Spacing.sm,
-    marginTop: Spacing.base,
-  },
-  segmented: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surface2,
-    borderRadius: Radius.md,
-    padding: 4,
-    gap: 4,
-  },
-  segment: {
-    flex: 1,
-    height: 40,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  sectionLabel: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: Spacing.sm, marginTop: Spacing.base },
+  segmented: { flexDirection: 'row', backgroundColor: Colors.surface2, borderRadius: Radius.md, padding: 4, gap: 4 },
+  segment: { flex: 1, height: 40, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
   segmentActive: { backgroundColor: Colors.surface3 },
   segmentText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textMuted },
   segmentTextActive: { color: Colors.text, fontWeight: FontWeight.semibold },
   holePickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  holePip: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surface2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  holePip: { width: 44, height: 44, borderRadius: Radius.md, backgroundColor: Colors.surface2, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
   holePipActive: { backgroundColor: Colors.greenMuted, borderColor: Colors.green },
   holePipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textSecondary },
   holePipTextActive: { color: Colors.green, fontWeight: FontWeight.bold },
-  teeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.base,
-    gap: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
+  teeCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface1, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: Spacing.base, gap: Spacing.md, marginBottom: Spacing.sm },
   teeCardActive: { borderColor: Colors.green },
-  teeColorDot: {
-    width: 16,
-    height: 16,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.text,
-    borderWidth: 1,
-    borderColor: Colors.borderStrong,
-  },
+  teeColorDot: { width: 16, height: 16, borderRadius: Radius.full, backgroundColor: Colors.text, borderWidth: 1, borderColor: Colors.borderStrong },
   teeInfo: { flex: 1 },
   teeName: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.text },
   teeDetails: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  teeCheck: {
-    width: 24,
-    height: 24,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  teeCheck: { width: 24, height: 24, borderRadius: Radius.full, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
   teeCheckText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.bg },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.base,
-    marginTop: Spacing.base,
-  },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.surface1, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: Spacing.base, marginTop: Spacing.base },
   toggleLabel: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Colors.text },
   toggleSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  briefingCard: {
-    backgroundColor: Colors.surface2,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.green + '44',
-    padding: Spacing.base,
-    marginBottom: Spacing.sm,
-    gap: Spacing.sm,
-  },
+  briefingCard: { backgroundColor: Colors.surface2, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.green + '44', padding: Spacing.base, marginBottom: Spacing.sm, gap: Spacing.sm },
   briefingHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   briefingIcon: { fontSize: 18 },
-  briefingTitle: {
-    fontSize: FontSize.xs,
-    fontFamily: Font.bold,
-    fontWeight: FontWeight.bold,
-    color: Colors.green,
-    letterSpacing: 0.8,
-  },
-  briefingTips: {
-    fontSize: FontSize.sm,
-    fontFamily: Font.regular,
-    color: Colors.text,
-    lineHeight: 20,
-  },
-  briefingGetBtn: {
-    minHeight: 48,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.greenMuted,
-    borderWidth: 1,
-    borderColor: Colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  briefingGetBtnText: {
-    fontSize: FontSize.sm,
-    fontFamily: Font.semibold,
-    fontWeight: FontWeight.semibold,
-    color: Colors.green,
-  },
+  briefingTitle: { fontSize: FontSize.xs, fontFamily: Font.bold, fontWeight: FontWeight.bold, color: Colors.green, letterSpacing: 0.8 },
+  briefingTips: { fontSize: FontSize.sm, fontFamily: Font.regular, color: Colors.text, lineHeight: 20 },
+  briefingGetBtn: { minHeight: 48, borderRadius: Radius.md, backgroundColor: Colors.greenMuted, borderWidth: 1, borderColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
+  briefingGetBtnText: { fontSize: FontSize.sm, fontFamily: Font.semibold, fontWeight: FontWeight.semibold, color: Colors.green },
   briefingRefreshBtn: { alignSelf: 'flex-end' },
-  briefingRefreshText: {
-    fontSize: FontSize.xs,
-    fontFamily: Font.medium,
-    color: Colors.textMuted,
-  },
-  footer: {
-    padding: Spacing.base,
-    paddingBottom: Spacing.xl,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  startBtn: {
-    height: 56,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  briefingRefreshText: { fontSize: FontSize.xs, fontFamily: Font.medium, color: Colors.textMuted },
+  footer: { padding: Spacing.base, paddingBottom: Spacing.xl, borderTopWidth: 1, borderTopColor: Colors.border },
+  startBtn: { height: 56, borderRadius: Radius.md, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
   startBtnDisabled: { opacity: 0.5 },
   startBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, fontFamily: Font.bold, color: Colors.bg },
 });
