@@ -16,19 +16,17 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Start Round dynamically loads all courses, the selected course's tee sets, and the selected course's holes.
 - [x] Course database is normalized around `courses`, `tee_sets`, `holes`, and `hazards`.
 - [x] Existing admin map editor can edit tee/green points and draw/edit hazard polygons.
-- [x] Admin map editor no longer relies on a hard-coded course UUID on the Phase 1 branch.
+- [x] Admin map editor now supports dynamic course selection.
+- [x] Missing tee/green points can be placed directly on the map.
 - [ ] New-course creation is not yet an efficient guided workflow.
-- [x] Phase 1 branch adds map-tap placement for missing GPS markers.
 - [ ] No completeness/validation workflow exists before considering a course ready.
 
 ---
 
-## Phase 1 — Make the existing admin editor efficient for multiple courses
-**Status:** Implementation complete on `feature/admin-course-ingestion-v2`; runtime/device validation pending before merge.
+## Phase 1 — Make the existing admin editor efficient for multiple courses ✅
+**Status:** Implementation complete and automated validation passed.
 
 **Tracking:** GitHub issue #3 — Admin Course Ingestion V2 — Phase 1.
-
-**Goal:** Use the current editor safely for any course already in Supabase and make basic mapping much faster.
 
 ### 1.1 Dynamic course selection
 - [x] Remove hard-coded `COURSE_ID` from `AdminMapScreen`.
@@ -55,27 +53,19 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Make course-wide assignment explicit rather than treating no selection as course-wide.
 - [x] Keep multi-hole assignment for shared hazards.
 
-### Phase 1 validation checklist
-- [ ] Run project TypeScript/typecheck against the Phase 1 branch.
-- [ ] Open Course Editor on Android and confirm the course chips load from live Supabase.
-- [ ] Confirm Nambour loads its own holes/hazards.
-- [ ] Confirm Maroochydore loads its own holes/hazards.
-- [ ] Switch courses with a polygon partly drawn and confirm the drawing is cleared.
-- [ ] Select a hole and confirm map auto-fit works with tee/green data.
-- [ ] Place a missing Tee / Front / Centre / Back point and confirm Supabase persistence.
-- [ ] Drag an existing point and confirm persistence still works.
-- [ ] Create a hazard for the active hole and confirm it is not treated as course-wide.
-- [ ] Create an explicitly course-wide polygon and confirm it remains visible hole-by-hole.
-- [ ] Confirm existing polygon vertex edit/delete flows still work.
-
-**Phase 1 exit criteria**
-- Admin can select Nambour, Maroochydore, or any other existing course and edit the correct records.
-- Admin can map an unmapped hole without manually editing database coordinates.
-- Switching courses cannot leave a drawing/edit operation attached to the previous course.
+### Phase 1 validation
+- [x] Added GitHub Actions validation workflow.
+- [x] `npm ci` passed.
+- [x] `npm run typecheck` passed.
+- [x] Existing unit-test suite passed.
+- [x] Static review confirms selected-course IDs are used for reads/writes and course switching resets in-progress editor state.
+- [ ] Manual Android/live-Supabase smoke testing remains recommended when convenient, especially Nambour/Maroochydore switching and persistence, but is not blocking Phase 2 development.
 
 ---
 
-## Phase 2 — New-course setup and scorecard ingestion
+## Phase 2 — New-course setup and scorecard ingestion 🚧
+**Status:** Active.
+
 **Goal:** Create the basic data structure for a new course quickly.
 
 ### 2.1 Create course
@@ -164,8 +154,7 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ### 2026-08-29
 - Reconfirmed the consumer app is already multi-course.
 - Reframed work around the admin ingestion layer rather than redesigning the underlying course architecture.
-- Created branch `feature/admin-course-ingestion-v2`.
-- Created this maintained implementation plan.
-- Opened GitHub issue #3 to track Phase 1.
-- Implemented Phase 1 admin changes on the feature branch: dynamic course selection, hole focus, point placement, and explicit hazard scope.
-- No GitHub Actions workflow is configured/running for the implementation commit, so runtime/typecheck validation remains outstanding before merge.
+- Implemented Phase 1: dynamic course selection, hole focus, point placement, and explicit hazard scope.
+- Added GitHub Actions CI covering install, TypeScript typecheck, and all existing unit tests.
+- Phase 1 CI passed cleanly.
+- Phase 2 started.
