@@ -31,6 +31,7 @@ import AdminCourseExportScreen from '../screens/admin/AdminCourseExportScreen';
 import AdminMappingSuggestionsScreen from '../screens/admin/AdminMappingSuggestionsScreen';
 import AdminMappingSuggestionImportScreen from '../screens/admin/AdminMappingSuggestionImportScreen';
 import AdminOsmMappingScreen from '../screens/admin/AdminOsmMappingScreen';
+import AdminCourseOperationsScreen from '../screens/admin/AdminCourseOperationsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -75,6 +76,7 @@ function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
       <Stack.Screen name="RoundDetail" component={RoundDetailScreen} />
       <Stack.Screen name="MyBag" component={MyBagScreen} />
       <Stack.Screen name="SettingsDetail" component={SettingsScreen} />
+      <Stack.Screen name="AdminCourseOperations" component={AdminCourseOperationsScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminCourseSetup" component={AdminCourseSetupScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminTeeSets" component={AdminTeeSetsScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminHoleZones" component={AdminHoleZonesScreen} options={{ presentation: 'fullScreenModal' }} />
