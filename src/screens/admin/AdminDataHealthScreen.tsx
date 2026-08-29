@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -36,6 +36,7 @@ const EMPTY_SUMMARY: Summary = { courses: 0, published: 0, draft: 0, review: 0, 
 
 export default function AdminDataHealthScreen() {
   const navigation = useNavigation();
+  const runningRef = useRef(false);
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
   const [courses, setCourses] = useState<CourseRow[]>([]);
@@ -49,7 +50,8 @@ export default function AdminDataHealthScreen() {
   const passed = checks.filter(check => check.status === 'pass').length;
 
   const runChecks = useCallback(async () => {
-    if (running) return;
+    if (runningRef.current) return;
+    runningRef.current = true;
     setRunning(true);
     setChecks([
       { id: 'courses', label: 'Courses + Phase 7 columns', status: 'pending', detail: 'Checking…' },
@@ -58,44 +60,48 @@ export default function AdminDataHealthScreen() {
       { id: 'zones', label: 'Approved hole geometry', status: 'pending', detail: 'Checking…' },
     ]);
 
-    const [courseResult, eventResult, suggestionResult, zoneResult] = await Promise.all([
-      supabase.from('courses').select('id, name, publication_status, last_verified_at').order('name'),
-      supabase.from('course_admin_events').select('id', { count: 'exact', head: true }),
-      supabase.from('course_mapping_suggestions').select('id, source_feature_key, source_fingerprint', { count: 'exact' }).eq('review_status', 'pending').limit(1),
-      supabase.from('hole_zones').select('course_id', { count: 'exact', head: true }),
-    ]);
+    try {
+      const [courseResult, eventResult, suggestionResult, zoneResult] = await Promise.all([
+        supabase.from('courses').select('id, name, publication_status, last_verified_at').order('name'),
+        supabase.from('course_admin_events').select('id', { count: 'exact', head: true }),
+        supabase.from('course_mapping_suggestions').select('id, source_feature_key, source_fingerprint', { count: 'exact' }).eq('review_status', 'pending').limit(1),
+        supabase.from('hole_zones').select('course_id', { count: 'exact', head: true }),
+      ]);
 
-    const loadedCourses = courseResult.error ? [] : (courseResult.data ?? []) as CourseRow[];
-    setCourses(loadedCourses);
-    setSelectedCourseId(current => current && loadedCourses.some(course => course.id === current) ? current : loadedCourses[0]?.id ?? null);
+      const loadedCourses = courseResult.error ? [] : (courseResult.data ?? []) as CourseRow[];
+      setCourses(loadedCourses);
+      setSelectedCourseId(current => current && loadedCourses.some(course => course.id === current) ? current : loadedCourses[0]?.id ?? null);
 
-    const nextChecks: HealthCheck[] = [
-      courseResult.error
-        ? { id: 'courses', label: 'Courses + Phase 7 columns', status: 'fail', detail: courseResult.error.message }
-        : { id: 'courses', label: 'Courses + Phase 7 columns', status: 'pass', detail: `${loadedCourses.length} courses readable; publication + verification columns available.` },
-      eventResult.error
-        ? { id: 'events', label: 'Course admin audit table', status: 'fail', detail: eventResult.error.message }
-        : { id: 'events', label: 'Course admin audit table', status: 'pass', detail: `${eventResult.count ?? 0} audit events currently stored.` },
-      suggestionResult.error
-        ? { id: 'suggestions', label: 'Mapping source identity columns', status: 'fail', detail: suggestionResult.error.message }
-        : { id: 'suggestions', label: 'Mapping source identity columns', status: 'pass', detail: `${suggestionResult.count ?? 0} pending mapping suggestions; source identity columns available.` },
-      zoneResult.error
-        ? { id: 'zones', label: 'Approved hole geometry', status: 'fail', detail: zoneResult.error.message }
-        : { id: 'zones', label: 'Approved hole geometry', status: 'pass', detail: `${zoneResult.count ?? 0} approved hole-zone records accessible.` },
-    ];
+      const nextChecks: HealthCheck[] = [
+        courseResult.error
+          ? { id: 'courses', label: 'Courses + Phase 7 columns', status: 'fail', detail: courseResult.error.message }
+          : { id: 'courses', label: 'Courses + Phase 7 columns', status: 'pass', detail: `${loadedCourses.length} courses readable; publication + verification columns available.` },
+        eventResult.error
+          ? { id: 'events', label: 'Course admin audit table', status: 'fail', detail: eventResult.error.message }
+          : { id: 'events', label: 'Course admin audit table', status: 'pass', detail: `${eventResult.count ?? 0} audit events currently stored.` },
+        suggestionResult.error
+          ? { id: 'suggestions', label: 'Mapping source identity columns', status: 'fail', detail: suggestionResult.error.message }
+          : { id: 'suggestions', label: 'Mapping source identity columns', status: 'pass', detail: `${suggestionResult.count ?? 0} pending mapping suggestions; source identity columns available.` },
+        zoneResult.error
+          ? { id: 'zones', label: 'Approved hole geometry', status: 'fail', detail: zoneResult.error.message }
+          : { id: 'zones', label: 'Approved hole geometry', status: 'pass', detail: `${zoneResult.count ?? 0} approved hole-zone records accessible.` },
+      ];
 
-    setChecks(nextChecks);
-    setSummary({
-      courses: loadedCourses.length,
-      published: loadedCourses.filter(course => course.publication_status === 'published').length,
-      draft: loadedCourses.filter(course => course.publication_status === 'draft').length,
-      review: loadedCourses.filter(course => course.publication_status === 'review').length,
-      pendingSuggestions: suggestionResult.error ? 0 : suggestionResult.count ?? 0,
-      adminEvents: eventResult.error ? 0 : eventResult.count ?? 0,
-    });
-    setLastRunAt(new Date().toISOString());
-    setRunning(false);
-  }, [running]);
+      setChecks(nextChecks);
+      setSummary({
+        courses: loadedCourses.length,
+        published: loadedCourses.filter(course => course.publication_status === 'published').length,
+        draft: loadedCourses.filter(course => course.publication_status === 'draft').length,
+        review: loadedCourses.filter(course => course.publication_status === 'review').length,
+        pendingSuggestions: suggestionResult.error ? 0 : suggestionResult.count ?? 0,
+        adminEvents: eventResult.error ? 0 : eventResult.count ?? 0,
+      });
+      setLastRunAt(new Date().toISOString());
+    } finally {
+      runningRef.current = false;
+      setRunning(false);
+    }
+  }, []);
 
   useFocusEffect(useCallback(() => { void runChecks(); }, [runChecks]));
 
