@@ -38,3 +38,4 @@ jobs:
           npm run test:units
           npm run test:shots
           npm run test:course-validation
+          npm run test:course-import
