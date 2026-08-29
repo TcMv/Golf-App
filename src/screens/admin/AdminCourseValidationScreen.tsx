@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
-import type { Course } from '../../types';
+import type { Course, CoursePublicationStatus } from '../../types';
 import {
   validateCourseReadiness,
   type CourseValidationHole,
@@ -21,12 +21,19 @@ import {
   type CourseValidationZone,
 } from '../../utils/courseValidation';
 
+const STATUS_LABELS: Record<CoursePublicationStatus, string> = {
+  draft: 'Draft',
+  review: 'Ready for review',
+  published: 'Published',
+};
+
 export default function AdminCourseValidationScreen() {
   const navigation = useNavigation();
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [loadingValidation, setLoadingValidation] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
   const [result, setResult] = useState<CourseValidationResult | null>(null);
 
   const selectedCourse = useMemo(
@@ -38,7 +45,7 @@ export default function AdminCourseValidationScreen() {
     setLoadingCourses(true);
     const { data, error } = await supabase
       .from('courses')
-      .select('id, name, lat, lng, holes, created_at')
+      .select('id, name, lat, lng, holes, publication_status, created_at')
       .order('name');
     setLoadingCourses(false);
     if (error) {
@@ -85,6 +92,28 @@ export default function AdminCourseValidationScreen() {
       zones: (zonesResult.data ?? []) as CourseValidationZone[],
     }));
   }, []);
+
+  const setPublicationStatus = useCallback(async (status: CoursePublicationStatus) => {
+    if (!selectedCourse || savingStatus) return;
+    if ((status === 'review' || status === 'published') && !result?.publishable) {
+      Alert.alert('Course not ready', 'Fix all core-data errors before advancing this course.');
+      return;
+    }
+
+    setSavingStatus(true);
+    const { error } = await supabase
+      .from('courses')
+      .update({ publication_status: status })
+      .eq('id', selectedCourse.id);
+    setSavingStatus(false);
+    if (error) {
+      Alert.alert('Status Error', error.message);
+      return;
+    }
+    setCourses(current => current.map(course => (
+      course.id === selectedCourse.id ? { ...course, publication_status: status } : course
+    )));
+  }, [result?.publishable, savingStatus, selectedCourse]);
 
   useEffect(() => { void loadCourses(); }, [loadCourses]);
 
@@ -150,9 +179,56 @@ export default function AdminCourseValidationScreen() {
                   </Text>
                 </View>
                 <Text style={styles.heroHint}>
-                  Core readiness requires complete scorecard, tee sets and essential GPS. Rich geometry increases the overall completeness score but is not currently a hard publishing blocker.
+                  Core readiness requires complete scorecard, tee sets and essential GPS. Rich geometry increases the overall completeness score but is not a hard publishing blocker.
                 </Text>
               </View>
+
+              {selectedCourse && (
+                <View style={styles.publicationCard}>
+                  <View style={styles.publicationHeader}>
+                    <View>
+                      <Text style={styles.publicationLabel}>Publication status</Text>
+                      <Text style={styles.publicationStatus}>{STATUS_LABELS[selectedCourse.publication_status]}</Text>
+                    </View>
+                    {savingStatus && <ActivityIndicator color={Colors.green} />}
+                  </View>
+                  <Text style={styles.publicationHint}>
+                    Only published courses are visible in Start Round and Home Course selection. Draft and review courses remain available in admin tools.
+                  </Text>
+                  <View style={styles.publicationActions}>
+                    {selectedCourse.publication_status === 'draft' && (
+                      <ActionButton
+                        label="Mark Ready for Review"
+                        disabled={!result.publishable || savingStatus}
+                        onPress={() => void setPublicationStatus('review')}
+                      />
+                    )}
+                    {selectedCourse.publication_status === 'review' && (
+                      <>
+                        <ActionButton
+                          label="Back to Draft"
+                          secondary
+                          disabled={savingStatus}
+                          onPress={() => void setPublicationStatus('draft')}
+                        />
+                        <ActionButton
+                          label="Publish Course"
+                          disabled={!result.publishable || savingStatus}
+                          onPress={() => void setPublicationStatus('published')}
+                        />
+                      </>
+                    )}
+                    {selectedCourse.publication_status === 'published' && (
+                      <ActionButton
+                        label="Unpublish to Draft"
+                        secondary
+                        disabled={savingStatus}
+                        onPress={() => void setPublicationStatus('draft')}
+                      />
+                    )}
+                  </View>
+                </View>
+              )}
 
               <View style={styles.metricRow}>
                 <Metric label="Core" value={`${result.basicCompleteness}%`} />
@@ -205,6 +281,18 @@ export default function AdminCourseValidationScreen() {
         </ScrollView>
       )}
     </SafeAreaView>
+  );
+}
+
+function ActionButton({ label, onPress, disabled, secondary = false }: { label: string; onPress: () => void; disabled: boolean; secondary?: boolean }) {
+  return (
+    <TouchableOpacity
+      style={[styles.actionButton, secondary && styles.actionButtonSecondary, disabled && styles.actionButtonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <Text style={[styles.actionButtonText, secondary && styles.actionButtonTextSecondary]}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -262,6 +350,17 @@ const styles = StyleSheet.create({
   readyText: { color: Colors.green },
   notReadyText: { color: Colors.red },
   heroHint: { marginTop: Spacing.md, color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.xs, lineHeight: 18, textAlign: 'center' },
+  publicationCard: { marginTop: Spacing.sm, padding: Spacing.base, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface1 },
+  publicationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  publicationLabel: { color: Colors.textMuted, fontFamily: Font.bold, fontSize: FontSize.xs, textTransform: 'uppercase' },
+  publicationStatus: { marginTop: 3, color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.base },
+  publicationHint: { marginTop: Spacing.sm, color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.xs, lineHeight: 18 },
+  publicationActions: { marginTop: Spacing.md, flexDirection: 'row', gap: Spacing.sm },
+  actionButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.green, paddingHorizontal: Spacing.sm },
+  actionButtonSecondary: { backgroundColor: Colors.surface3 },
+  actionButtonDisabled: { opacity: 0.45 },
+  actionButtonText: { color: Colors.bg, fontFamily: Font.bold, fontSize: FontSize.sm, textAlign: 'center' },
+  actionButtonTextSecondary: { color: Colors.textSecondary },
   metricRow: { flexDirection: 'row', marginTop: Spacing.sm, borderRadius: Radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface1 },
   metric: { flex: 1, alignItems: 'center', paddingVertical: Spacing.md },
   metricValue: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.md },
