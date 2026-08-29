@@ -20,6 +20,7 @@ type Nav = NativeStackNavigationProp<{
   MyBagSetup: { returnTo?: 'StartRound' | 'Main' } | undefined;
   AdminCourseSetup: undefined;
   AdminTeeSets: undefined;
+  AdminHoleZones: undefined;
   AdminMap: undefined;
 }>;
 
@@ -111,7 +112,9 @@ export default function SettingsScreen() {
           <View style={styles.divider} />
           <Row label="Tee sets" value="Add, edit & delete" onPress={() => navigation.navigate('AdminTeeSets')} />
           <View style={styles.divider} />
-          <Row label="Course editor" value="Maps & hazards" onPress={() => navigation.navigate('AdminMap')} />
+          <Row label="Hole geometry" value="Fairway, green & centreline" onPress={() => navigation.navigate('AdminHoleZones')} />
+          <View style={styles.divider} />
+          <Row label="Course editor" value="Points & hazards" onPress={() => navigation.navigate('AdminMap')} />
         </View>
 
         <Text style={styles.sectionLabel}>Account</Text>
