@@ -18,20 +18,11 @@ import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../const
 
 type Nav = NativeStackNavigationProp<{
   MyBagSetup: { returnTo?: 'StartRound' | 'Main' } | undefined;
+  AdminCourseSetup: undefined;
   AdminMap: undefined;
 }>;
 
-function Row({
-  label,
-  value,
-  onPress,
-  danger = false,
-}: {
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  danger?: boolean;
-}) {
+function Row({ label, value, onPress, danger = false }: { label: string; value?: string; onPress?: () => void; danger?: boolean }) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} disabled={!onPress}>
       <Text style={[styles.rowLabel, danger && styles.dangerText]}>{label}</Text>
@@ -43,24 +34,11 @@ function Row({
   );
 }
 
-function ToggleRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: boolean;
-  onChange: (value: boolean) => void;
-}) {
+function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ false: Colors.surface3, true: Colors.greenDark }}
-        thumbColor={value ? Colors.green : Colors.textMuted}
-      />
+      <Switch value={value} onValueChange={onChange} trackColor={{ false: Colors.surface3, true: Colors.greenDark }} thumbColor={value ? Colors.green : Colors.textMuted} />
     </View>
   );
 }
@@ -75,33 +53,21 @@ export default function SettingsScreen() {
     setSaving(true);
     const { error } = await supabase.from('profiles').update(changes).eq('id', user.id);
     setSaving(false);
-    if (error) {
-      Alert.alert('Save Error', error.message);
-      return;
-    }
+    if (error) { Alert.alert('Save Error', error.message); return; }
     await refreshProfile();
   }, [refreshProfile, saving, user?.id]);
 
   const deleteAccount = useCallback(() => {
-    Alert.alert(
-      'Delete Account',
-      'This permanently deletes your profile, rounds, scores, achievements, and club data.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete Permanently',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await supabase.rpc('delete_own_account');
-            if (error) {
-              Alert.alert('Delete Failed', error.message);
-              return;
-            }
-            await signOut();
-          },
+    Alert.alert('Delete Account', 'This permanently deletes your profile, rounds, scores, achievements, and club data.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete Permanently', style: 'destructive', onPress: async () => {
+          const { error } = await supabase.rpc('delete_own_account');
+          if (error) { Alert.alert('Delete Failed', error.message); return; }
+          await signOut();
         },
-      ],
-    );
+      },
+    ]);
   }, [signOut]);
 
   const units = profile?.units_preference ?? 'metres';
@@ -110,9 +76,7 @@ export default function SettingsScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backText}>‹</Text>
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}><Text style={styles.backText}>‹</Text></TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
         <View style={styles.backButton} />
       </View>
@@ -122,14 +86,8 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <View style={styles.segmented}>
             {(['metres', 'yards'] as const).map(unit => (
-              <TouchableOpacity
-                key={unit}
-                style={[styles.segment, units === unit && styles.segmentActive]}
-                onPress={() => updateProfile({ units_preference: unit })}
-              >
-                <Text style={[styles.segmentText, units === unit && styles.segmentTextActive]}>
-                  {unit === 'metres' ? 'Metres' : 'Yards'}
-                </Text>
+              <TouchableOpacity key={unit} style={[styles.segment, units === unit && styles.segmentActive]} onPress={() => updateProfile({ units_preference: unit })}>
+                <Text style={[styles.segmentText, units === unit && styles.segmentTextActive]}>{unit === 'metres' ? 'Metres' : 'Yards'}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -137,32 +95,18 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>Notifications</Text>
         <View style={styles.card}>
-          <ToggleRow
-            label="Round reminders"
-            value={profile?.notify_round_reminders ?? true}
-            onChange={value => updateProfile({ notify_round_reminders: value })}
-          />
+          <ToggleRow label="Round reminders" value={profile?.notify_round_reminders ?? true} onChange={value => updateProfile({ notify_round_reminders: value })} />
           <View style={styles.divider} />
-          <ToggleRow
-            label="Streak alerts"
-            value={profile?.notify_streak_alerts ?? true}
-            onChange={value => updateProfile({ notify_streak_alerts: value })}
-          />
+          <ToggleRow label="Streak alerts" value={profile?.notify_streak_alerts ?? true} onChange={value => updateProfile({ notify_streak_alerts: value })} />
           <View style={styles.divider} />
-          <ToggleRow
-            label="Achievement unlocks"
-            value={profile?.notify_achievement_unlocks ?? true}
-            onChange={value => updateProfile({ notify_achievement_unlocks: value })}
-          />
+          <ToggleRow label="Achievement unlocks" value={profile?.notify_achievement_unlocks ?? true} onChange={value => updateProfile({ notify_achievement_unlocks: value })} />
         </View>
 
         <Text style={styles.sectionLabel}>Golf Setup</Text>
         <View style={styles.card}>
-          <Row
-            label="Club distances"
-            value="Open setup"
-            onPress={() => navigation.navigate('MyBagSetup', { returnTo: 'Main' })}
-          />
+          <Row label="Club distances" value="Open setup" onPress={() => navigation.navigate('MyBagSetup', { returnTo: 'Main' })} />
+          <View style={styles.divider} />
+          <Row label="Add new course" value="Course & scorecard" onPress={() => navigation.navigate('AdminCourseSetup')} />
           <View style={styles.divider} />
           <Row label="Course editor" value="Maps & hazards" onPress={() => navigation.navigate('AdminMap')} />
         </View>
@@ -171,13 +115,10 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Row label="Email" value={user?.email ?? ''} />
           <View style={styles.divider} />
-          <Row
-            label="Sign out"
-            onPress={() => Alert.alert('Sign Out', 'Sign out of GolfCaddie?', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Sign Out', style: 'destructive', onPress: signOut },
-            ])}
-          />
+          <Row label="Sign out" onPress={() => Alert.alert('Sign Out', 'Sign out of GolfCaddie?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign Out', style: 'destructive', onPress: signOut },
+          ])} />
           <View style={styles.divider} />
           <Row label="Delete account" danger onPress={deleteAccount} />
         </View>
