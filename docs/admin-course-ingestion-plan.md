@@ -184,5 +184,5 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - Added feature/geometry validation, confidence and source-license checks, and atomic human approval into existing course structures.
 - Added satellite comparison against approved geometry plus drag-to-correct editing before acceptance.
 - Added the `golfcaddie.mapping-suggestions.v1` batch contract and admin batch queue so an external mapping engine can now feed the review workflow without direct writes to playable geometry.
-- Current Phase 6 slice passes install, typecheck and the full automated test suite.
+- Latest Phase 6 CI passed install, TypeScript and the complete test suite after adding map review/edit and batch ingestion.
 - Next focus: choose a legally usable mapping source and build the first real suggestion generator, then measure its accuracy through the review queue.
