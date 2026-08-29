@@ -25,7 +25,7 @@ Phases 1–8 are implemented and merged to `main`.
 Live device/Supabase smoke testing remains intentionally separate from automated CI and can be run through Data Health in the private build.
 
 ## Phase 9 — Continuous course onboarding ✅
-**Status:** Automated implementation and validation complete. Issue #19 / PR #20.
+**Status:** Automated implementation and validation complete. Issue #19 / PR #20. Merge-ready.
 
 ### 9.1 Carry course identity through the workflow
 - [x] Make new-course persistence return the created `courseId`.
@@ -48,7 +48,7 @@ Live device/Supabase smoke testing remains intentionally separate from automated
 
 ### 9.3 Validation
 - [x] Workflow slice passed dependency install, TypeScript and the complete automated test suite.
-- [x] Final Course Operations-enhanced head passed the same CI gate.
+- [x] Final Course Operations-enhanced code head passed the same CI gate.
 - [ ] Private-build smoke test: create a disposable draft course and confirm course selection persists through Create → OSM → Review → Readiness.
 - [ ] Confirm cancelling/choosing “Later” at each stage still leaves a valid draft and does not alter published course flow.
 
@@ -75,8 +75,8 @@ These remain demand-driven rather than blockers for the private product:
 ## Progress log
 ### 2026-08-30
 - Phases 7 and 8 are merged to `main`.
-- Phase 9 continuous onboarding passed final CI: dependency install, TypeScript and full automated tests.
+- Phase 9 continuous onboarding passed dependency install, TypeScript and the full automated test suite.
 - New-course creation carries the actual course ID through OSM generation, Mapping Review and Course Readiness.
 - Course Operations launches mapping, review and readiness with the correct selected course instead of forcing repeated selection.
 - Draft/publication safety boundaries remain unchanged.
-- Next development phase is a Source Coverage Lab so the commercial-course-database decision can be driven by measured gaps rather than assumptions.
+- Phase 9 is merge-ready; the next development phase is a Source Coverage Lab so the commercial-course-database decision can be driven by measured gaps rather than assumptions.
