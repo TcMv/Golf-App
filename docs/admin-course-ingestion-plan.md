@@ -1,150 +1,111 @@
 # Admin Course Ingestion V2 Plan
 
 ## Objective
-Turn the existing multi-course GolfCaddie data model and map editor into a fast, safe course-ingestion workflow that can scale from manual mapping to assisted imports, machine-generated geometry, and operational dataset management.
+Build a fast, safe multi-course ingestion system that progresses from manual admin tools to machine-assisted mapping and scalable dataset operations.
 
 ## Ground rules
 - Preserve the existing consumer multi-course flow (`courses` -> `tee_sets` -> `holes`).
-- Reuse existing course, hazard, and hole-zone models instead of creating parallel approved-data structures.
-- Keep changes incremental and testable.
-- Do not change the tee/hole schema merely for theoretical cleanliness; only migrate it when a real product requirement needs per-tee GPS positions/distances.
-- New/incomplete course data must not accidentally affect existing playable courses.
-- Follow Expo SDK 56 / React Native 0.85 constraints in `AGENTS.md`.
+- Reuse existing approved-data models (`holes`, `hole_zones`, `hazards`).
+- Keep incomplete data isolated from published/playable courses.
+- Keep changes incremental and CI-gated.
+- Follow `AGENTS.md` and Expo SDK 56 / React Native 0.85 requirements.
 
 ## Phase 1 — Multi-course admin map ✅
-**Status:** Complete, validated and merged to `main`. Issue #3 closed. PR #4 merged.
-
-- [x] Dynamic course selection and reload.
-- [x] Hole-focused editing + All view.
-- [x] Map-tap placement for missing Tee / Green Front / Centre / Back.
-- [x] Existing markers remain draggable.
-- [x] Safer active-hole / multi-hole / explicit course-wide hazard assignment.
-- [x] CI install/typecheck/tests passed.
-- [ ] Manual Android/live-Supabase smoke testing remains recommended.
-
----
+Merged: PR #4 / Issue #3.
+- Dynamic course selection.
+- Hole-focused editing.
+- Missing tee/green point placement.
+- Safer hazard assignment.
+- CI passed.
 
 ## Phase 2 — New-course setup and scorecard ingestion ✅
-**Status:** Complete, validated and merged to `main`. Issue #5 closed. PR #6 merged.
+Merged: PR #6 / Issue #5.
+- Guided course creation.
+- Tee-set setup.
+- Editable and bulk-paste scorecards.
+- Duplicate/nearby-course warnings.
+- Tee-set management.
+- CI passed.
 
-- [x] Guided course creation with centre coordinates and 9/18-hole selection.
-- [x] Initial tee-set setup.
-- [x] Full editable scorecard.
-- [x] Bulk scorecard paste with human review before save.
-- [x] Duplicate-name and nearby-course warning.
-- [x] Existing-course tee-set add/edit/delete management.
-- [x] Validation and cleanup on partial creation failure.
-- [x] CI install/typecheck/tests passed.
-- [ ] Manual Android/live-Supabase creation/edit smoke test remains recommended.
+## Phase 3 — Rich course geometry ✅
+Merged: PR #8 / Issue #7.
+- Hole Geometry screen.
+- Fairway, green, tee-box and centreline mapping.
+- Existing `hole_zones` model reused.
+- CI passed.
 
----
+## Phase 4 — Readiness and publication safety ✅
+Merged: PR #10 / Issue #9.
+- Completeness/readiness engine.
+- Draft / review / published workflow.
+- Only published courses exposed to golfers.
+- CI passed.
 
-## Phase 3 — Rich course geometry for the caddie ✅
-**Status:** Complete, validated and merged to `main`. Issue #7 closed. PR #8 merged.
+## Phase 5 — Standard import/export ✅
+Merged: PR #12 / Issue #11.
+- `golfcaddie.course.v1` contract.
+- JSON / CSV / GeoJSON import.
+- JSON / GeoJSON export.
+- Draft-by-default import and provenance retention.
+- CI passed.
 
-- [x] Dedicated Hole Geometry screen.
-- [x] Course + hole selection and satellite-map auto-fit.
-- [x] Fairway, green, tee-box and fairway-centreline geometry.
-- [x] Draw/replace/delete workflow using existing `hole_zones`.
-- [x] CI install/typecheck/tests passed.
-- [ ] Manual live-Supabase geometry smoke test remains recommended.
+## Phase 6 — Assisted course mapping ✅
+Merged: PR #14 / Issue #13.
+- Isolated machine-suggestion store.
+- Confidence and source/licence provenance.
+- Atomic accept/reject into approved geometry.
+- Satellite compare and drag-to-correct review.
+- `golfcaddie.mapping-suggestions.v1` batch input.
+- First OpenStreetMap/Overpass generator.
+- CI passed.
 
----
-
-## Phase 4 — Completeness, validation, and publication safety ✅
-**Status:** Complete, validated and merged to `main`. Issue #9 closed. PR #10 merged.
-
-- [x] Course-readiness/completeness engine.
-- [x] Core vs geometry completeness scoring.
-- [x] `draft` / `review` / `published` workflow.
-- [x] Player-facing course selection exposes published courses only.
-- [x] Readiness-gated review/publish transitions.
-- [x] CI passed.
-- [ ] Manual live-Supabase status smoke test remains recommended.
-
----
-
-## Phase 5 — Standard import format and bulk ingestion ✅
-**Status:** Complete, validated and merged to `main`. Issue #11 closed. PR #12 merged.
-
-- [x] Versioned `golfcaddie.course.v1` contract.
-- [x] JSON, CSV and GeoJSON import normalization.
-- [x] JSON and GeoJSON export.
-- [x] Draft-by-default import with duplicate/nearby checks and rollback cleanup.
-- [x] Persistent source/licensing provenance.
-- [x] CI passed.
-- [ ] Manual live-Supabase import/export smoke test remains recommended.
-
----
-
-## Phase 6 — Assisted / AI course mapping ✅
-**Status:** Complete for the current private/testing stage, validated and merged to `main`. Issue #13 closed. PR #14 merged.
-
-- [x] Separate machine-suggestion persistence boundary.
-- [x] Confidence, source reference and source licence per suggestion.
-- [x] Atomic accept/reject into existing approved `holes`, `hole_zones` and `hazards`.
-- [x] Satellite suggested-vs-approved comparison.
-- [x] Drag-to-correct before approval.
-- [x] Versioned `golfcaddie.mapping-suggestions.v1` batch contract.
-- [x] Admin batch queue.
-- [x] First real generator using OpenStreetMap/Overpass golf features.
-- [x] OSM provenance and confidence handling.
-- [x] CI passed on the final Phase 6 head.
-
-**Deferred operational hardening, not Phase 6 blockers:** live Nambour/Maroochydore smoke testing, confidence calibration from review outcomes, and a second licensed source / imagery-fusion path.
-
----
+Deferred from Phase 6 to operational hardening: real-course coverage measurement, confidence calibration, and a second permitted source if needed.
 
 ## Phase 7 — Scale and dataset operations 🚧
-**Status:** Active on `feature/admin-course-ingestion-phase7`. Issue #15. Draft PR #16.
+Active: `feature/admin-course-ingestion-phase7`, Issue #15, draft PR #16.
 
 ### 7.1 Operations queue
-- [x] Add searchable/filterable Course Operations screen.
-- [x] Surface draft/review/published counts and pending machine-suggestion workload.
-- [x] Sort courses with pending review work to the top.
-- [x] Link directly to readiness and mapping-review tools.
-- [ ] Add richer per-course completeness/geometry metrics into the queue without expensive N+1 loading.
+- [x] Searchable/filterable Course Operations screen.
+- [x] Draft/review/published and pending-suggestion workload.
+- [x] Prioritise courses needing verification.
+- [x] `Needs verification` visibility when tracked changes occur after last verification.
+- [x] Dedicated `Needs verification` filter.
+- [ ] Add richer completeness metrics without N+1 loading.
 
-### 7.2 Verification and audit foundation
-- [x] Add `last_verified_at` and verification notes to courses.
-- [x] Add `course_admin_events` audit table.
-- [x] Add atomic `mark_course_verified` RPC that also records an audit event.
-- [x] Record publication-status transitions automatically in the audit log.
-- [x] Record accepted/rejected mapping suggestions automatically in the audit log.
-- [ ] Record selected manual geometry edits in the audit log without flooding history during bulk imports.
-- [ ] Add per-course history view.
+### 7.2 Verification and audit
+- [x] `last_verified_at` and verification notes.
+- [x] `course_admin_events` audit table.
+- [x] Atomic `mark_course_verified` RPC.
+- [x] Publication-status audit events.
+- [x] Mapping accept/reject audit events.
+- [x] OSM source-change audit events.
+- [x] Course History screen.
+- [x] Selective audit of existing GPS, hole-zone and hazard edits/deletes without logging bulk-import inserts.
 
-### 7.3 Update/remapping operations
-- [x] Add stable OSM source-feature identity (`osm_type:id:feature`) to machine suggestions.
-- [x] Make repeated identical OSM scans idempotent: unchanged features are ignored rather than queued again.
-- [x] Refresh an existing pending suggestion when the same OSM feature changes before review.
-- [x] Preserve accepted/rejected history and create a new pending update candidate when the source geometry changes later.
-- [x] Backfill existing OSM source identities and safely collapse duplicate pending rows before enforcing uniqueness.
-- [ ] Surface "source changed since verification" explicitly in Course Operations.
-- [ ] Add review queue filters for stale/unverified/changed courses.
-- [ ] Add course-owner correction intake workflow.
+### 7.3 OSM update/remapping operations
+- [x] Stable OSM source-feature identity (`osm_type:id:feature`).
+- [x] Exact repeat scans are idempotent.
+- [x] Changed pending source features refresh in place.
+- [x] Changed previously reviewed features create a new pending update candidate while retaining history.
+- [x] Backfill OSM identities and collapse duplicate pending rows before uniqueness enforcement.
+- [x] Course Operations surfaces changes occurring after verification.
+- [ ] Live-repeat-scan smoke test after Phase 7 migrations are applied.
 
-### 7.4 Scale/commercial readiness
-- [ ] Production data-source infrastructure and caching/rate limiting if usage justifies it.
-- [ ] Evaluate commercial 40k+ course licensing against internal coverage/cost at product traction point.
-- [ ] API/export boundary suitable for external commercial customers if pursued.
+### 7.4 Later scale decisions
+- [ ] Production data-source hosting/caching only when usage requires it.
+- [ ] Re-evaluate commercial 40k+ course licensing if product traction makes the licence economically sensible.
+- [ ] External API/export boundary only if commercial dataset distribution becomes a product goal.
 
 ### Phase 7 validation
-- [x] Initial operations/audit slice passed npm ci, TypeScript and the full test suite.
-- [ ] Audit + OSM dedup migration slice must pass the same CI gate.
-- [ ] Apply Phase 7 migrations and smoke-test verification, audit events and repeat OSM scans against live Supabase.
-
----
+- [x] Current UI/operations slice passed dependency install, TypeScript and full automated tests.
+- [x] Audit/dedup changes passed the same CI gate.
+- [ ] Apply Phase 7 migrations and run live Supabase/device smoke tests.
 
 ## Progress log
 ### 2026-08-30
-- Phase 6 remains merged and Phase 7 is active on PR #16.
-- Added publication-change and mapping-review audit triggers so critical admin decisions no longer depend on client-side event logging.
-- Added OSM source identities/fingerprints and database-level repeat-scan handling. Exact repeats no-op; changed pending features refresh in place; changed previously reviewed features create a new review candidate while preserving history.
-- Next focus: surface stale/changed state in Course Operations and add a per-course audit/history view.
-
-### 2026-08-29
-- Implemented, validated and merged Phases 1–6.
-- Phase 6 established the full machine-suggestion → human correction → approval path and first OSM generator.
-- Started Phase 7 with Issue #15 and a fresh branch.
-- Added the first operational work queue plus course verification timestamps and audit-event foundation.
+- Phase 7 operational queue, verification, history and audit foundation built.
+- Repeated OSM scans now deduplicate at the database boundary and preserve source-change history.
+- Courses now become visibly due for re-verification after tracked publication, mapping, source or approved-geometry changes.
+- Added a dedicated Needs Verification queue filter and selective approved-geometry edit auditing.
+- Latest Phase 7 head passed TypeScript and the full test suite.
+- Next: complete static review, merge Phase 7, then use the private build to smoke-test the full ingestion workflow against real course data.
