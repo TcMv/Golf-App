@@ -30,11 +30,13 @@ type CourseRow = {
 };
 
 type SuggestionRow = { course_id: string; review_status: 'pending' | 'accepted' | 'rejected' };
+type ChangeEventRow = { course_id: string; event_type: string; created_at: string };
 
 export default function AdminCourseOperationsScreen() {
   const navigation = useNavigation();
   const [courses, setCourses] = useState<CourseRow[]>([]);
   const [pendingByCourse, setPendingByCourse] = useState<Record<string, number>>({});
+  const [latestChangeByCourse, setLatestChangeByCourse] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
@@ -42,21 +44,40 @@ export default function AdminCourseOperationsScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: courseData, error: courseError }, { data: suggestionData, error: suggestionError }] = await Promise.all([
+    const [courseResult, suggestionResult, eventResult] = await Promise.all([
       supabase.from('courses').select('id, name, holes, publication_status, lat, lng, last_verified_at, created_at').order('name'),
       supabase.from('course_mapping_suggestions').select('course_id, review_status').eq('review_status', 'pending'),
+      supabase
+        .from('course_admin_events')
+        .select('course_id, event_type, created_at')
+        .neq('event_type', 'course_verified')
+        .order('created_at', { ascending: false })
+        .limit(1000),
     ]);
     setLoading(false);
-    if (courseError) { Alert.alert('Course Error', courseError.message); return; }
-    if (suggestionError) { Alert.alert('Suggestion Error', suggestionError.message); return; }
 
-    setCourses((courseData ?? []) as CourseRow[]);
+    const error = courseResult.error ?? suggestionResult.error ?? eventResult.error;
+    if (error) { Alert.alert('Course Operations Error', error.message); return; }
+
+    setCourses((courseResult.data ?? []) as CourseRow[]);
     const counts: Record<string, number> = {};
-    for (const row of (suggestionData ?? []) as SuggestionRow[]) counts[row.course_id] = (counts[row.course_id] ?? 0) + 1;
+    for (const row of (suggestionResult.data ?? []) as SuggestionRow[]) counts[row.course_id] = (counts[row.course_id] ?? 0) + 1;
     setPendingByCourse(counts);
+
+    const latest: Record<string, string> = {};
+    for (const row of (eventResult.data ?? []) as ChangeEventRow[]) {
+      if (!latest[row.course_id]) latest[row.course_id] = row.created_at;
+    }
+    setLatestChangeByCourse(latest);
   }, []);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  const needsVerification = useCallback((course: CourseRow) => {
+    const latestChange = latestChangeByCourse[course.id];
+    if (!course.last_verified_at) return true;
+    return latestChange != null && new Date(latestChange).getTime() > new Date(course.last_verified_at).getTime();
+  }, [latestChangeByCourse]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -64,11 +85,13 @@ export default function AdminCourseOperationsScreen() {
       .filter(course => filter === 'all' || course.publication_status === filter)
       .filter(course => !needle || course.name.toLowerCase().includes(needle))
       .sort((a, b) => {
+        const verifyDiff = Number(needsVerification(b)) - Number(needsVerification(a));
+        if (verifyDiff !== 0) return verifyDiff;
         const pendingDiff = (pendingByCourse[b.id] ?? 0) - (pendingByCourse[a.id] ?? 0);
         if (pendingDiff !== 0) return pendingDiff;
         return a.name.localeCompare(b.name);
       });
-  }, [courses, filter, pendingByCourse, query]);
+  }, [courses, filter, needsVerification, pendingByCourse, query]);
 
   const totals = useMemo(() => ({
     all: courses.length,
@@ -76,7 +99,8 @@ export default function AdminCourseOperationsScreen() {
     review: courses.filter(course => course.publication_status === 'review').length,
     published: courses.filter(course => course.publication_status === 'published').length,
     pending: Object.values(pendingByCourse).reduce((sum, value) => sum + value, 0),
-  }), [courses, pendingByCourse]);
+    verify: courses.filter(needsVerification).length,
+  }), [courses, needsVerification, pendingByCourse]);
 
   const markVerified = useCallback(async (course: CourseRow) => {
     if (verifyingId) return;
@@ -100,7 +124,7 @@ export default function AdminCourseOperationsScreen() {
         <View style={styles.metricsRow}>
           <Metric value={totals.all} label="Courses" />
           <Metric value={totals.pending} label="Pending AI" />
-          <Metric value={totals.review} label="In review" />
+          <Metric value={totals.verify} label="Verify" />
         </View>
 
         <TextInput
@@ -128,16 +152,23 @@ export default function AdminCourseOperationsScreen() {
           <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No courses match</Text><Text style={styles.emptyText}>Change the search or status filter.</Text></View>
         ) : visible.map(course => {
           const pending = pendingByCourse[course.id] ?? 0;
+          const needsCheck = needsVerification(course);
+          const latestChange = latestChangeByCourse[course.id];
           const verifiedLabel = course.last_verified_at ? `Verified ${new Date(course.last_verified_at).toLocaleDateString()}` : 'Never verified';
+          const changeLabel = latestChange ? `Latest change ${new Date(latestChange).toLocaleDateString()}` : 'No recorded changes';
           return (
             <View key={course.id} style={styles.card}>
               <View style={styles.cardTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.courseName}>{course.name}</Text>
                   <Text style={styles.meta}>{course.holes} holes · {verifiedLabel}</Text>
+                  {needsCheck && <Text style={styles.changeMeta}>{changeLabel}</Text>}
                 </View>
-                <View style={[styles.statusPill, course.publication_status === 'published' && styles.statusPublished, course.publication_status === 'review' && styles.statusReview]}>
-                  <Text style={styles.statusText}>{course.publication_status}</Text>
+                <View style={styles.pillColumn}>
+                  <View style={[styles.statusPill, course.publication_status === 'published' && styles.statusPublished, course.publication_status === 'review' && styles.statusReview]}>
+                    <Text style={styles.statusText}>{course.publication_status}</Text>
+                  </View>
+                  {needsCheck && <View style={styles.verifyPill}><Text style={styles.verifyPillText}>Needs verification</Text></View>}
                 </View>
               </View>
 
@@ -150,7 +181,7 @@ export default function AdminCourseOperationsScreen() {
                 <TouchableOpacity style={styles.secondaryButton} onPress={() => (navigation as any).navigate('AdminCourseValidation')}><Text style={styles.secondaryText}>Readiness</Text></TouchableOpacity>
                 {pending > 0 && <TouchableOpacity style={styles.secondaryButton} onPress={() => (navigation as any).navigate('AdminMappingSuggestions')}><Text style={styles.secondaryText}>Review AI</Text></TouchableOpacity>}
                 <TouchableOpacity style={[styles.verifyButton, verifyingId === course.id && styles.disabled]} onPress={() => void markVerified(course)} disabled={verifyingId === course.id}>
-                  {verifyingId === course.id ? <ActivityIndicator color={Colors.bg} /> : <Text style={styles.verifyText}>Mark verified</Text>}
+                  {verifyingId === course.id ? <ActivityIndicator color={Colors.bg} /> : <Text style={styles.verifyText}>{needsCheck ? 'Mark verified' : 'Re-verify'}</Text>}
                 </TouchableOpacity>
               </View>
             </View>
@@ -192,10 +223,14 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
   courseName: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.base },
   meta: { marginTop: 4, color: Colors.textMuted, fontFamily: Font.regular, fontSize: FontSize.xs },
+  changeMeta: { marginTop: 4, color: Colors.yellow, fontFamily: Font.medium, fontSize: FontSize.xs },
+  pillColumn: { alignItems: 'flex-end', gap: 5 },
   statusPill: { paddingHorizontal: Spacing.sm, paddingVertical: 5, borderRadius: Radius.full, backgroundColor: Colors.surface3 },
   statusPublished: { backgroundColor: Colors.greenMuted },
   statusReview: { backgroundColor: Colors.yellowMuted },
   statusText: { color: Colors.textSecondary, fontFamily: Font.bold, fontSize: FontSize.xs, textTransform: 'capitalize' },
+  verifyPill: { paddingHorizontal: Spacing.sm, paddingVertical: 5, borderRadius: Radius.full, backgroundColor: Colors.yellowMuted },
+  verifyPillText: { color: Colors.yellow, fontFamily: Font.bold, fontSize: FontSize.xs },
   workRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
   workItem: { flex: 1, padding: Spacing.sm, borderRadius: Radius.md, backgroundColor: Colors.surface2 },
   workValue: { color: Colors.text, fontFamily: Font.bold, fontSize: FontSize.md },
