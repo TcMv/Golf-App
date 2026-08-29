@@ -19,6 +19,7 @@ import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../const
 type Nav = NativeStackNavigationProp<{
   MyBagSetup: { returnTo?: 'StartRound' | 'Main' } | undefined;
   AdminCourseSetup: undefined;
+  AdminTeeSets: undefined;
   AdminMap: undefined;
 }>;
 
@@ -107,6 +108,8 @@ export default function SettingsScreen() {
           <Row label="Club distances" value="Open setup" onPress={() => navigation.navigate('MyBagSetup', { returnTo: 'Main' })} />
           <View style={styles.divider} />
           <Row label="Add new course" value="Course & scorecard" onPress={() => navigation.navigate('AdminCourseSetup')} />
+          <View style={styles.divider} />
+          <Row label="Tee sets" value="Add, edit & delete" onPress={() => navigation.navigate('AdminTeeSets')} />
           <View style={styles.divider} />
           <Row label="Course editor" value="Maps & hazards" onPress={() => navigation.navigate('AdminMap')} />
         </View>
