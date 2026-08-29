@@ -26,6 +26,7 @@ type Nav = NativeStackNavigationProp<{
   AdminCourseExport: undefined;
   AdminMappingSuggestions: undefined;
   AdminMappingSuggestionImport: undefined;
+  AdminOsmMapping: undefined;
   AdminMap: undefined;
 }>;
 
@@ -111,6 +112,8 @@ export default function SettingsScreen() {
           <Row label="Import course data" value="JSON, CSV & GeoJSON" onPress={() => navigation.navigate('AdminCourseImport')} />
           <View style={styles.divider} />
           <Row label="Export course data" value="JSON & GeoJSON" onPress={() => navigation.navigate('AdminCourseExport')} />
+          <View style={styles.divider} />
+          <Row label="Generate from OpenStreetMap" value="Automatic golf geometry" onPress={() => navigation.navigate('AdminOsmMapping')} />
           <View style={styles.divider} />
           <Row label="Import mapping batch" value="Queue machine suggestions" onPress={() => navigation.navigate('AdminMappingSuggestionImport')} />
           <View style={styles.divider} />
