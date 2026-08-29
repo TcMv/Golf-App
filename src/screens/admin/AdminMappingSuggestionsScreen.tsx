@@ -13,12 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import {
-  buildSuggestionApprovalAction,
   validateMappingSuggestion,
   type MappingSuggestion,
   type MappingSuggestionFeature,
-  type MappingSuggestionGeometry,
-  type SuggestionCoordinate,
 } from '../../utils/courseMappingSuggestions';
 import { Colors, Font, FontSize, FontWeight, Radius, Spacing } from '../../constants/theme';
 
@@ -70,47 +67,25 @@ export default function AdminMappingSuggestionsScreen() {
 
   const markSuggestion = useCallback(async (suggestion: SuggestionRow, status: 'accepted' | 'rejected') => {
     if (savingId) return;
+    if (status === 'accepted') {
+      const validation = validateMappingSuggestion(suggestion);
+      if (!validation.valid) {
+        Alert.alert('Suggestion is not valid', validation.errors.join(' '));
+        return;
+      }
+      if (!suggestion.source_license?.trim()) {
+        Alert.alert('License confirmation required', 'This suggestion has no source license recorded. Add/confirm source licensing before approving it.');
+        return;
+      }
+    }
+
     setSavingId(suggestion.id);
     try {
-      if (status === 'accepted') {
-        const validation = validateMappingSuggestion(suggestion);
-        if (!validation.valid) throw new Error(validation.errors.join(' '));
-        if (!suggestion.source_license?.trim()) {
-          Alert.alert('License confirmation required', 'This suggestion has no source license recorded. Add/confirm source licensing before approving it.');
-          return;
-        }
-        const action = buildSuggestionApprovalAction(suggestion);
-        if (action.kind === 'hole_point') {
-          const { error } = await supabase.from('holes').update(action.fields).eq('course_id', suggestion.course_id).eq('number', suggestion.hole_number);
-          if (error) throw error;
-        } else if (action.kind === 'hole_zone') {
-          const { error } = await supabase.from('hole_zones').upsert({
-            course_id: suggestion.course_id,
-            hole_number: suggestion.hole_number,
-            zone_type: action.zone_type,
-            coordinates: action.coordinates,
-          }, { onConflict: 'course_id,hole_number,zone_type' });
-          if (error) throw error;
-        } else {
-          const label = typeof suggestion.metadata?.label === 'string' ? suggestion.metadata.label : `Suggested ${action.hazard_type}`;
-          const { error } = await supabase.from('hazards').insert({
-            course_id: suggestion.course_id,
-            hole_number: suggestion.hole_number,
-            hole_numbers: [suggestion.hole_number],
-            type: action.hazard_type,
-            label,
-            coordinates: action.coordinates,
-          });
-          if (error) throw error;
-        }
-      }
-
-      const { error: statusError } = await supabase.from('course_mapping_suggestions').update({
-        review_status: status,
-        reviewed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }).eq('id', suggestion.id);
-      if (statusError) throw statusError;
+      const { error } = await supabase.rpc('review_course_mapping_suggestion', {
+        p_suggestion_id: suggestion.id,
+        p_decision: status,
+      });
+      if (error) throw error;
       setSuggestions(current => current.filter(item => item.id !== suggestion.id));
     } catch (error: any) {
       Alert.alert(status === 'accepted' ? 'Approval failed' : 'Reject failed', error?.message ?? 'Could not update suggestion.');
@@ -142,7 +117,7 @@ export default function AdminMappingSuggestionsScreen() {
 
         <View style={styles.notice}>
           <Text style={styles.noticeTitle}>Human approval boundary</Text>
-          <Text style={styles.noticeText}>Machine suggestions do not affect playable course data until you accept them here. Missing source licensing blocks approval.</Text>
+          <Text style={styles.noticeText}>Machine suggestions do not affect playable course data until you accept them here. Approval and its course-data update are committed atomically, and missing source licensing blocks approval.</Text>
         </View>
 
         <Text style={styles.sectionLabel}>Pending suggestions</Text>
