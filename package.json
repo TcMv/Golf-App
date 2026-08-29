@@ -49,7 +49,8 @@
     "test:club-setup": "tsc --ignoreConfig src/utils/clubSetup.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-club-setup-test && node tests/clubSetup.test.cjs",
     "test:profile": "tsc --ignoreConfig src/utils/profile.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-profile-test && node tests/profile.test.cjs",
     "test:units": "tsc --ignoreConfig src/utils/units.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-units-test && node tests/units.test.cjs",
-    "test:shots": "tsc --ignoreConfig src/utils/shotTracking.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-shot-tracking-test && node tests/shotTracking.test.cjs"
+    "test:shots": "tsc --ignoreConfig src/utils/shotTracking.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-shot-tracking-test && node tests/shotTracking.test.cjs",
+    "test:course-validation": "tsc --ignoreConfig src/utils/courseValidation.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-course-validation-test && node tests/courseValidation.test.cjs"
   },
   "private": true
 }
