@@ -73,8 +73,8 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 
 ---
 
-## Phase 5 — Standard import format and bulk ingestion 🚧
-**Status:** Active on `feature/admin-course-ingestion-phase5` / PR #12. Issue #11.
+## Phase 5 — Standard import format and bulk ingestion ✅
+**Status:** Feature-complete and automated validation passed on `feature/admin-course-ingestion-phase5` / PR #12. Issue #11.
 
 ### 5.1 Canonical interchange contract
 - [x] Define `golfcaddie.course.v1` JSON schema contract.
@@ -83,40 +83,49 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Document mapping from the contract into `courses`, `holes`, `tee_sets`, `hole_zones` and `hazards`.
 - [x] Document draft-by-default import safety model and versioning policy.
 
-### 5.2 Parser and validation
+### 5.2 Parser, converters and validation
 - [x] Add pure JSON parser/validator.
-- [x] Validate schema version, course centre, 9/18-hole count, complete scorecard, par, SI, distances and tee sets.
-- [x] Validate optional hole GPS, zone types/geometry and hazard types/geometry.
-- [x] Return structured errors and warnings with field paths.
-- [x] Add dedicated import tests and wire them into CI.
+- [x] Add self-contained CSV scorecard converter into v1.
+- [x] Add GolfCaddie GeoJSON FeatureCollection converter into v1.
+- [x] Add v1 -> JSON and v1 -> GeoJSON export converters.
+- [x] Validate schema version, course centre, scorecard, tee sets, GPS, zones and hazards.
+- [x] Return structured errors/warnings with field paths.
+- [x] Add dedicated import and converter tests and wire them into CI.
 
-### 5.3 JSON import workflow
-- [x] Add Import Course JSON admin screen.
-- [x] Paste JSON and validate before any database writes.
+### 5.3 Import workflow
+- [x] Import screen supports JSON, CSV and GeoJSON.
+- [x] Normalize all formats to `golfcaddie.course.v1` before database writes.
 - [x] Show course summary, errors, warnings and import preview.
-- [x] Block duplicate names.
-- [x] Warn for nearby course centres within 250m and require explicit second action.
+- [x] Block duplicate names and warn for nearby centres within 250m.
 - [x] Import course, tee sets, holes/GPS, zones and hazards into the existing schema.
 - [x] Imported courses are explicitly created as draft.
-- [x] Cleanup the course record if a downstream insert fails so cascades remove the partial import.
-- [x] Register the import screen in navigation and Settings.
-- [x] Current Phase 5 slice passes install, typecheck and all tests including import tests.
+- [x] Cleanup the course record if a downstream insert fails.
 
-### 5.4 Remaining Phase 5 work
-- [ ] JSON export for an existing course.
-- [ ] CSV/structured scorecard converter into v1.
-- [ ] GeoJSON geometry converter into v1.
-- [ ] Persist source/provenance metadata alongside imported courses.
-- [ ] Manual live-Supabase import smoke test.
+### 5.4 Export and provenance
+- [x] Add existing-course export screen.
+- [x] Export full GolfCaddie v1 JSON.
+- [x] Export GeoJSON for GIS/mapping workflows.
+- [x] Add persistent source provider/id/url/retrieved/license/notes fields on courses.
+- [x] Imported source/licensing metadata is persisted and included in later exports.
+
+### Phase 5 validation
+- [x] `npm ci` passed.
+- [x] `npm run typecheck` passed.
+- [x] Existing tests + course import + converter tests passed.
+- [ ] Manual live-Supabase JSON/CSV/GeoJSON import/export smoke test remains recommended after applying the provenance migration.
 
 ---
 
-## Phase 6 — Assisted / AI course mapping
+## Phase 6 — Assisted / AI course mapping 🚧
+**Status:** Next active phase after Phase 5 merge.
+
 - [ ] Identify imagery/data sources that permit automated commercial extraction.
+- [ ] Define machine-suggestion contract separate from approved course geometry.
 - [ ] Generate proposed tees/greens/fairways/hazards/centrelines.
 - [ ] Store suggestions separately from approved geometry.
 - [ ] Confidence scoring.
 - [ ] Accept/reject/edit workflow per feature and per hole.
+- [ ] Normalize approved/generated course data through `golfcaddie.course.v1` where appropriate.
 - [ ] Batch course review workflow.
 
 ---
@@ -134,7 +143,9 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ## Progress log
 ### 2026-08-29
 - Implemented, validated and merged Phases 1–4.
-- Started Phase 5 with a canonical versioned import contract rather than adding another provider-specific ingestion path.
-- Added a tested parser/validator for the contract.
-- Added an admin JSON import preview and safe draft import path that writes course, scorecard/GPS, tee sets, zones and hazards with duplicate checks and rollback cleanup.
-- Remaining Phase 5 work is export plus CSV/GeoJSON normalization and source-provenance persistence.
+- Completed Phase 5 canonical `golfcaddie.course.v1` ingestion contract.
+- Added safe JSON/CSV/GeoJSON normalization and preview-before-write import flow.
+- Added JSON/GeoJSON export for existing courses.
+- Added persistent source/licensing provenance fields so commercially relevant origin data survives import/export cycles.
+- Full automated Phase 5 validation passed; live Supabase smoke testing remains recommended after migrations are applied.
+- Phase 6 is next: machine-generated suggestions and human approval rather than direct AI writes into approved geometry.
