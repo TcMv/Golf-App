@@ -3,12 +3,15 @@ export type Coordinate = {
   longitude: number;
 };
 
+export type CoursePublicationStatus = 'draft' | 'review' | 'published';
+
 export type Course = {
   id: string;
   name: string;
   lat: number;
   lng: number;
   holes: number;
+  publication_status: CoursePublicationStatus;
   created_at: string;
 };
 
