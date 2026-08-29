@@ -1,11 +1,11 @@
 # Admin Course Ingestion V2 Plan
 
 ## Objective
-Turn the existing multi-course GolfCaddie data model and map editor into a fast, safe course-ingestion workflow that can scale from manual mapping to assisted imports and, later, AI-generated course geometry.
+Turn the existing multi-course GolfCaddie data model and map editor into a fast, safe course-ingestion workflow that can scale from manual mapping to assisted imports and AI-generated course geometry.
 
 ## Ground rules
 - Preserve the existing consumer multi-course flow (`courses` -> `tee_sets` -> `holes`).
-- Reuse existing course, hazard, and hole-zone models instead of creating parallel data structures.
+- Reuse existing course, hazard, and hole-zone models instead of creating parallel approved-data structures.
 - Keep changes incremental and testable.
 - Do not change the tee/hole schema merely for theoretical cleanliness; only migrate it when a real product requirement needs per-tee GPS positions/distances.
 - New/incomplete course data must not accidentally affect existing playable courses.
@@ -76,43 +76,13 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ## Phase 5 — Standard import format and bulk ingestion ✅
 **Status:** Complete, validated and merged to `main`. Issue #11 closed. PR #12 merged.
 
-### 5.1 Canonical interchange contract
-- [x] Define `golfcaddie.course.v1` JSON schema contract.
-- [x] Include source/provenance metadata in the interchange format.
-- [x] Keep v1 aligned with the current data model rather than silently discarding unsupported per-hole/per-tee distances.
-- [x] Document mapping from the contract into `courses`, `holes`, `tee_sets`, `hole_zones` and `hazards`.
-- [x] Document draft-by-default import safety model and versioning policy.
-
-### 5.2 Parser, converters and validation
-- [x] Add pure JSON parser/validator.
-- [x] Add self-contained CSV scorecard converter into v1.
-- [x] Add GolfCaddie GeoJSON FeatureCollection converter into v1.
-- [x] Add v1 -> JSON and v1 -> GeoJSON export converters.
-- [x] Validate schema version, course centre, scorecard, tee sets, GPS, zones and hazards.
-- [x] Return structured errors/warnings with field paths.
-- [x] Add dedicated import and converter tests and wire them into CI.
-
-### 5.3 Import workflow
-- [x] Import screen supports JSON, CSV and GeoJSON.
-- [x] Normalize all formats to `golfcaddie.course.v1` before database writes.
-- [x] Show course summary, errors, warnings and import preview.
-- [x] Block duplicate names and warn for nearby centres within 250m.
-- [x] Import course, tee sets, holes/GPS, zones and hazards into the existing schema.
-- [x] Imported courses are explicitly created as draft.
-- [x] Cleanup the course record if a downstream insert fails.
-
-### 5.4 Export and provenance
-- [x] Add existing-course export screen.
-- [x] Export full GolfCaddie v1 JSON.
-- [x] Export GeoJSON for GIS/mapping workflows.
-- [x] Add persistent source provider/id/url/retrieved/license/notes fields on courses.
-- [x] Imported source/licensing metadata is persisted and included in later exports.
-
-### Phase 5 validation
-- [x] `npm ci` passed.
-- [x] `npm run typecheck` passed.
-- [x] Existing tests + course import + converter tests passed.
-- [ ] Manual live-Supabase JSON/CSV/GeoJSON import/export smoke test remains recommended after applying the provenance migration.
+- [x] Versioned `golfcaddie.course.v1` contract.
+- [x] JSON, CSV and GeoJSON import normalization.
+- [x] JSON and GeoJSON export.
+- [x] Draft-by-default import with duplicate/nearby checks and rollback cleanup.
+- [x] Persistent source/licensing provenance.
+- [x] CI install/typecheck/import/converter tests passed.
+- [ ] Manual live-Supabase import/export smoke test remains recommended after migrations are applied.
 
 ---
 
@@ -121,48 +91,54 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 
 **Goal:** Move humans from drawing every feature to reviewing machine-generated suggestions, while keeping machine data isolated from approved/playable course geometry until explicitly accepted.
 
-### 6.1 Suggestion boundary
-- [x] Add separate `course_mapping_suggestions` persistence model.
-- [x] Support tee/green points, surface polygons, fairway centrelines and hazard polygons.
-- [x] Keep pending machine data separate from `holes`, `hole_zones` and `hazards`.
-- [x] Store confidence, source provider/reference and source license per suggestion.
-- [x] Add explicit `pending` / `accepted` / `rejected` review status.
-- [x] Add pure suggestion validator for geometry type, point count, coordinate ranges, confidence and source/licensing warnings.
-- [x] Add approval-action mapping into the existing approved-data model.
-- [x] Add dedicated suggestion tests and wire them into CI.
+### 6.1 Suggestion boundary ✅
+- [x] Separate `course_mapping_suggestions` persistence model.
+- [x] Tee/green points, surface polygons, centrelines and hazard polygons.
+- [x] Confidence, source reference and source license per suggestion.
+- [x] Pending / accepted / rejected status.
+- [x] Shared validation rules.
+- [x] Atomic accept/reject database RPC so approved writes and review status cannot diverge.
 
-### 6.2 Human review workflow
-- [x] Add Mapping Review admin screen.
-- [x] Add course selector and pending suggestion queue.
-- [x] Show feature type, geometry type, point count, confidence and source/licensing data.
-- [x] Block approval when source licensing is missing.
-- [x] Accept tee/green point suggestions into `holes`.
-- [x] Accept fairway/green/tee-box/centreline suggestions into `hole_zones`.
-- [x] Accept hazard suggestions into `hazards`.
-- [x] Reject suggestions without touching approved geometry.
-- [x] Make accept/reject atomic with a database RPC so approved-data writes and review status cannot diverge; repeated review is rejected and hazard duplication from partial approval is prevented.
-- [x] Add satellite-map overlay comparing the suggestion with current approved geometry and tee/green context.
-- [x] Add edit-before-accept with draggable suggested point/line/polygon vertices and persisted corrections.
+### 6.2 Human review workflow ✅
+- [x] Mapping Review queue with course selector.
+- [x] License-gated approval.
+- [x] Suggested-vs-approved satellite comparison.
+- [x] Drag-to-correct point/line/polygon geometry before acceptance.
+- [x] Accepted data writes into existing `holes`, `hole_zones` and `hazards` only.
 
-### 6.3 Suggestion generation and batch ingestion
-- [x] Define `golfcaddie.mapping-suggestions.v1` batch contract.
-- [x] Add pure batch parser/validator using the same single-suggestion validation rules.
-- [x] Carry provider/reference/license metadata from the batch into every queued suggestion.
-- [x] Add admin batch-import screen that verifies the target course and queues suggestions as pending only.
-- [x] Add dedicated batch tests and wire them into CI.
-- [ ] Identify imagery/data sources that explicitly permit automated commercial extraction. First candidates should include OSM/vector bootstrap and genuinely open/licensed aerial imagery; do not use Google satellite imagery for automated extraction.
-- [ ] Build the first permitted-source adapter/generator for tees/greens/fairways/hazards/centrelines.
-- [ ] Calibrate confidence thresholds against human review outcomes.
-- [ ] Normalize accepted/generated course packages through `golfcaddie.course.v1` where appropriate.
-- [ ] Add batch course review workflow once single-course review is proven with live data.
+### 6.3 Batch machine-ingestion boundary ✅
+- [x] Versioned `golfcaddie.mapping-suggestions.v1` contract.
+- [x] Batch parser/validator and source/license propagation.
+- [x] Admin batch import that queues pending suggestions only.
+- [x] Dedicated batch tests in CI.
+
+### 6.4 First real generator — OpenStreetMap 🚧
+**Source decision:** OpenStreetMap is the first bootstrap source. OSM data is distributed under ODbL and supports commercial reuse with attribution/share-alike obligations. Google satellite imagery is not used for machine extraction.
+
+- [x] Add OSM/Overpass golf-data adapter.
+- [x] Query `golf=*` features around the selected course centre.
+- [x] Convert numbered `golf=hole` ways to fairway-centreline suggestions.
+- [x] Convert OSM fairway/green/tee/bunker/water/lateral-water/out-of-bounds features into GolfCaddie suggestions.
+- [x] Convert `golf=pin` to green-centre suggestions.
+- [x] Generate tee/green-centre point suggestions from tee/green polygons when explicit points are absent.
+- [x] Use explicit hole refs at high confidence; associate unnumbered features to the nearest numbered hole path at lower confidence.
+- [x] Preserve OSM element IDs/tags and ODbL attribution in suggestion metadata/provenance.
+- [x] Add an admin **Generate from OpenStreetMap** screen: select course → fetch → preview counts/issues → queue for human review.
+- [x] Add OSM adapter tests to CI.
+- [ ] Run live OSM generation against Nambour and Maroochydore and measure actual feature coverage/assignment quality.
+- [ ] Add deduplication/update detection using OSM type/id before repeated scans.
+- [ ] Move production-scale OSM fetching away from the free public Overpass endpoint to paid/self-hosted infrastructure; public Overpass remains prototype/small-use only.
+
+### 6.5 Next generator work
+- [ ] Calibrate OSM confidence/nearest-hole thresholds using review outcomes.
+- [ ] Investigate aerial imagery sources with explicit commercial machine-extraction rights for features absent from OSM.
+- [ ] Add imagery/vector fusion rather than trusting a single source.
+- [ ] Add batch-course work queue after single-course live validation.
 
 ### Phase 6 validation
-- [x] `npm ci` passed on the current Phase 6 slice.
-- [x] `npm run typecheck` passed.
-- [x] Existing tests + import/converter + mapping-suggestion + batch tests passed.
-- [x] Atomic-review client changes passed the same CI gate.
-- [x] Satellite comparison/edit and batch-ingestion UI passed the same CI gate.
-- [ ] Manual live-Supabase suggestion create/import/review/edit/accept/reject smoke test remains recommended after applying Phase 6 migrations.
+- [x] Existing suggestion/review/batch slices passed npm ci, TypeScript and full tests.
+- [ ] Current OSM generator slice must pass the same CI gate before merge.
+- [ ] Manual live-Supabase + live-OSM suggestion generation/review smoke test remains required before calling Phase 6 complete.
 
 ---
 
@@ -172,6 +148,7 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [ ] Change history/audit trail.
 - [ ] Course-owner correction workflow.
 - [ ] Update detection / remapping workflow.
+- [ ] Production data-source infrastructure and caching/rate limiting.
 - [ ] API/export boundary suitable for external commercial customers if pursued.
 
 ---
@@ -179,10 +156,8 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 ## Progress log
 ### 2026-08-29
 - Implemented, validated and merged Phases 1–5.
-- Started Phase 6 on a fresh branch with Issue #13 and draft PR #14.
-- Added a separate machine-suggestion table so AI/generated geometry cannot directly change playable course data.
-- Added feature/geometry validation, confidence and source-license checks, and atomic human approval into existing course structures.
-- Added satellite comparison against approved geometry plus drag-to-correct editing before acceptance.
-- Added the `golfcaddie.mapping-suggestions.v1` batch contract and admin batch queue so an external mapping engine can now feed the review workflow without direct writes to playable geometry.
-- Latest Phase 6 CI passed install, TypeScript and the complete test suite after adding map review/edit and batch ingestion.
-- Next focus: choose a legally usable mapping source and build the first real suggestion generator, then measure its accuracy through the review queue.
+- Phase 6 now has isolated machine suggestions, atomic human approval, satellite compare/edit, and a batch ingestion contract.
+- Selected OpenStreetMap as the first real machine-readable bootstrap source because golf features are explicitly tagged and the dataset is commercially reusable under ODbL obligations.
+- Built the OSM/Overpass adapter and direct admin generator. It converts OSM golf geometry into pending GolfCaddie suggestions with provenance and confidence rather than modifying playable data directly.
+- Public Overpass is deliberately treated as prototype/small-use infrastructure; commercial scale will use paid/self-hosted data access.
+- Next proof point: run the generator against real courses, quantify coverage and corrections, then add OSM deduplication and a second licensed source for missing geometry.
