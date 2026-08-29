@@ -21,6 +21,7 @@ type Nav = NativeStackNavigationProp<{
   AdminCourseOperations: undefined;
   AdminCourseHistory: undefined;
   AdminDataHealth: undefined;
+  AdminSourceCoverage: undefined;
   AdminCourseSetup: undefined;
   AdminTeeSets: undefined;
   AdminHoleZones: undefined;
@@ -113,6 +114,8 @@ export default function SettingsScreen() {
           <Row label="Course operations" value="Work queue & verification" onPress={() => navigation.navigate('AdminCourseOperations')} />
           <View style={styles.divider} />
           <Row label="Data health" value="Live Supabase checks" onPress={() => navigation.navigate('AdminDataHealth')} />
+          <View style={styles.divider} />
+          <Row label="Source coverage" value="Measure OSM gaps" onPress={() => navigation.navigate('AdminSourceCoverage')} />
           <View style={styles.divider} />
           <Row label="Course history" value="Audit & verification log" onPress={() => navigation.navigate('AdminCourseHistory')} />
           <View style={styles.divider} />
