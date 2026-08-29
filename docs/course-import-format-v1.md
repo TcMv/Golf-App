@@ -1,7 +1,9 @@
 # GolfCaddie Course Import Format v1
 
 ## Purpose
-A single versioned interchange format for importing, exporting, validating and later AI-generating course data. External providers, CSV converters, GeoJSON converters and AI mapping pipelines should all normalize into this contract before anything is written to Supabase.
+A single versioned interchange format for importing, exporting, validating and later AI-generating course data. External providers, CSV converters, GeoJSON converters and AI mapping pipelines should normalize into this contract before anything is written to Supabase.
+
+Version 1 deliberately mirrors the data the current app can preserve without inventing a per-hole/per-tee distance schema.
 
 ## Top-level contract
 
@@ -22,15 +24,16 @@ A single versioned interchange format for importing, exporting, validating and l
     "longitude": 153.0800,
     "holes": 18
   },
+  "scorecard": [
+    { "number": 1, "par": 4, "stroke_index": 7, "metres": 342 }
+  ],
   "tee_sets": [
     {
       "name": "White",
       "colour": "white",
+      "total_metres": 5630,
       "course_rating": 68.4,
-      "slope_rating": 121,
-      "holes": [
-        { "number": 1, "par": 4, "stroke_index": 7, "metres": 342 }
-      ]
+      "slope_rating": 121
     }
   ],
   "hole_locations": [
@@ -56,7 +59,10 @@ A single versioned interchange format for importing, exporting, validating and l
     {
       "hole_number": 1,
       "type": "fairway_centreline",
-      "coordinates": [{ "lat": -26.6501, "lng": 153.0801 }, { "lat": -26.6479, "lng": 153.0813 }]
+      "coordinates": [
+        { "lat": -26.6501, "lng": 153.0801 },
+        { "lat": -26.6479, "lng": 153.0813 }
+      ]
     }
   ],
   "hazards": [
@@ -74,27 +80,30 @@ A single versioned interchange format for importing, exporting, validating and l
 - `schema` must equal `golfcaddie.course.v1`.
 - Course coordinates use decimal WGS84 latitude/longitude.
 - `course.holes` must be 9 or 18.
-- At least one tee set is required.
-- Every tee set must contain exactly the expected hole numbers once each.
+- `scorecard` must contain exactly the expected hole numbers once each.
 - `par` must be 3–6.
-- `stroke_index` must be unique within each tee set and between 1 and the course hole count.
+- `stroke_index` must be unique and between 1 and the course hole count.
 - `metres` must be 40–750.
+- At least one tee set is required.
+- Tee-set `total_metres` must be positive.
 - `course_rating` must be positive; `slope_rating` must be 55–155.
-- `hole_locations`, `zones` and `hazards` are optional during import. Missing rich geometry keeps the course in draft and will be surfaced by Course Readiness.
+- `hole_locations`, `zones` and `hazards` are optional. Missing rich geometry keeps the course in draft and is surfaced by Course Readiness.
 - Zone types are `green`, `fairway`, `tee_box`, `fairway_centreline`.
 - Hazard types are `bunker`, `water`, `trees`, `ob`, `red_zone`.
 - Polygon geometry should contain at least 3 coordinates. A fairway centreline should contain at least 2.
-- Hazard `hole_numbers` may contain multiple holes for shared hazards. An empty list means course-wide only when intentionally supplied by an admin/import source.
+- Hazard `hole_numbers` may contain multiple holes for shared hazards. An empty list is interpreted as course-wide and should only be supplied intentionally.
 
 ## Mapping to current Supabase model
 - `course` -> `courses`.
-- `tee_sets[]` summary -> `tee_sets`.
-- The first tee set is the current source for `holes.white_metres`; all tee sets remain separately stored in `tee_sets` until a per-hole/per-tee distance model is introduced.
-- Tee-set hole `par` and `stroke_index` -> `holes`.
+- `scorecard` -> `holes`, including the current `white_metres` distance field.
+- `tee_sets` -> `tee_sets`.
 - `hole_locations` -> GPS fields on `holes`.
 - `zones` -> `hole_zones`.
 - `hazards` -> `hazards`.
 - Imported courses are always created as `draft`; publication remains controlled by Course Readiness.
+
+## Deliberate v1 limitation
+The current database does not store a separate distance for every hole for every tee set. Therefore v1 carries one canonical hole distance in `scorecard[].metres` plus each tee set's total distance/rating/slope. We should only add per-hole/per-tee distances when that becomes a demonstrated product requirement, at which point the interchange schema can evolve without silently discarding data.
 
 ## Import safety model
 1. Parse into this contract.
