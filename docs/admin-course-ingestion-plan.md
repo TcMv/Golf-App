@@ -91,12 +91,12 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] OSM provenance and confidence handling.
 - [x] CI passed on the final Phase 6 head.
 
-**Deferred operational hardening, not Phase 6 blockers:** live Nambour/Maroochydore smoke testing, OSM duplicate/update handling, confidence calibration from review outcomes, and a second licensed source / imagery-fusion path.
+**Deferred operational hardening, not Phase 6 blockers:** live Nambour/Maroochydore smoke testing, confidence calibration from review outcomes, and a second licensed source / imagery-fusion path.
 
 ---
 
 ## Phase 7 — Scale and dataset operations 🚧
-**Status:** Active on `feature/admin-course-ingestion-phase7`. Issue #15.
+**Status:** Active on `feature/admin-course-ingestion-phase7`. Issue #15. Draft PR #16.
 
 ### 7.1 Operations queue
 - [x] Add searchable/filterable Course Operations screen.
@@ -109,13 +109,18 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Add `last_verified_at` and verification notes to courses.
 - [x] Add `course_admin_events` audit table.
 - [x] Add atomic `mark_course_verified` RPC that also records an audit event.
-- [ ] Record publication-status transitions in the audit log.
-- [ ] Record accepted/rejected mapping suggestions and manual geometry changes in the audit log.
+- [x] Record publication-status transitions automatically in the audit log.
+- [x] Record accepted/rejected mapping suggestions automatically in the audit log.
+- [ ] Record selected manual geometry edits in the audit log without flooding history during bulk imports.
 - [ ] Add per-course history view.
 
 ### 7.3 Update/remapping operations
-- [ ] Add OSM element-id deduplication and rescan/update detection.
-- [ ] Flag source data that has changed since last verification.
+- [x] Add stable OSM source-feature identity (`osm_type:id:feature`) to machine suggestions.
+- [x] Make repeated identical OSM scans idempotent: unchanged features are ignored rather than queued again.
+- [x] Refresh an existing pending suggestion when the same OSM feature changes before review.
+- [x] Preserve accepted/rejected history and create a new pending update candidate when the source geometry changes later.
+- [x] Backfill existing OSM source identities and safely collapse duplicate pending rows before enforcing uniqueness.
+- [ ] Surface "source changed since verification" explicitly in Course Operations.
 - [ ] Add review queue filters for stale/unverified/changed courses.
 - [ ] Add course-owner correction intake workflow.
 
@@ -125,15 +130,21 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [ ] API/export boundary suitable for external commercial customers if pursued.
 
 ### Phase 7 validation
-- [ ] Current operations/audit slice must pass npm ci, TypeScript and the full test suite.
-- [ ] Apply Phase 7 migration and smoke-test verification/event creation against live Supabase.
+- [x] Initial operations/audit slice passed npm ci, TypeScript and the full test suite.
+- [ ] Audit + OSM dedup migration slice must pass the same CI gate.
+- [ ] Apply Phase 7 migrations and smoke-test verification, audit events and repeat OSM scans against live Supabase.
 
 ---
 
 ## Progress log
+### 2026-08-30
+- Phase 6 remains merged and Phase 7 is active on PR #16.
+- Added publication-change and mapping-review audit triggers so critical admin decisions no longer depend on client-side event logging.
+- Added OSM source identities/fingerprints and database-level repeat-scan handling. Exact repeats no-op; changed pending features refresh in place; changed previously reviewed features create a new review candidate while preserving history.
+- Next focus: surface stale/changed state in Course Operations and add a per-course audit/history view.
+
 ### 2026-08-29
 - Implemented, validated and merged Phases 1–6.
 - Phase 6 established the full machine-suggestion → human correction → approval path and first OSM generator.
 - Started Phase 7 with Issue #15 and a fresh branch.
 - Added the first operational work queue plus course verification timestamps and audit-event foundation.
-- Next focus: validate this slice, then expand audit coverage and add source-update/deduplication operations.
