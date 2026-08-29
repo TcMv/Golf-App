@@ -74,25 +74,31 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - [x] Generate the full hole-entry draft automatically in the UI.
 - [x] Prevent persistence until the full scorecard validates, so incomplete placeholder courses are not exposed to golfers.
 - [x] Validate duplicate course names.
-- [ ] Add nearby-coordinate duplicate warning/check.
+- [x] Warn when another course centre is within 250 m and require explicit override.
 
 ### 2.2 Tee set setup
-- [ ] Add/edit/delete tee sets for existing courses.
+- [x] Add/edit/delete tee sets for existing courses.
 - [x] Capture initial tee name, colour, calculated total distance, course rating, and slope during course creation.
+- [x] Protect deletion through existing database relationships: referenced tee sets surface the Supabase FK error instead of silently deleting round history.
 
 ### 2.3 Scorecard editor
 - [x] Editable hole grid for par, stroke index, and current supported distance field.
-- [ ] Bulk paste/import path for structured scorecard data.
+- [x] Bulk paste path for structured scorecard data (tab/comma/semicolon/pipe separated; optional header).
 - [x] Validate par/SI completeness and duplicate stroke indexes.
 - [x] Validate plausible hole lengths and slope/rating inputs.
+- [x] Bulk paste is loaded into the editable scorecard for human review before persistence.
 
 ### Phase 2 validation so far
-- [x] New screen registered in navigation and Settings.
-- [x] CI install/typecheck/unit tests pass for the first Phase 2 slice.
-- [ ] Manual creation test against live Supabase before Phase 2 merge.
+- [x] New-course screen registered in navigation and Settings.
+- [x] Tee-set management screen registered in navigation and Settings.
+- [x] CI install/typecheck/unit tests passed for the first Phase 2 slice.
+- [ ] CI validation pending for the completed Phase 2 feature set.
+- [ ] Manual creation/edit test against live Supabase before Phase 2 merge is recommended.
 
 **Phase 2 exit criteria**
 - A new course can be created in-app and have a complete basic scorecard without SQL/manual Supabase work.
+- Existing course tee sets can be maintained without direct Supabase editing.
+- Structured scorecard data can be pasted in bulk and reviewed before save.
 
 ---
 
@@ -164,7 +170,8 @@ Turn the existing multi-course GolfCaddie data model and map editor into a fast,
 - Reframed work around the admin ingestion layer rather than redesigning the underlying course architecture.
 - Implemented and merged Phase 1.
 - Added GitHub Actions CI covering install, TypeScript typecheck, and all existing unit tests.
-- Phase 1 CI passed cleanly.
 - Started Phase 2 on a fresh branch.
 - Added guided new-course creation, initial tee setup, scorecard entry, validation, duplicate-name protection, and rollback cleanup on partial creation failure.
-- First Phase 2 CI slice passed typecheck and the full existing unit-test suite.
+- Added nearby-coordinate duplicate warning with explicit override.
+- Added bulk scorecard paste into the editable scorecard workflow.
+- Added existing-course tee-set add/edit/delete management.
