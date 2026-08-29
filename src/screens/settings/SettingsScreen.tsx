@@ -21,6 +21,7 @@ type Nav = NativeStackNavigationProp<{
   AdminCourseSetup: undefined;
   AdminTeeSets: undefined;
   AdminHoleZones: undefined;
+  AdminCourseValidation: undefined;
   AdminMap: undefined;
 }>;
 
@@ -115,6 +116,8 @@ export default function SettingsScreen() {
           <Row label="Hole geometry" value="Fairway, green & centreline" onPress={() => navigation.navigate('AdminHoleZones')} />
           <View style={styles.divider} />
           <Row label="Course editor" value="Points & hazards" onPress={() => navigation.navigate('AdminMap')} />
+          <View style={styles.divider} />
+          <Row label="Course readiness" value="Completeness & issues" onPress={() => navigation.navigate('AdminCourseValidation')} />
         </View>
 
         <Text style={styles.sectionLabel}>Account</Text>
