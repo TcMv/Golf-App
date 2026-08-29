@@ -56,7 +56,8 @@
     "test:course-mapping-suggestions": "tsc --ignoreConfig src/utils/courseMappingSuggestions.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-course-mapping-suggestion-test && node tests/courseMappingSuggestions.test.cjs",
     "test:course-mapping-batch": "tsc --ignoreConfig src/utils/courseMappingSuggestions.ts src/utils/courseMappingSuggestionBatch.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-course-mapping-batch-test && node tests/courseMappingSuggestionBatch.test.cjs",
     "test:osm-mapping": "tsc --ignoreConfig src/utils/courseMappingSuggestions.ts src/utils/courseMappingSuggestionBatch.ts src/utils/osmGolfMapping.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-osm-mapping-test && node tests/osmGolfMapping.test.cjs",
-    "test:source-coverage": "tsc --ignoreConfig src/utils/sourceCoverage.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-source-coverage-test && node tests/sourceCoverage.test.cjs"
+    "test:source-coverage": "tsc --ignoreConfig src/utils/sourceCoverage.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-source-coverage-test && node tests/sourceCoverage.test.cjs",
+    "test:source-coverage-benchmarks": "tsc --ignoreConfig src/utils/sourceCoverageBenchmarks.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-source-coverage-benchmarks-test && node tests/sourceCoverageBenchmarks.test.cjs"
   },
   "private": true
 }
