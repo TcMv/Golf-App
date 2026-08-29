@@ -10,9 +10,7 @@ Build a fast, safe multi-course ingestion system that progresses from manual adm
 - Keep changes incremental and CI-gated.
 - Follow `AGENTS.md` and Expo SDK 56 / React Native 0.85 requirements.
 
-## Phases 1–8 ✅
-Phases 1–8 are implemented and merged to `main`.
-
+## Phases 1–9 ✅
 - Phase 1 / PR #4 — multi-course admin map.
 - Phase 2 / PR #6 — new-course setup and scorecard ingestion.
 - Phase 3 / PR #8 — rich fairway/green/centreline geometry.
@@ -21,26 +19,9 @@ Phases 1–8 are implemented and merged to `main`.
 - Phase 6 / PR #14 — machine suggestions, satellite human review, batch ingestion and OpenStreetMap generator.
 - Phase 7 / PR #16 — operations queue, verification/history/audit, OSM deduplication/update detection and needs-verification workflow.
 - Phase 8 / PR #18 — in-app Data Health diagnostics and explicit live verification smoke-test tooling.
+- Phase 9 / PR #20 — continuous Create → OSM → Review → Readiness course onboarding with selected-course handoff from Course Operations.
 
-Live device/Supabase smoke testing remains intentionally separate from automated CI and can be run through Data Health in the private build.
-
-## Phase 9 — Continuous course onboarding ✅
-Issue #19 / PR #20.
-
-- New-course persistence returns the created `courseId`.
-- Course creation can continue directly into OSM generation.
-- OSM generation preselects the supplied course.
-- Queueing suggestions can continue directly into Mapping Review with the same course selected.
-- Mapping Review can continue directly into Course Readiness with the same course selected.
-- Course Readiness preserves the onboarding course through publication.
-- Course Operations passes the selected `courseId` directly into Map/Rescan, Review AI and Readiness.
-- Course Operations surfaces a simple next-workflow-stage cue.
-- Draft, human-review and readiness publication boundaries remain unchanged.
-- Dependency install, TypeScript and the full automated test suite passed on the final code head.
-
-Private-build follow-up remains:
-- create a disposable draft and confirm Create → OSM → Review → Readiness selection persistence;
-- confirm cancelling/choosing Later leaves a valid draft and does not affect normal published-course flow.
+Phase 9 code passed dependency install, TypeScript and the full automated test suite. Live device/Supabase smoke testing remains separate and can be run through the private build.
 
 ## Next — Phase 10: Source coverage lab
 Measure how much useful course geometry the free/testing OSM path actually provides before spending money on a commercial 40k+ course licence.
@@ -63,6 +44,5 @@ Planned:
 
 ## Progress log
 ### 2026-08-30
-- Phases 7 and 8 are merged to `main`.
 - Phase 9 continuous onboarding is implemented and automated-validation clean.
 - Next development phase is Source Coverage Lab so course-licensing decisions are driven by measured coverage gaps.
