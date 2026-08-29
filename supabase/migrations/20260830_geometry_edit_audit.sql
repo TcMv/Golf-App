@@ -38,18 +38,31 @@ returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_course_id uuid;
+  v_hole_number integer;
+  v_zone_type text;
 begin
+  if tg_op = 'DELETE' then
+    v_course_id := old.course_id;
+    v_hole_number := old.hole_number;
+    v_zone_type := old.zone_type;
+  else
+    v_course_id := new.course_id;
+    v_hole_number := new.hole_number;
+    v_zone_type := new.zone_type;
+  end if;
+
   insert into public.course_admin_events (course_id, event_type, actor_user_id, details)
   values (
-    coalesce(new.course_id, old.course_id),
+    v_course_id,
     case when tg_op = 'DELETE' then 'hole_zone_deleted' else 'hole_zone_changed' end,
     auth.uid(),
-    jsonb_build_object(
-      'hole_number', coalesce(new.hole_number, old.hole_number),
-      'zone_type', coalesce(new.zone_type, old.zone_type)
-    )
+    jsonb_build_object('hole_number', v_hole_number, 'zone_type', v_zone_type)
   );
-  return coalesce(new, old);
+
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
 end;
 $$;
 
@@ -68,19 +81,34 @@ returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_course_id uuid;
+  v_hazard_id uuid;
+  v_hole_number integer;
+  v_type text;
 begin
+  if tg_op = 'DELETE' then
+    v_course_id := old.course_id;
+    v_hazard_id := old.id;
+    v_hole_number := old.hole_number;
+    v_type := old.type;
+  else
+    v_course_id := new.course_id;
+    v_hazard_id := new.id;
+    v_hole_number := new.hole_number;
+    v_type := new.type;
+  end if;
+
   insert into public.course_admin_events (course_id, event_type, actor_user_id, details)
   values (
-    coalesce(new.course_id, old.course_id),
+    v_course_id,
     case when tg_op = 'DELETE' then 'hazard_deleted' else 'hazard_changed' end,
     auth.uid(),
-    jsonb_build_object(
-      'hazard_id', coalesce(new.id, old.id),
-      'hole_number', coalesce(new.hole_number, old.hole_number),
-      'hazard_type', coalesce(new.type, old.type)
-    )
+    jsonb_build_object('hazard_id', v_hazard_id, 'hole_number', v_hole_number, 'hazard_type', v_type)
   );
-  return coalesce(new, old);
+
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
 end;
 $$;
 
