@@ -44,3 +44,4 @@ jobs:
           npm run test:course-mapping-batch
           npm run test:osm-mapping
           npm run test:source-coverage
+          npm run test:source-coverage-benchmarks
