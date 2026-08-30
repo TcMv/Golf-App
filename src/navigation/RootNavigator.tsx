@@ -37,6 +37,7 @@ import AdminDataHealthScreen from '../screens/admin/AdminDataHealthScreen';
 import AdminSourceCoverageScreen from '../screens/admin/AdminSourceCoverageScreen';
 import AdminSourceCoverageBenchmarksScreen from '../screens/admin/AdminSourceCoverageBenchmarksScreen';
 import AdminSourceQualityScreen from '../screens/admin/AdminSourceQualityScreen';
+import AdminSourceDecisionScreen from '../screens/admin/AdminSourceDecisionScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -87,6 +88,7 @@ function AuthedStack({ onboardingDone }: { onboardingDone: boolean }) {
       <Stack.Screen name="AdminSourceCoverage" component={AdminSourceCoverageScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminSourceCoverageBenchmarks" component={AdminSourceCoverageBenchmarksScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminSourceQuality" component={AdminSourceQualityScreen} options={{ presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="AdminSourceDecision" component={AdminSourceDecisionScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminCourseSetup" component={AdminCourseSetupScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminTeeSets" component={AdminTeeSetsScreen} options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="AdminHoleZones" component={AdminHoleZonesScreen} options={{ presentation: 'fullScreenModal' }} />
