@@ -9,7 +9,7 @@ import {
 } from '../../utils/courseMappingSuggestions';
 import { Colors, Font, FontSize, Radius, Spacing } from '../../constants/theme';
 
-type SuggestionWithId = MappingSuggestion & { id: string };
+type SuggestionWithId = MappingSuggestion & { id: string; edit_count?: number };
 type LatLng = { latitude: number; longitude: number };
 type HoleContext = {
   tee_lat: number | null;
@@ -166,9 +166,13 @@ export default function MappingSuggestionPreview({ suggestion, onSaved }: Props)
   const saveEdits = async () => {
     if (!dirty || saving || !validation.valid) return;
     setSaving(true);
+    const now = new Date().toISOString();
     const { error } = await supabase.from('course_mapping_suggestions').update({
       coordinates,
-      updated_at: new Date().toISOString(),
+      manually_edited: true,
+      edit_count: (suggestion.edit_count ?? 0) + 1,
+      last_edited_at: now,
+      updated_at: now,
     }).eq('id', suggestion.id).eq('review_status', 'pending');
     setSaving(false);
     if (error) {
