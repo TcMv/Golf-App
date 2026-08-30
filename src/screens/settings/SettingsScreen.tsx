@@ -23,6 +23,7 @@ type Nav = NativeStackNavigationProp<{
   AdminDataHealth: undefined;
   AdminSourceCoverage: undefined;
   AdminSourceQuality: undefined;
+  AdminSourceDecision: undefined;
   AdminCourseSetup: undefined;
   AdminTeeSets: undefined;
   AdminHoleZones: undefined;
@@ -119,6 +120,8 @@ export default function SettingsScreen() {
           <Row label="Source coverage" value="Measure OSM gaps" onPress={() => navigation.navigate('AdminSourceCoverage')} />
           <View style={styles.divider} />
           <Row label="Source quality" value="Acceptance & edit rates" onPress={() => navigation.navigate('AdminSourceQuality')} />
+          <View style={styles.divider} />
+          <Row label="Source decision" value="Coverage + quality" onPress={() => navigation.navigate('AdminSourceDecision')} />
           <View style={styles.divider} />
           <Row label="Course history" value="Audit & verification log" onPress={() => navigation.navigate('AdminCourseHistory')} />
           <View style={styles.divider} />
