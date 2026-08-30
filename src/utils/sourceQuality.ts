@@ -7,7 +7,6 @@ export type MappingQualitySuggestion = {
   confidence: number | null;
   review_status: MappingQualityStatus;
   manually_edited: boolean;
-  edit_count: number;
   metadata: Record<string, unknown> | null;
 };
 
