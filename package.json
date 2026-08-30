@@ -58,7 +58,8 @@
     "test:osm-mapping": "tsc --ignoreConfig src/utils/courseMappingSuggestions.ts src/utils/courseMappingSuggestionBatch.ts src/utils/osmGolfMapping.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-osm-mapping-test && node tests/osmGolfMapping.test.cjs",
     "test:source-coverage": "tsc --ignoreConfig src/utils/sourceCoverage.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-source-coverage-test && node tests/sourceCoverage.test.cjs",
     "test:source-coverage-benchmarks": "tsc --ignoreConfig src/utils/sourceCoverageBenchmarks.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-source-coverage-benchmarks-test && node tests/sourceCoverageBenchmarks.test.cjs",
-    "test:source-quality": "tsc --ignoreConfig src/utils/sourceQuality.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-source-quality-test && node tests/sourceQuality.test.cjs"
+    "test:source-quality": "tsc --ignoreConfig src/utils/sourceQuality.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-source-quality-test && node tests/sourceQuality.test.cjs",
+    "test:source-decision": "tsc --ignoreConfig src/utils/sourceDecisionEvidence.ts --skipLibCheck --target ES2022 --module commonjs --outDir /tmp/golf-source-decision-test && node tests/sourceDecisionEvidence.test.cjs"
   },
   "private": true
 }
