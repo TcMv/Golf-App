@@ -45,3 +45,4 @@ jobs:
           npm run test:osm-mapping
           npm run test:source-coverage
           npm run test:source-coverage-benchmarks
+          npm run test:source-quality
