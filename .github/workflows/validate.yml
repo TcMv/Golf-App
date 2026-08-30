@@ -46,3 +46,4 @@ jobs:
           npm run test:source-coverage
           npm run test:source-coverage-benchmarks
           npm run test:source-quality
+          npm run test:source-decision
