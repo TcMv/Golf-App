@@ -40,6 +40,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "vercel-build": "bash scripts/vercel-deploy-supabase.sh",
     "typecheck": "tsc --noEmit",
     "test:handicap": "tsc --ignoreConfig src/lib/handicap.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-handicap-test && node tests/handicap.test.cjs",
     "test:caddie": "tsc --ignoreConfig src/utils/caddie.ts src/utils/wind.ts src/utils/distance.ts --skipLibCheck --target ES2020 --module commonjs --outDir /tmp/golf-caddie-test && node tests/caddie.test.cjs",
