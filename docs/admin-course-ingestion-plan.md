@@ -3,7 +3,7 @@
 ## Objective
 Build a fast, safe multi-course ingestion system that progresses from manual admin tools to machine-assisted mapping, operational dataset management, live diagnostics, continuous onboarding, and evidence-based source decisions.
 
-## Phases 1–11 ✅
+## Phases 1–12 ✅
 - Phase 1 / PR #4 — multi-course admin map.
 - Phase 2 / PR #6 — new-course setup and scorecard ingestion.
 - Phase 3 / PR #8 — rich fairway/green/centreline geometry.
@@ -14,55 +14,50 @@ Build a fast, safe multi-course ingestion system that progresses from manual adm
 - Phase 8 / PR #18 — in-app Data Health diagnostics and live smoke-test tooling.
 - Phase 9 / PR #20 — continuous Create → OSM → Review → Readiness onboarding.
 - Phase 10 / PR #22 — read-only Source Coverage Lab.
-- Phase 11 / PR #24 — persistent multi-course coverage benchmarks and dashboard. Final CI passed before merge.
+- Phase 11 / PR #24 — persistent multi-course coverage benchmarks and dashboard.
+- Phase 12 / PR #26 — human-correction signals plus Source Quality acceptance/edit calibration. Final install, TypeScript and full tests passed before merge.
 
-Live benchmark evidence remains separate: apply Phase 11 migration and collect Nambour, Maroochydore and at least three additional varied course scans before making a source/licensing decision.
+Live evidence remains separate: apply Phase 11/12 migrations, collect varied course coverage scans, and review enough real mapping suggestions to make coverage and quality rates meaningful.
 
-## Phase 12 — Source quality calibration 🚧
-**Status:** Active on `feature/admin-course-ingestion-phase12`. Issue #25.
+## Phase 13 — Combined source decision evidence 🚧
+**Status:** Active on `feature/admin-course-ingestion-phase13`. Issue #27.
 
-### 12.1 Review-quality signals
-- [x] Add `manually_edited`, `edit_count` and `last_edited_at` quality fields to mapping suggestions.
-- [x] Make correction counting database-owned so automated OSM refreshes are not mistaken for human edits.
-- [x] Mark corrections when a reviewer saves edited geometry before approval.
-- [x] Preserve the existing pending → explicit accept/reject human boundary.
+### 13.1 Combined evidence model
+- [x] Normalize provider identity so `OpenStreetMap` quality rows align with `OpenStreetMap / Overpass` coverage scans.
+- [x] Use only the latest coverage scan per course/provider to avoid overweighting repeat scans.
+- [x] Combine course count + average structural coverage with reviewed count + acceptance/edit rates.
+- [x] Keep providers independent so a future second permitted source can be compared without redesigning the model.
 
-### 12.2 Quality analytics
-- [x] Add reusable source-quality aggregation utility.
-- [x] Measure reviewed, accepted, rejected and pending counts.
-- [x] Calculate acceptance and manual-edit rates.
-- [x] Break quality down by provider, feature type and confidence band.
-- [x] Separate OSM direct-hole refs from nearest-hole inferred assignments using existing metadata.
-- [x] Add sample-size guidance so early percentages are not over-read.
+### 13.2 Evidence states
+- [x] Flag insufficient evidence when fewer than 5 courses or 20 reviewed suggestions exist.
+- [x] Distinguish coverage gaps from quality concerns once the sample is usable.
+- [x] Surface promising/mixed evidence without turning the tool into an automatic licence-buying verdict.
+- [x] Preserve plain-language notes explaining why each state was assigned.
 
-### 12.3 Admin dashboard
-- [x] Add Source Quality screen.
-- [x] Expose it from Settings.
-- [x] Explain coverage vs quality: plentiful data can still be expensive to review, while accurate data can still have poor coverage.
+### 13.3 Admin scorecard
+- [x] Add read-only Source Decision screen.
+- [x] Show source coverage, acceptance and correction rate together.
+- [x] Add Settings/navigation entry point.
+- [x] Explain how to interpret high/low coverage against high/low review quality.
 
-### 12.4 Validation
-- [x] Add dedicated source-quality unit test.
-- [x] Wire source-quality test into GitHub Actions.
-- [ ] Final Phase 12 head must pass dependency install, TypeScript and all automated tests.
-- [ ] Private build: apply migration, manually correct one pending suggestion, accept it and verify edited/accepted metrics update.
-- [ ] Review enough real suggestions to compare direct OSM vs inferred acceptance/edit rates.
+### 13.4 Validation
+- [x] Add dedicated source-decision evidence unit test.
+- [x] Wire it into GitHub Actions.
+- [ ] Final Phase 13 head must pass dependency install, TypeScript and all automated tests.
+- [ ] Private build: confirm Phase 11/12 data is visible in the combined scorecard.
 
 ## Decision framework
-Use **coverage + quality together** before buying another source or commercial course licence:
-- high coverage + high acceptance/low edits → current source is strong;
-- high coverage + poor acceptance/high edits → source is plentiful but review-expensive;
-- low coverage + high acceptance → reliable where present, but requires gap filling;
-- low coverage + poor quality → prioritize another source/licensing path.
+Coverage answers **how much useful geometry do we get?** Quality answers **how much of it survives human review without correction?** The combined scorecard should inform whether to keep filling gaps manually, add a second permitted source, or revisit commercial course licensing.
 
 ## Later scale decisions
-- second permitted geometry/imagery source if measured coverage/quality warrants it;
+- add a second permitted provider only when the measured evidence points to a real gap;
 - production source hosting/caching only when usage requires it;
 - commercial 40k+ course licence only if product traction or measured gaps justify its annual cost;
 - external course-data API only if dataset distribution becomes a product goal.
 
 ## Progress log
 ### 2026-08-30
-- Phase 11 merged to `main` as PR #24 after install, TypeScript and full tests passed; Issue #23 closed.
-- Started Phase 12 / Issue #25.
-- Added human-correction quality signals, source-quality aggregation and Source Quality dashboard.
-- Next gate: final CI and diff review, then merge if clean. Live evidence remains a separate private-build step.
+- Phase 12 merged to `main` as PR #26 after install, TypeScript and full tests passed; Issue #25 closed.
+- Started Phase 13 / Issue #27.
+- Added a provider-normalized combined coverage + quality evidence model and read-only Source Decision scorecard.
+- Next gate: final CI and diff review, then merge if clean. Real-course evidence remains the private-build task.
